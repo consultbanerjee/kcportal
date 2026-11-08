@@ -142,11 +142,11 @@ route(/^\/letters$/, async () => {
   const add = $('#add'); if (add) add.onclick = async () => ask('Draft letter', [{ name: 'to_name', label: 'To', required: true }, { name: 'subject', label: 'Subject', required: true }, { name: 'matter_id', label: 'Matter', type: 'select', options: await matterOpts() }, { name: 'body', label: 'Letter', type: 'textarea', required: true }, { name: 'client_visible', label: 'Make visible to the client when sent', type: 'checkbox' }], 'Save draft', async (v) => { const r = await POST('/api/letters', v); location.hash = '#/letter/' + r.id; }, true);
 });
 route(/^\/letter\/(\d+)$/, async ([id]) => {
-  const l = await GET('/api/letters/' + id);
+  const [l, T] = await Promise.all([GET('/api/letters/' + id), getTpl()]);
   view(`<div class="row sp noprint"><a class="btn ghost sm" href="#/letters">← Letters</a><div class="row">
     ${!isClient() && l.status === 'draft' ? `<button class="btn ghost sm" id="ed">Edit</button>${can('admin', 'advocate') ? '<button class="btn gold sm" id="send">Approve & number</button>' : '<span class="mute">Waiting for advocate approval</span>'}<button class="btn red sm" id="del">Delete</button>` : ''}
     <button class="btn sm" data-print>Print</button></div></div>
-    <div class="paper" style="margin-top:1rem"><div class="row sp"><b>${esc(FIRM)}</b><span>${esc(l.ref_no || 'DRAFT')} · ${dt(l.sent_at || l.created_at)}</span></div><p>To,<br><b>${esc(l.to_name)}</b></p><p><b>Subject: ${esc(l.subject)}</b></p><pre>${esc(l.body)}</pre></div>`);
+    ${sheetFor(T, `<div class="lref"><span>Ref. No. ${esc(l.ref_no || 'DRAFT')}</span><span>Date: ${dt(l.sent_at || l.created_at)}</span></div><p>To,<br><b>${esc(l.to_name)}</b></p><p><b>Subject: ${esc(l.subject)}</b></p><div class="lbody">${esc(l.body)}</div>${signBlock(T.settings)}`)}`);
   const s = $('#send'); if (s) s.onclick = async () => { if (!sure('Approve this letter and issue its reference number? It cannot be edited afterwards.')) return; const r = await POST(`/api/letters/${id}/send`); toast('Issued ' + r.ref_no); go(); };
   const d = $('#del'); if (d) d.onclick = async () => { if (sure('Delete this draft?')) { await DEL('/api/letters/' + id); location.hash = '#/letters'; } };
   const e = $('#ed'); if (e) e.onclick = () => ask('Edit draft', [{ name: 'to_name', label: 'To', value: l.to_name, required: true }, { name: 'subject', label: 'Subject', value: l.subject, required: true }, { name: 'body', label: 'Letter', type: 'textarea', value: l.body, required: true }, { name: 'client_visible', label: 'Visible to client when sent', type: 'checkbox', value: l.client_visible }], 'Save', async (v) => { await PUT('/api/letters/' + id, v); go(); }, true);
@@ -231,7 +231,7 @@ route(/^\/team$/, async () => {
     <div class="card"><ul class="list">${users.map((u) => `<li><span><b>${esc(u.name)}</b> <span class="mute">${esc(u.email)}</span><div>${pill(u.role)} ${u.active ? '' : pill('disabled', 'bad')}</div></span><span class="row"><button class="btn sm ghost" data-inv="${u.id}">Invite link</button>${u.id !== ME.id ? `<button class="btn sm ghost" data-tg="${u.id}" data-a="${u.active ? 0 : 1}">${u.active ? 'Disable' : 'Enable'}</button>` : ''}</span></li>`).join('')}</ul></div>
     <div class="card"><h2>Recent activity</h2><div class="tw"><table><tr><th>When</th><th>Action</th><th>Detail</th></tr>${audit.slice(0, 60).map((a) => `<tr><td>${dtm(a.created_at)}</td><td>${esc(a.action.replace(/_/g, ' '))}</td><td>${esc(a.detail || '')}</td></tr>`).join('')}</table></div></div>`);
   const link = (p) => show('Invitation link', `<p>Send this private link to the person. It works once and expires in 7 days.</p><input readonly value="${esc(location.origin + '/' + p)}">`);
-  $('#add').onclick = () => ask('Add team member', [{ name: 'name', label: 'Full name', required: true }, { name: 'email', label: 'Email', type: 'email', required: true }, { name: 'phone', label: 'Phone', type: 'tel' }, { name: 'role', label: 'Role', type: 'select', options: [['advocate', 'Advocate'], ['staff', 'Office staff'], ['telecaller', 'Telecaller'], ['accounts', 'Accounts'], ['admin', 'Administrator']] }], 'Create', async (v) => { const r = await POST('/api/users', v); TEAM = null; setTimeout(() => link(r.invite_path), 50); go(); });
+  $('#add').onclick = () => ask('Add team member', [{ name: 'name', label: 'Full name', required: true }, { name: 'email', label: 'Email', type: 'email', required: true }, { name: 'phone', label: 'Phone', type: 'tel' }, { name: 'role', label: 'Role', type: 'select', options: [['advocate', 'Advocate'], ['staff', 'Office staff'], ['telecaller', 'Telecaller'], ['accounts', 'Accounts']] }], 'Create', async (v) => { const r = await POST('/api/users', v); TEAM = null; setTimeout(() => link(r.invite_path), 50); go(); });
   $$('[data-inv]').forEach((b) => (b.onclick = async () => link((await POST(`/api/users/${b.dataset.inv}/invite`)).invite_path)));
   $$('[data-tg]').forEach((b) => (b.onclick = async () => { await PATCH('/api/users/' + b.dataset.tg, { active: b.dataset.a === '1' ? 1 : 0 }); TEAM = null; go(); }));
 }, { roles: ['admin'] });
@@ -245,10 +245,13 @@ route(/^\/settings$/, async () => {
     <div class="card"><h2>Fee for each advocate</h2><p class="mute">Each advocate can charge a different fee. Leave a box blank to use the default fee shown above. Saved when you leave the box.</p>
     <div class="tw"><table><tr><th>Advocate</th>${types.map((t) => `<th class="n">${esc(t.name)}<br><span class="mute">default ${inr(t.fee_paise)}</span></th>`).join('')}</tr>
     ${advs.map((a) => `<tr><td>${esc(a.name)}</td>${types.map((t) => { const f = fees.find((x) => x.user_id === a.id && x.consult_type_id === t.id); return `<td class="n"><input type="number" min="0" step="1" style="width:110px" data-fee data-u="${a.id}" data-t="${t.id}" value="${f ? f.fee_paise / 100 : ''}" placeholder="${t.fee_paise / 100}"></td>`; }).join('')}</tr>`).join('')}</table></div></div>
+    <div class="card"><h2>Import from Zoho Books</h2><p class="mute">One-time import of your old clients, invoices and receipts from the file KC-LEGAL-zoho-import.json. Safe to repeat: records already imported are skipped. Original Zoho numbers (INV-0000xx) are kept.</p>
+    <p><input type="file" id="zf" accept=".json,application/json"> <button class="btn" id="zi">Import</button></p></div>
     <div class="card"><h2>Weekly availability for online consultations</h2><p class="mute">Times are India time. One line per slot: <code>Mon 10:00-13:00</code>. Leave blank for no availability.</p>
     ${advs.map((a) => { const mine = av.filter((x) => x.user_id === a.id).map((x) => `${days[x.weekday]} ${x.start_time}-${x.end_time}`).join('\n'); return `<label>${esc(a.name)}</label><textarea data-av="${a.id}">${esc(mine)}</textarea>`; }).join('')}
     <p><button class="btn" id="sv">Save availability</button></p></div>`);
   $$('[data-fee]').forEach((i) => (i.onchange = async () => { try { await PUT('/api/consult-fees', { user_id: +i.dataset.u, consult_type_id: +i.dataset.t, fee: i.value }); toast('Fee saved.'); } catch (e) { toast(e.message, true); } }));
+  $('#zi').onclick = async () => { const f = $('#zf').files[0]; if (!f) return toast('Choose the import file first.', true); try { const r = await POST('/api/admin/import-zoho', JSON.parse(await f.text())); toast(`Imported ${r.clients} clients, ${r.invoices} invoices, ${r.payments} receipts (${r.skipped} skipped).`); } catch (e) { toast(e.message, true); } };
   $('#ct').onclick = () => ask('New consultation type', [{ name: 'name', label: 'Name', required: true }, { name: 'minutes', label: 'Minutes', type: 'number', value: 30, required: true }, { name: 'fee', label: 'Fee (₹)', type: 'number', value: 1000, required: true }], 'Add', async (v) => { await POST('/api/consult-types', v); go(); });
   $$('[data-et]').forEach((b) => (b.onclick = () => { const t = types.find((x) => x.id == b.dataset.et); ask('Edit type', [{ name: 'name', label: 'Name', value: t.name }, { name: 'minutes', label: 'Minutes', type: 'number', value: t.minutes }, { name: 'fee', label: 'Fee (₹)', type: 'number', value: t.fee_paise / 100 }, { name: 'active', label: 'Offer this type', type: 'checkbox', value: t.active }], 'Save', async (v) => { await PATCH('/api/consult-types/' + t.id, v); go(); }); }));
   $('#sv').onclick = async () => {
@@ -261,3 +264,58 @@ route(/^\/settings$/, async () => {
     } catch (e) { toast(e.message, true); }
   };
 }, { roles: ['admin'] });
+
+/* ===== Document design (letter pad template) — firm admin ===== */
+route(/^\/template$/, async () => {
+  if (ME.role !== 'admin') { view('<p class="mute">Only the firm administrator can change the document design.</p>'); return; }
+  let T = await getTpl(true);
+  const F = (k, label, o = {}) => `<label>${label}</label>${o.area ? `<textarea name="${k}" rows="3">` : `<input name="${k}" type="${o.type || 'text'}" ${o.type === 'number' ? 'min="0" max="120"' : ''} value="`}${o.area ? esc(T.settings[k] || '') + '</textarea>' : esc(T.settings[k] ?? '') + '">'}`;
+  const sample = () => {
+    const S = T.settings;
+    return sheetFor(T, `<div class="dochead"><h1>${esc(S.invoice_title)}</h1><div class="meta"><div><span>Invoice no.</span><b>INV/0001/2026</b></div><div><span>Date</span><b>${dt(new Date().toISOString().slice(0, 10))}</b></div></div></div>
+      <div class="billto"><span>BILL TO</span><b>Sample Client</b><div>Kolkata</div></div>
+      <table class="itab"><tr><th>#</th><th>Description</th><th class="n">Amount</th></tr><tr><td>1</td><td>Professional fees</td><td class="n">${inr(1500000)}</td></tr></table>
+      <table class="ttab"><tr class="due"><td>Amount due</td><td class="n">${inr(1500000)}</td></tr></table>
+      <p class="words"><span>In words:</span> ${inWords(1500000)}</p>
+      ${S.payment_details ? `<div class="paybox"><b>Payment details</b><div>${esc(S.payment_details).replace(/\n/g, '<br>')}</div></div>` : ''}
+      ${S.invoice_footer ? `<p class="inote">${esc(S.invoice_footer)}</p>` : ''}${signBlock(S)}`);
+  };
+  view(`<h1>Document design</h1><p class="mute">This letter pad is used for every invoice, receipt and letter your firm prints.</p>
+    <div class="tplgrid"><div class="card"><form id="tf">
+      <h3>Letterhead image</h3><p class="mute">Upload a full-page A4 JPG or PNG (max 4 MB) with your logo, header and footer. Or leave it empty and a text header is printed.</p>
+      <div class="row"><input type="file" id="lhf" accept="image/jpeg,image/png"><button type="button" class="btn sm ghost" id="lhd" ${T.has_letterhead ? '' : 'hidden'}>Remove image</button></div>
+      <h3>Header (used when there is no image)</h3>${F('header_name', 'Firm name')}${F('tagline', 'Tagline')}${F('address', 'Address', { area: 1 })}${F('phone', 'Phone')}${F('email', 'Email')}${F('website', 'Website')}
+      <h3>Colours &amp; font</h3><div class="row"><div><label>Main</label><input name="primary" type="color" value="${T.settings.primary}"></div><div><label>Accent</label><input name="accent" type="color" value="${T.settings.accent}"></div><div><label>Title</label><input name="title_color" type="color" value="${T.settings.title_color}"></div></div>
+      <label>Font</label><select name="font"><option value="sans" ${T.settings.font === 'sans' ? 'selected' : ''}>Modern (sans-serif)</option><option value="serif" ${T.settings.font === 'serif' ? 'selected' : ''}>Classic (serif)</option></select>
+      <h3>Margins (mm)</h3><div class="row"><div>${F('top_mm', 'Top', { type: 'number' })}</div><div>${F('bottom_mm', 'Bottom', { type: 'number' })}</div><div>${F('side_mm', 'Sides', { type: 'number' })}</div></div>
+      <h3>Wording</h3>${F('invoice_title', 'Invoice title')}${F('receipt_title', 'Receipt title')}${F('signatory_name', 'Signatory name')}${F('signatory_title', 'Signatory designation')}${F('payment_details', 'Payment details (bank / UPI)', { area: 1 })}${F('invoice_footer', 'Invoice footer note', { area: 1 })}
+      <p class="err" hidden></p><div style="margin-top:1rem"><button class="btn gold" style="width:100%">Save design</button></div></form></div>
+      <div class="tplprev" id="pv"></div></div>`);
+  const form = $('#tf'), pv = $('#pv');
+  const read = () => { const o = {}; new FormData(form).forEach((v, k) => { if (k !== 'file') o[k] = ['top_mm', 'bottom_mm', 'side_mm'].includes(k) ? Number(v) : v; }); return o; };
+  const paint = () => { T = { ...T, settings: { ...T.settings, ...read() } }; pv.innerHTML = sample(); const sh = $('.sheet', pv); const z = Math.min(1, (pv.clientWidth - 16) / sh.offsetWidth); sh.style.zoom = z > 0 ? z : 1; };
+  form.addEventListener('input', paint); paint();
+  form.onsubmit = async (e) => {
+    e.preventDefault(); const err = $('.err', form); err.hidden = true;
+    try { await PUT('/api/template', read()); T = await getTpl(true); paint(); toast('Design saved'); } catch (ex) { err.hidden = false; err.textContent = ex.message; }
+  };
+  $('#lhf').onchange = async (e) => { const f = e.target.files[0]; if (!f) return; const fd = new FormData(); fd.append('file', f); try { await POST('/api/template/letterhead', fd); T = await getTpl(true); toast('Letterhead uploaded'); go(); } catch (ex) { toast(ex.message, true); } };
+  $('#lhd').onclick = async () => { if (!sure('Remove the letterhead image?')) return; await DEL('/api/template/letterhead'); await getTpl(true); go(); };
+});
+
+/* ===== Super Admin: firms ===== */
+route(/^\/firms$/, async () => {
+  const firms = await GET('/api/platform/firms');
+  view(`<div class="row sp"><h1>Firms</h1><button class="btn" id="nf">Add firm</button></div>
+    <p class="mute">Each firm has its own administrator, team, clients and document design. You create the firm and its administrator; the administrator does the rest.</p>
+    ${firms.map((f) => `<div class="card"><div class="row sp"><h2>${esc(f.name)} ${f.active ? '' : pill('disabled', 'bad')}</h2><button class="btn sm ghost" data-tg="${f.id}" data-a="${f.active ? 0 : 1}">${f.active ? 'Disable firm' : 'Enable firm'}</button></div>
+      <p class="mute">Booking link: <code>${esc(location.origin)}/#/book?firm=${esc(f.slug)}</code> · ${f.team} team · ${f.clients} clients</p>
+      <ul class="list">${f.admins.map((a) => `<li><span><b>${esc(a.name)}</b> <span class="mute">${esc(a.email)}</span> ${a.joined ? '' : pill('invited')}</span><span class="row"><button class="btn sm ghost" data-inv="${a.id}">Invite link</button></span></li>`).join('')}</ul></div>`).join('')}`);
+  const link = (p) => show('Invitation link', `<p>Send this private link to the administrator. It works once and expires in 7 days.</p><input readonly value="${esc(location.origin + '/' + p)}">`);
+  $('#nf').onclick = () => ask('Add firm', [{ name: 'name', label: 'Firm name', required: true }, { name: 'prefix', label: 'Number prefix (e.g. KC)', required: true }, { name: 'slug', label: 'Short web name (optional)' }, { name: 'admin_name', label: 'Administrator name', required: true }, { name: 'admin_email', label: 'Administrator email', type: 'email', required: true }], 'Create', async (v) => { const r = await POST('/api/platform/firms', v); setTimeout(() => link(r.invite_path), 50); go(); });
+  $$('[data-inv]').forEach((b) => (b.onclick = async () => link((await POST(`/api/platform/admins/${b.dataset.inv}/invite`)).invite_path)));
+  $$('[data-tg]').forEach((b) => (b.onclick = async () => { if (b.dataset.a === '0' && !sure('Disable this firm? Nobody in it can sign in until you enable it again.')) return; await PATCH('/api/platform/firms/' + b.dataset.tg, { active: b.dataset.a === '1' }); go(); }));
+});
+route(/^\/account$/, async () => {
+  view(`<h1>Account</h1><div class="card"><p><b>${esc(ME.name)}</b><br><span class="mute">${esc(ME.email)} · Super Admin</span></p><p class="mute">Change your password from the sign-in page using “Forgot password”, or ask the server owner.</p></div>`);
+});

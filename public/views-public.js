@@ -3,12 +3,14 @@
 function pubShell(inner) {
   const inApp = !!ME && !!$('#view');
   if (inApp) { view(inner); return; }
-  $('#app').innerHTML = `<div class="pubwrap"><div class="pubhead"><h1 style="margin:0">KC LEGAL</h1><div class="mute">Advocates & Legal Consultants · Kolkata</div></div>${inner}
+  $('#app').innerHTML = `<div class="pubwrap"><div class="pubhead"><h1 style="margin:0">${esc(FIRM)}</h1></div>${inner}
     <p class="mute" style="text-align:center"><a href="#/login">${ME ? 'Back to portal' : 'Client / staff sign in'}</a></p></div>`;
 }
-route(/^\/book$/, async () => {
+const pf = (u) => u + (FIRMQ ? (u.includes('?') ? '&' : '?') + 'firm=' + encodeURIComponent(FIRMQ) : '');
+route(/^\/book$/, async (_, q) => {
+  if (q && q.get('firm')) FIRMQ = q.get('firm');
   if (ME) layout();
-  const info = await GET('/api/public/booking');
+  const info = await GET(pf('/api/public/booking')); if (!ME) FIRM = info.firm;
   let sel = { type: info.types[0], adv: info.advocates[0] || null, date: '', slot: null };
   const feeOf = () => (sel.adv && sel.type ? sel.adv.fees[sel.type.id] : sel.type ? sel.type.fee_paise : 0);
   const paint = () => {
@@ -25,13 +27,13 @@ route(/^\/book$/, async () => {
     if (sel.date) loadSlots(true);
     $('#bf').onsubmit = async (e) => {
       e.preventDefault(); const f = e.target, err = $('.err', f), b = $('button', f); err.hidden = true; b.disabled = true;
-      try { const r = await POST('/api/public/book', { name: f.name.value, phone: f.phone.value, email: f.email.value, issue: f.issue.value, type_id: sel.type.id, advocate_id: sel.adv ? sel.adv.id : null, start_at: sel.slot.start_at }); location.hash = '#/pay/' + r.pay_ref; }
+      try { const r = await POST(pf('/api/public/book'), { name: f.name.value, phone: f.phone.value, email: f.email.value, issue: f.issue.value, type_id: sel.type.id, advocate_id: sel.adv ? sel.adv.id : null, start_at: sel.slot.start_at }); location.hash = '#/pay/' + r.pay_ref; }
       catch (ex) { err.hidden = false; err.textContent = ex.message; b.disabled = false; }
     };
   };
   const loadSlots = async (keep) => {
     const box = $('#sl'); box.innerHTML = '<span class="mute">Checking availability…</span>';
-    const slots = await GET(`/api/public/slots?type=${sel.type.id}&date=${sel.date}&advocate=${sel.adv ? sel.adv.id : ''}`);
+    const slots = await GET(pf(`/api/public/slots?type=${sel.type.id}&date=${sel.date}&advocate=${sel.adv ? sel.adv.id : ''}`));
     box.innerHTML = slots.length ? `<div class="slots">${slots.map((s) => `<button type="button" data-s="${s.start_at}" class="${sel.slot && sel.slot.start_at === s.start_at ? 'on' : ''}">${new Date(s.start_at).toLocaleTimeString('en-IN', { hour: '2-digit', minute: '2-digit', timeZone: 'Asia/Kolkata' })}</button>`).join('')}</div>` : '<p class="mute">No times available on this date. Please try another day.</p>';
     $$('[data-s]', box).forEach((b) => (b.onclick = () => { sel.slot = slots.find((s) => s.start_at === b.dataset.s); $$('[data-s]', box).forEach((x) => x.classList.toggle('on', x === b)); const f = $('#bf'); f.hidden = false; $('p b', f).textContent = dtm(sel.slot.start_at); f.scrollIntoView({ behavior: 'smooth' }); }));
   };
@@ -50,7 +52,7 @@ route(/^\/pay\/(PAY-[A-F0-9]+)$/, async ([ref]) => {
     pubShell(`<div class="card"><h2>Complete your payment</h2><p><b>${esc(b.type_name)}</b> with ${esc(b.advocate)}<br>${when}</p><p style="font:700 1.8rem Georgia">${inr(b.fee_paise)}</p>
       <div class="card" style="background:#faf7ee"><b>How to pay</b><p id="pn" class="mute">Loading payment details…</p><p>Use this reference as the payment remark: <b>${esc(ref)}</b></p></div>
       <p class="mute">This page updates by itself once the payment is confirmed. Your time slot is held for a short while.</p></div>`);
-    GET('/api/public/booking').then((i) => { const el = $('#pn'); if (el) el.textContent = i.pay_note || 'Online payment is being switched on. Please contact the office on the number on our website to pay by UPI or bank transfer, quoting your reference.'; });
+    GET(pf('/api/public/booking')).then((i) => { const el = $('#pn'); if (el) el.textContent = i.pay_note || 'Online payment is being switched on. Please contact the office on the number on our website to pay by UPI or bank transfer, quoting your reference.'; });
   };
   await draw(); timer = setInterval(draw, 10000);
 }, { public: true });

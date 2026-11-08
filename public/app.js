@@ -11,7 +11,7 @@ const pill = (t, k = '') => `<span class="pill ${k}">${esc(t)}</span>`;
 const STATUS_PILL = { paid: 'ok', confirmed: 'ok', sent: '', part_paid: 'warn', draft: 'warn', awaiting_payment: 'warn', cancelled: 'bad', expired: 'bad', open: 'ok', closed: '', matched: 'ok', suggested: 'warn', unmatched: 'warn', ignored: '' };
 const sp = (s) => pill(String(s).replace(/_/g, ' '), STATUS_PILL[s] || '');
 
-let ME = null, FIRM = 'KC LEGAL';
+let ME = null, FIRM = 'KC LEGAL', FIRMQ = '', FEAT = {};
 const isClient = () => ME && ME.role === 'client';
 const can = (...roles) => ME && roles.includes(ME.role);
 
@@ -78,6 +78,31 @@ function show(title, html, wide) {
 }
 const sure = (msg) => confirm(msg);
 
+
+/* ===== document template (letter pad) used by invoices, receipts, letters ===== */
+let TPLC = null;
+async function getTpl(force) { if (!TPLC || force) TPLC = await GET('/api/template'); return TPLC; }
+function inWords(paise) {
+  const n = Math.round((paise || 0) / 100), ones = ['', 'One', 'Two', 'Three', 'Four', 'Five', 'Six', 'Seven', 'Eight', 'Nine', 'Ten', 'Eleven', 'Twelve', 'Thirteen', 'Fourteen', 'Fifteen', 'Sixteen', 'Seventeen', 'Eighteen', 'Nineteen'], tens = ['', '', 'Twenty', 'Thirty', 'Forty', 'Fifty', 'Sixty', 'Seventy', 'Eighty', 'Ninety'];
+  const two = (x) => (x < 20 ? ones[x] : tens[Math.floor(x / 10)] + (x % 10 ? ' ' + ones[x % 10] : ''));
+  const three = (x) => (x >= 100 ? ones[Math.floor(x / 100)] + ' Hundred' + (x % 100 ? ' ' + two(x % 100) : '') : two(x));
+  if (!n) return 'Zero Rupees Only';
+  const parts = []; let r = n;
+  [[10000000, 'Crore'], [100000, 'Lakh'], [1000, 'Thousand']].forEach(([v, name]) => { if (r >= v) { parts.push(three(Math.floor(r / v)) + ' ' + name); r %= v; } });
+  if (r) parts.push(three(r));
+  return 'Rupees ' + parts.join(' ') + ' Only';
+}
+function sheetFor(T, inner) {
+  const s = T.settings, lh = T.has_letterhead;
+  const font = s.font === 'serif' ? 'Georgia,"Bookman Old Style",serif' : 'Poppins,"Helvetica Neue",Arial,sans-serif';
+  const contact = [s.phone, s.email, s.website].filter(Boolean).map(esc).join(' &nbsp;·&nbsp; ');
+  const head = lh ? `<img class="lh" src="/api/template/letterhead?v=${T.v}" alt="">`
+    : `<div class="topbar"></div><div class="botbar"></div>`;
+  const text = lh ? '' : `<div class="thead"><div class="tname">${esc(s.header_name)}</div>${s.tagline ? `<div class="ttag">${esc(s.tagline)}</div>` : ''}${s.address ? `<div class="tcon">${esc(s.address)}</div>` : ''}${contact ? `<div class="tcon">${contact}</div>` : ''}</div>`;
+  return `<div class="sheet" style="--pri:${s.primary};--acc:${s.accent};--ttl:${s.title_color};font-family:${font}">${head}<div class="sbody" style="padding:${lh ? s.top_mm : 16}mm ${s.side_mm}mm ${s.bottom_mm}mm">${text}${inner}</div></div>`;
+}
+const signBlock = (s) => `<div class="isign"><div>For <b>${esc(s.header_name)}</b></div><div class="gap"></div><div>Authorised Signatory${s.signatory_name ? `<br>${esc(s.signatory_name)}${s.signatory_title ? ', ' + esc(s.signatory_title) : ''}` : ''}</div></div>`;
+
 /* ===== router ===== */
 const routes = [];
 const route = (re, fn, opts = {}) => routes.push({ re, fn, ...opts });
@@ -85,6 +110,7 @@ const view = (html) => { const v = $('#view'); if (v) { v.innerHTML = html; wind
 function on(root, ev, sel, fn) { root.addEventListener(ev, (e) => { const t = e.target.closest(sel); if (t && root.contains(t)) fn(e, t); }); }
 
 function navItems() {
+  if (ME.role === 'superadmin') return [['#/firms', 'Firms'], ['#/account', 'Account']];
   if (isClient()) return [['#/', 'Home'], ['#/matters', 'My cases'], ['#/letters', 'Letters'], ['#/messages', 'Messages'], ['#/invoices', 'Fees'], ['#/book', 'Book']];
   const r = ME.role, n = [['#/', 'Home']];
   if (r !== 'accounts') n.push(['#/clients', 'Clients']);
@@ -92,21 +118,24 @@ function navItems() {
   if (r === 'accounts') n.push(['#/clients', 'Clients']);
   n.push(['#/tasks', 'Tasks']);
   if (['admin', 'advocate', 'staff'].includes(r)) n.push(['#/letters', 'Letters'], ['#/dak', 'Inward']);
+  if (FEAT.drafting && ['admin', 'advocate', 'staff'].includes(r)) n.push(['#/draft', 'AI Drafting']);
+  if (FEAT.email && ['admin', 'advocate', 'staff'].includes(r)) n.push(['#/mail', 'Mail']);
+  if (FEAT.chat && ['admin', 'advocate', 'staff', 'telecaller'].includes(r)) n.push(['#/chats', 'Chats']);
   if (r !== 'accounts') n.push(['#/messages', 'Messages']);
   if (['admin', 'advocate', 'staff', 'telecaller'].includes(r)) n.push(['#/leads', 'Leads']);
   if (r !== 'accounts') n.push(['#/appointments', 'Calls']);
   if (['admin', 'advocate', 'accounts'].includes(r)) n.push(['#/billing', 'Billing']);
   if (r !== 'telecaller' && r !== 'accounts') n.push(['#/judgments', 'Judgments']);
-  if (r === 'admin') n.push(['#/team', 'Team'], ['#/settings', 'Settings']);
+  if (r === 'admin') n.push(['#/team', 'Team'], ['#/ai', 'AI Control'], ['#/template', 'Design'], ['#/settings', 'Settings']);
   return n;
 }
 function layout() {
   const items = navItems(), cur = location.hash.split('?')[0] || '#/';
   const active = (h) => (h === '#/' ? cur === '#/' || cur === '' : cur.startsWith(h) || cur.startsWith(h.replace(/s$/, ''))) ? 'on' : '';
-  $('#app').innerHTML = `<div class="shell"><nav class="side"><div class="brand">KC LEGAL<small>${isClient() ? 'CLIENT PORTAL' : 'OFFICE PORTAL'}</small></div>
+  $('#app').innerHTML = `<div class="shell"><nav class="side"><div class="brand">${esc(FIRM)}<small>${ME.role === 'superadmin' ? 'SUPER ADMIN' : isClient() ? 'CLIENT PORTAL' : 'OFFICE PORTAL'}</small></div>
     ${items.map(([h, l]) => `<a href="${h}" class="${active(h)}">${l}</a>`).join('')}
     <div class="who">${esc(ME.name)}<br><a href="#/account" style="padding:0;display:inline">Account</a> · <a href="#/logout" style="padding:0;display:inline">Sign out</a></div></nav>
-    <div style="flex:1;min-width:0"><div class="top"><b>KC LEGAL</b><span><a href="#/account">${esc(ME.name.split(' ')[0])}</a> · <a href="#/logout">Sign out</a></span></div>
+    <div style="flex:1;min-width:0"><div class="top"><b>${esc(FIRM)}</b><span><a href="#/account">${esc(ME.name.split(' ')[0])}</a> · <a href="#/logout">Sign out</a></span></div>
     <main class="main" id="view"></main></div>
     <nav class="bottom">${items.slice(0, isClient() ? 6 : 12).map(([h, l]) => `<a href="${h}" class="${active(h)}">${l}</a>`).join('')}</nav></div>`;
 }
@@ -121,6 +150,7 @@ async function go() {
     if (!m) continue;
     if (!r.public) {
       if (!ME) { location.hash = '#/login'; return; }
+      if (ME.role === 'superadmin' && !['/firms', '/account', '/logout'].includes(path)) { location.hash = '#/firms'; return; }
       if (r.roles && !r.roles.includes(ME.role)) { layout(); view('<div class="card">You do not have access to this page.</div>'); return; }
       if (r.office && isClient()) { location.hash = '#/'; return; }
       if (r.client && !isClient()) { location.hash = '#/'; return; }
@@ -136,8 +166,8 @@ window.addEventListener('hashchange', go);
 
 /* ===== auth views ===== */
 function authShell(inner) {
-  $('#app').innerHTML = `<div class="login"><div class="pubhead"><h1 style="margin:0">KC LEGAL</h1><div class="mute">Advocates & Legal Consultants · Kolkata</div></div><div class="card">${inner}</div>
-    <p class="mute" style="text-align:center"><a href="#/book">Book a paid online consultation</a></p></div>`;
+  $('#app').innerHTML = `<div class="login"><div class="pubhead"><h1 style="margin:0">${esc(FIRM)}</h1></div><div class="card">${inner}</div>
+    <p class="mute" style="text-align:center"><a href="#/book${FIRMQ ? '?firm=' + encodeURIComponent(FIRMQ) : ''}">Book a paid online consultation</a></p></div>`;
 }
 route(/^\/login$/, async () => {
   if (ME) { location.hash = '#/'; return; }
@@ -176,4 +206,4 @@ route(/^\/account$/, async () => {
     'Change', async (v) => { await POST('/api/password', { current: v.current, next: v.next }); toast('Password changed.'); });
 });
 
-async function loadMe() { const r = await GET('/api/me'); ME = r.user; FIRM = r.tenant.name; }
+async function loadMe() { const r = await GET('/api/me'); ME = r.user; FIRM = r.tenant.name; FEAT = {}; if (ME && ME.role !== 'client' && ME.role !== 'superadmin') { try { FEAT = await GET('/api/features'); } catch (e) {} } }

@@ -14,12 +14,13 @@ db.pragma('foreign_keys = ON');
 db.exec(`
 CREATE TABLE IF NOT EXISTS tenants (
   id INTEGER PRIMARY KEY, name TEXT NOT NULL, slug TEXT UNIQUE NOT NULL,
-  prefix TEXT NOT NULL DEFAULT 'KC', created_at TEXT DEFAULT CURRENT_TIMESTAMP);
+  prefix TEXT NOT NULL DEFAULT 'KC', created_at TEXT DEFAULT CURRENT_TIMESTAMP,
+  kind TEXT NOT NULL DEFAULT 'firm', active INTEGER NOT NULL DEFAULT 1);
 
 CREATE TABLE IF NOT EXISTS users (
   id INTEGER PRIMARY KEY, tenant_id INTEGER NOT NULL REFERENCES tenants(id),
   email TEXT NOT NULL, name TEXT NOT NULL, phone TEXT,
-  role TEXT NOT NULL CHECK(role IN ('admin','advocate','staff','telecaller','accounts','client')),
+  role TEXT NOT NULL CHECK(role IN ('superadmin','admin','advocate','staff','telecaller','accounts','client')),
   client_id INTEGER, pass_hash TEXT, active INTEGER NOT NULL DEFAULT 1,
   invite_token TEXT, invite_expires TEXT, failed_logins INTEGER DEFAULT 0, locked_until TEXT,
   created_at TEXT DEFAULT CURRENT_TIMESTAMP, UNIQUE(tenant_id, email));
@@ -149,6 +150,45 @@ CREATE TABLE IF NOT EXISTS judgments (
 CREATE TABLE IF NOT EXISTS audit_log (
   id INTEGER PRIMARY KEY, tenant_id INTEGER, user_id INTEGER, action TEXT NOT NULL,
   entity TEXT, entity_id INTEGER, detail TEXT, ip TEXT, created_at TEXT DEFAULT CURRENT_TIMESTAMP);
+`);
+
+
+// ---------- migrations for databases created by earlier versions ----------
+(function migrate() {
+  const cols = db.prepare('PRAGMA table_info(tenants)').all().map((c) => c.name);
+  if (!cols.includes('kind')) db.exec("ALTER TABLE tenants ADD COLUMN kind TEXT NOT NULL DEFAULT 'firm'");
+  if (!cols.includes('active')) db.exec('ALTER TABLE tenants ADD COLUMN active INTEGER NOT NULL DEFAULT 1');
+  const usersSql = (db.prepare("SELECT sql FROM sqlite_master WHERE type='table' AND name='users'").get() || {}).sql || '';
+  if (usersSql && !usersSql.includes("'superadmin'")) {
+    db.pragma('foreign_keys = OFF');
+    db.transaction(() => {
+      const ns = usersSql.replace(/CREATE TABLE\s+(IF NOT EXISTS\s+)?"?users"?/i, 'CREATE TABLE users_new').replace(/CHECK\s*\(\s*role\s+IN\s*\(\s*'admin'/i, "CHECK(role IN ('superadmin','admin'");
+      if (!ns.includes("'superadmin'") || !ns.includes('users_new')) throw new Error('users table migration: unexpected schema');
+      db.exec(ns);
+      db.exec('INSERT INTO users_new SELECT * FROM users; DROP TABLE users; ALTER TABLE users_new RENAME TO users;');
+    })();
+    db.pragma('foreign_keys = ON');
+  }
+})();
+db.exec(`
+CREATE TABLE IF NOT EXISTS firm_settings (tenant_id INTEGER NOT NULL, key TEXT NOT NULL, value TEXT, PRIMARY KEY (tenant_id, key));
+CREATE TABLE IF NOT EXISTS ai_usage (id INTEGER PRIMARY KEY, tenant_id INTEGER NOT NULL, feature TEXT NOT NULL, in_tok INTEGER DEFAULT 0, out_tok INTEGER DEFAULT 0, created_at TEXT DEFAULT CURRENT_TIMESTAMP);
+CREATE TABLE IF NOT EXISTS ai_drafts (
+  id INTEGER PRIMARY KEY, tenant_id INTEGER NOT NULL, user_id INTEGER NOT NULL, kind TEXT NOT NULL, title TEXT, instruction TEXT,
+  output TEXT, notes TEXT, files TEXT, created_at TEXT DEFAULT CURRENT_TIMESTAMP, updated_at TEXT DEFAULT CURRENT_TIMESTAMP);
+CREATE TABLE IF NOT EXISTS chat_sessions (
+  id INTEGER PRIMARY KEY, tenant_id INTEGER NOT NULL, token TEXT NOT NULL UNIQUE, lead_id INTEGER, name TEXT, phone TEXT, email TEXT,
+  needs_human INTEGER NOT NULL DEFAULT 0, msg_count INTEGER NOT NULL DEFAULT 0, ip TEXT, created_at TEXT DEFAULT CURRENT_TIMESTAMP, updated_at TEXT DEFAULT CURRENT_TIMESTAMP);
+CREATE TABLE IF NOT EXISTS chat_messages (id INTEGER PRIMARY KEY, session_id INTEGER NOT NULL, role TEXT NOT NULL, content TEXT NOT NULL, created_at TEXT DEFAULT CURRENT_TIMESTAMP);
+CREATE TABLE IF NOT EXISTS mail_messages (
+  id INTEGER PRIMARY KEY, tenant_id INTEGER NOT NULL, message_id TEXT, from_addr TEXT, from_name TEXT, subject TEXT, body TEXT, refs TEXT,
+  received_at TEXT, category TEXT, urgency TEXT, needs_human INTEGER NOT NULL DEFAULT 0, summary TEXT, status TEXT NOT NULL DEFAULT 'new', lead_id INTEGER,
+  created_at TEXT DEFAULT CURRENT_TIMESTAMP, UNIQUE (tenant_id, message_id));
+CREATE TABLE IF NOT EXISTS mail_replies (
+  id INTEGER PRIMARY KEY, tenant_id INTEGER NOT NULL, mail_id INTEGER, to_addr TEXT, subject TEXT, body TEXT, status TEXT NOT NULL DEFAULT 'draft',
+  send_at TEXT, sent_at TEXT, auto INTEGER NOT NULL DEFAULT 0, error TEXT, created_by INTEGER, created_at TEXT DEFAULT CURRENT_TIMESTAMP);
+CREATE TABLE IF NOT EXISTS tenant_templates (
+  tenant_id INTEGER PRIMARY KEY, settings TEXT NOT NULL DEFAULT '{}', letterhead TEXT, updated_at TEXT DEFAULT CURRENT_TIMESTAMP);
 `);
 
 // Full-text search over judgments and matters

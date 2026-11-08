@@ -1,5 +1,3 @@
-'use strict';
-/* ===== client-facing fees ===== */
 route(/^\/invoices$/, async () => {
   const [inv, pay] = await Promise.all([GET('/api/invoices'), GET('/api/my/payments')]);
   const due = inv.reduce((s, i) => s + i.total_paise - i.paid_paise, 0);
@@ -9,17 +7,21 @@ route(/^\/invoices$/, async () => {
 }, { client: true });
 
 route(/^\/invoice\/(\d+)$/, async ([id]) => {
-  const i = await GET('/api/invoices/' + id), billing = can('admin', 'advocate', 'accounts');
+  const [i, T] = await Promise.all([GET('/api/invoices/' + id), getTpl()]), S = T.settings, billing = can('admin', 'advocate', 'accounts');
   view(`<div class="row sp noprint"><a class="btn ghost sm" href="#/" data-back>← Back</a><div class="row">
     ${billing && i.status === 'draft' ? '<button class="btn gold sm" id="iss">Issue to client</button>' : ''}
     ${billing && ['sent', 'part_paid'].includes(i.status) ? '<button class="btn sm" id="rcv">Record payment</button>' : ''}
     ${billing && ['draft', 'sent'].includes(i.status) ? '<button class="btn red sm" id="cxl">Cancel</button>' : ''}<button class="btn sm" data-print>Print</button></div></div>
-    <div class="paper" style="margin-top:1rem"><div class="row sp"><h2 style="margin:0">${esc(i.firm)}</h2><div style="text-align:right"><b>TAX INVOICE / FEE NOTE</b><br>${esc(i.inv_no)}<br>${dt(i.inv_date)} ${sp(i.status)}</div></div>
-    <p>Bill to:<br><b>${esc(i.client_name)}</b><br>${esc(i.client_address || '')}</p>
-    <div class="tw"><table><tr><th>Description</th><th class="n">Qty</th><th class="n">Rate</th><th class="n">Amount</th></tr>${i.items.map((x) => `<tr><td>${esc(x.description)}</td><td class="n">${x.qty}</td><td class="n">${inr(x.rate_paise)}</td><td class="n">${inr(Math.round(x.qty * x.rate_paise))}</td></tr>`).join('')}
-    <tr><td colspan="3" class="n"><b>Total</b></td><td class="n"><b>${inr(i.total_paise)}</b></td></tr><tr><td colspan="3" class="n">Received</td><td class="n">${inr(i.paid_paise)}</td></tr><tr><td colspan="3" class="n"><b>Balance due</b></td><td class="n"><b>${inr(i.total_paise - i.paid_paise)}</b></td></tr></table></div>
-    ${i.notes ? `<p class="mute">${esc(i.notes)}</p>` : ''}
-    ${i.payments.length ? `<h3>Receipts</h3><ul class="list">${i.payments.map((p) => `<li><a href="#/receipt/${p.id}">${esc(p.rec_no)}</a><span>${inr(p.amount_paise)} · ${dt(p.pay_date)} · ${esc(p.mode)}</span></li>`).join('')}</ul>` : ''}</div>`);
+    ${sheetFor(T, `<div class="dochead"><h1>${esc(S.invoice_title)}</h1><div class="meta"><div><span>Invoice No.</span><b>${esc(i.inv_no)}</b></div><div><span>Date</span><b>${dt(i.inv_date)}</b></div>${i.due_date ? `<div><span>Due date</span><b>${dt(i.due_date)}</b></div>` : ''}<div><span>Status</span><b>${esc(String(i.status).replace('_', ' ').toUpperCase())}</b></div></div></div>
+    <div class="billto"><span>BILLED TO</span><b>${esc(i.client_name)}</b>${i.client_address ? `<div>${esc(i.client_address)}</div>` : ''}</div>
+    <table class="itab"><tr><th>#</th><th>Description</th><th class="n">Qty</th><th class="n">Rate (₹)</th><th class="n">Amount (₹)</th></tr>${i.items.map((x, k) => `<tr><td>${k + 1}</td><td>${esc(x.description)}</td><td class="n">${x.qty}</td><td class="n">${inr(x.rate_paise).slice(1)}</td><td class="n">${inr(Math.round(x.qty * x.rate_paise)).slice(1)}</td></tr>`).join('')}</table>
+    <table class="ttab"><tr><td>Total</td><td class="n">${inr(i.total_paise)}</td></tr>${i.paid_paise ? `<tr><td>Received</td><td class="n">− ${inr(i.paid_paise)}</td></tr>` : ''}<tr class="due"><td>${i.paid_paise ? 'Balance due' : 'Amount due'}</td><td class="n">${inr(i.total_paise - i.paid_paise)}</td></tr></table>
+    <p class="words"><span>Amount in words:</span> ${inWords(i.total_paise - i.paid_paise)}</p>
+    ${i.notes ? `<p class="inote">${esc(i.notes)}</p>` : ''}
+    ${i.payments.length ? `<p class="inote"><b>Receipts:</b> ${i.payments.map((p) => `${esc(p.rec_no)} (${inr(p.amount_paise)}, ${dt(p.pay_date)})`).join('; ')}</p>` : ''}
+    ${S.payment_details ? `<div class="paybox"><b>Payment details</b><div>${esc(S.payment_details).replace(/\n/g, '<br>')}</div></div>` : ''}
+    ${S.invoice_footer ? `<p class="inote">${esc(S.invoice_footer)}</p>` : ''}
+    ${signBlock(S)}`)}`);
   const act = (sel, fn) => { const b = $(sel); if (b) b.onclick = fn; };
   act('#iss', async () => { await POST(`/api/invoices/${id}/issue`); go(); });
   act('#cxl', async () => { if (sure('Cancel this invoice?')) { await POST(`/api/invoices/${id}/cancel`); go(); } });
@@ -27,11 +29,11 @@ route(/^\/invoice\/(\d+)$/, async ([id]) => {
 });
 
 route(/^\/receipt\/(\d+)$/, async ([id]) => {
-  const p = await GET('/api/payments/' + id);
+  const [p, T] = await Promise.all([GET('/api/payments/' + id), getTpl()]), S = T.settings;
   view(`<div class="row sp noprint"><a class="btn ghost sm" href="#/" data-back>← Back</a><button class="btn sm" data-print>Print</button></div>
-    <div class="paper" style="margin-top:1rem"><div class="row sp"><h2 style="margin:0">${esc(p.firm)}</h2><div style="text-align:right"><b>RECEIPT</b><br>${esc(p.rec_no)}<br>${dt(p.pay_date)}</div></div>
-    <p>Received with thanks from <b>${esc(p.client_name)}</b> the sum of <b>${inr(p.amount_paise)}</b> by ${esc(p.mode)}${p.reference ? ` (ref. ${esc(p.reference)})` : ''}${p.inv_no ? ` against invoice ${esc(p.inv_no)}` : ''}.</p>${p.notes ? `<p class="mute">${esc(p.notes)}</p>` : ''}
-    <p style="margin-top:3rem" class="mute">This is a system-generated receipt.</p></div>`);
+    ${sheetFor(T, `<div class="dochead"><h1>${esc(S.receipt_title)}</h1><div class="meta"><div><span>Receipt No.</span><b>${esc(p.rec_no)}</b></div><div><span>Date</span><b>${dt(p.pay_date)}</b></div></div></div>
+    <p class="rtext">Received with thanks from <b>${esc(p.client_name)}</b> the sum of <b>${inr(p.amount_paise)}</b> (${inWords(p.amount_paise)}) by ${esc(p.mode)}${p.reference ? ` (ref. ${esc(p.reference)})` : ''}${p.inv_no ? ` against invoice ${esc(p.inv_no)}` : ''}.</p>${p.notes ? `<p class="inote">${esc(p.notes)}</p>` : ''}
+    ${signBlock(S)}`)}`);
 });
 
 async function recordPaymentModal(clientId, invoiceId, amountPaise) {

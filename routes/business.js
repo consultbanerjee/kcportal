@@ -6,7 +6,7 @@ const pad = (n, w = 4) => String(n).padStart(w, '0');
 const isClient = (u) => u.role === 'client';
 const BILL = L.need('admin', 'advocate', 'accounts');
 const todayStr = () => new Date().toISOString().slice(0, 10);
-const firstTenant = () => db.prepare('SELECT * FROM tenants ORDER BY id LIMIT 1').get();
+const pubFirm = (req) => L.firmBySlug((req.query && req.query.firm) || (req.body && req.body.firm));
 
 // ---------- CSV + date helpers (bank statements) ----------
 function parseCsv(text) {
@@ -152,8 +152,9 @@ module.exports = (app, limiter) => {
     res.json({ ok: true });
   });
 
+  app.get('/api/public/firm', (req, res) => { const t = pubFirm(req); res.json({ name: t ? t.name : 'Client Portal' }); });
   app.get('/api/public/booking', (req, res) => {
-    const t = firstTenant();
+    const t = pubFirm(req);
     res.json({
       firm: t.name,
       pay_note: process.env.PAY_NOTE || '',
@@ -185,13 +186,13 @@ module.exports = (app, limiter) => {
     return { ct, slots: out };
   }
   app.get('/api/public/slots', (req, res) => {
-    const t = firstTenant();
+    const t = pubFirm(req);
     const { ct, slots } = slotsFor(t.id, L.int(req.query.type), req.query.date, L.int(req.query.advocate));
     res.json(slots.map((x) => ({ ...x, fee_paise: effFee(t.id, x.advocate_id, ct) })));
   });
 
   app.post('/api/public/book', limiter, (req, res) => {
-    const t = firstTenant(); const b = req.body;
+    const t = pubFirm(req); const b = req.body;
     const name = L.str(b.name, 150), phone = L.str(b.phone, 30), email = L.str(b.email, 200).toLowerCase();
     if (!L.must(res, name && /^[0-9+\-\s]{8,15}$/.test(phone) && /^\S+@\S+\.\S+$/.test(email), 'Please give your name, a valid phone number and email.')) return;
     const date = new Date(new Date(b.start_at).getTime() + 330 * 60000).toISOString().slice(0, 10);
@@ -329,6 +330,49 @@ module.exports = (app, limiter) => {
     const paid = db.prepare('SELECT COALESCE(SUM(amount_paise),0) v FROM payments WHERE invoice_id=?').get(i.id).v;
     db.prepare('UPDATE invoices SET status=? WHERE id=?').run(paid >= i.total_paise ? 'paid' : paid > 0 ? 'part_paid' : 'sent', i.id);
   }
+
+  // =============== One-time import from Zoho Books (admin) ===============
+  app.post('/api/admin/import-zoho', L.need('admin'), (req, res) => {
+    const d = req.body || {};
+    if (!L.must(res, Array.isArray(d.clients) && Array.isArray(d.invoices) && Array.isArray(d.payments) && d.clients.length <= 2000 && d.invoices.length <= 5000 && d.payments.length <= 5000, 'This is not a valid Zoho import file.')) return;
+    const t = T(req); const p100 = (x) => Math.round((Number(x) || 0) * 100); const out = { clients: 0, invoices: 0, payments: 0, skipped: 0 };
+    db.transaction(() => {
+      const cmap = {};
+      for (const c of d.clients) {
+        const tag = 'ID ' + L.str(c.zoho_id, 40);
+        let row = db.prepare('SELECT id FROM clients WHERE tenant_id=? AND notes LIKE ?').get(t, '%(' + tag + ')%');
+        if (!row) {
+          const r = db.prepare('INSERT INTO clients(tenant_id,name,email,phone,address,notes) VALUES (?,?,?,?,?,?)')
+            .run(t, L.str(c.name, 200), L.str(c.email, 200) || null, L.str(c.phone, 40) || null, L.str(c.address, 400) || null, L.str(c.notes, 800));
+          row = { id: r.lastInsertRowid }; out.clients++;
+        }
+        cmap[c.zoho_id] = row.id;
+      }
+      const imap = {};
+      for (const i of d.invoices) {
+        const cid = cmap[i.zoho_id]; const no = L.str(i.inv_no, 40);
+        if (!cid || !no || !L.isDate(i.date)) { out.skipped++; continue; }
+        const ex = db.prepare('SELECT id FROM invoices WHERE tenant_id=? AND inv_no=?').get(t, no);
+        if (ex) { imap[no] = ex.id; out.skipped++; continue; }
+        const total = p100(i.total); const paid = p100(i.paid);
+        const status = i.status === 'paid' ? 'paid' : i.status === 'draft' ? 'draft' : paid > 0 ? 'part_paid' : 'sent';
+        const r = db.prepare('INSERT INTO invoices(tenant_id,client_id,inv_no,inv_date,due_date,notes,status,total_paise) VALUES (?,?,?,?,?,?,?,?)')
+          .run(t, cid, no, i.date, L.isDate(i.due) ? i.due : null, L.str(i.ref, 200) || 'Imported from Zoho Books', status, total);
+        db.prepare('INSERT INTO invoice_items(tenant_id,invoice_id,description,qty,rate_paise) VALUES (?,?,?,?,?)').run(t, r.lastInsertRowid, 'Professional fees (Zoho Books ' + no + ')', 1, total);
+        imap[no] = r.lastInsertRowid; out.invoices++;
+      }
+      for (const p of d.payments) {
+        const cid = cmap[p.zoho_id]; const rec = L.str(p.rec_no, 40);
+        if (!cid || !rec || !L.isDate(p.date) || !(p100(p.amount) > 0)) { out.skipped++; continue; }
+        if (db.prepare('SELECT 1 FROM payments WHERE tenant_id=? AND rec_no=?').get(t, rec)) { out.skipped++; continue; }
+        db.prepare('INSERT INTO payments(tenant_id,client_id,invoice_id,rec_no,pay_date,amount_paise,mode,reference,notes,created_by) VALUES (?,?,?,?,?,?,?,?,?,?)')
+          .run(t, cid, p.inv_no ? imap[p.inv_no] || null : null, rec, p.date, p100(p.amount), p.mode === 'cash' ? 'cash' : 'bank', L.str(p.ref, 200) || null, 'Imported from Zoho Books', req.user.id);
+        out.payments++;
+      }
+    })();
+    audit(t, req.user.id, 'zoho_import', 'import', 0, JSON.stringify(out), L.ip(req));
+    res.json(out);
+  });
 
   // =============== Billing: payments & receipts ===============
   function recordPayment(req, d) {

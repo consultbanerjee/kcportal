@@ -31,8 +31,8 @@ function loadUser(req, _res, next) {
   const token = req.cookies && req.cookies.kc_session;
   req.user = null;
   if (token) {
-    const row = db.prepare(`SELECT u.*, s.expires_at FROM sessions s JOIN users u ON u.id=s.user_id
-      WHERE s.token=? AND u.active=1`).get(token);
+    const row = db.prepare(`SELECT u.*, s.expires_at FROM sessions s JOIN users u ON u.id=s.user_id JOIN tenants t ON t.id=u.tenant_id
+      WHERE s.token=? AND u.active=1 AND t.active=1`).get(token);
     if (row && row.expires_at > nowIso()) req.user = row;
   }
   next();
@@ -61,6 +61,10 @@ function csrfGuard(req, res, next) {
   next();
 }
 
+// The firm that public pages (booking) and the sign-in page show: ?firm=slug, else the first active firm.
+const defaultFirm = () => db.prepare("SELECT * FROM tenants WHERE kind='firm' AND active=1 ORDER BY id LIMIT 1").get();
+const firmBySlug = (slug) => (slug ? db.prepare("SELECT * FROM tenants WHERE kind='firm' AND active=1 AND slug=?").get(String(slug).slice(0, 60)) : null) || defaultFirm();
+
 const str = (v, max = 500) => (v == null ? '' : String(v).trim().slice(0, max));
 const int = (v, d = null) => { const n = parseInt(v, 10); return Number.isFinite(n) ? n : d; };
 const paise = (rupees) => Math.round(Number(rupees) * 100);
@@ -87,5 +91,5 @@ const ALLOWED_EXT = new Set(['.pdf', '.doc', '.docx', '.xls', '.xlsx', '.csv', '
 
 module.exports = {
   db, audit, nextNumber, rand, nowIso, addDays, ip, hashPassword, checkPassword, passwordProblem, createSession,
-  loadUser, requireLogin, need, office, csrfGuard, str, int, paise, isDate, must, storage, ALLOWED_EXT, OFFICE_ROLES,
+  loadUser, defaultFirm, firmBySlug, requireLogin, need, office, csrfGuard, str, int, paise, isDate, must, storage, ALLOWED_EXT, OFFICE_ROLES,
 };

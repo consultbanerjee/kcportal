@@ -82,3 +82,34 @@ td.n,th.n{text-align:right;font-variant-numeric:tabular-nums}
  .main{padding-bottom:6rem}
 }
 @media print{.side,.top,.bottom,.noprint,#toast{display:none!important}.main{padding:0;max-width:none}.card,.paper{border:0}body{background:#fff}}
+
+/* KC LEGAL letter-pad sheet (invoice / receipt) */
+.sheet{position:relative;width:210mm;min-height:297mm;margin:1rem auto;background:#fff;box-shadow:0 2px 14px rgba(20,30,60,.18);color:var(--pri,#1f2a44);font-size:10.5pt;overflow:hidden;--pri:#1f2a44;--acc:#f5a623;--ttl:#d0021b}
+.sheet .lh{position:absolute;left:0;top:0;width:210mm;height:297mm;z-index:0}
+.sbody{position:relative;z-index:1}
+.dochead{display:flex;justify-content:space-between;align-items:flex-end;border-bottom:2.5px solid var(--acc);padding-bottom:3mm;margin-bottom:6mm}
+.dochead h1{margin:0;font-size:26pt;letter-spacing:.14em;color:var(--ttl);font-weight:700}
+.dochead .meta{text-align:right;line-height:1.5}.dochead .meta div{display:flex;justify-content:flex-end;gap:10px}.dochead .meta span{color:#6b7488;font-size:9pt}.dochead .meta b{min-width:34mm;text-align:right}
+.billto{margin-bottom:6mm;line-height:1.5}.billto span{display:block;font-size:8.5pt;letter-spacing:.12em;color:#f08c00;font-weight:700}.billto b{font-size:12pt}
+.itab,.ttab{width:100%;border-collapse:collapse}
+.itab th{background:var(--pri);color:#fff;font-weight:600;font-size:9.5pt;padding:2.2mm 3mm;text-align:left}.itab th.n,.itab td.n{text-align:right}
+.itab td{padding:2.4mm 3mm;border-bottom:1px solid #dfe3ec;vertical-align:top}.itab tr:nth-child(even) td{background:#f7f8fb}
+.ttab{width:78mm;margin:4mm 0 0 auto}.ttab td{padding:1.6mm 3mm}.ttab td.n{text-align:right}
+.ttab .due td{background:var(--acc);color:var(--pri);font-weight:700;font-size:12pt;padding:2.6mm 3mm}
+.words{margin:5mm 0 3mm}.words span{color:#6b7488}.inote,.rtext{margin:2mm 0;font-size:9.5pt;line-height:1.55}.rtext{font-size:11pt;margin:4mm 0}
+.isign{margin-top:14mm;margin-left:auto;width:70mm;text-align:right;line-height:1.5}.isign .gap{height:16mm}
+@media print{@page{size:A4;margin:0}.sheet{margin:0;box-shadow:none;width:210mm}.main{padding:0!important}}
+.sheet h1{font-family:inherit}.itab th{white-space:nowrap}.itab th:nth-child(1){width:8mm}
+
+.sheet .topbar{position:absolute;left:0;top:0;right:0;height:9mm;background:var(--pri);border-bottom:2mm solid var(--acc)}
+.sheet .botbar{position:absolute;left:0;bottom:0;right:0;height:6mm;background:var(--pri);border-top:1.5mm solid var(--acc)}
+.sheet .thead{text-align:center;border-bottom:1px solid #dfe3ec;padding-bottom:4mm;margin-bottom:6mm}
+.sheet .tname{font-size:22pt;font-weight:700;letter-spacing:.1em;color:var(--pri)}.sheet .ttag{color:var(--acc);font-size:10pt;letter-spacing:.12em;margin-top:1mm}.sheet .tcon{font-size:8.5pt;color:#6b7488;margin-top:1mm}
+.paybox{margin:4mm 0;padding:3mm 4mm;border:1px solid #dfe3ec;border-left:3px solid var(--acc);font-size:9.5pt;line-height:1.5}
+.lref{display:flex;justify-content:space-between;margin-bottom:6mm}.lbody{white-space:pre-wrap;line-height:1.65;margin:5mm 0}
+.tplgrid{display:grid;grid-template-columns:minmax(280px,380px) 1fr;gap:1rem;align-items:start}
+.tplprev{overflow:auto;max-height:80vh;background:#e8ebf2;padding:.5rem}.tplprev .sheet{transform-origin:top left;margin:0}
+@media(max-width:900px){.tplgrid{grid-template-columns:1fr}}
+@media print{.sheet .topbar,.sheet .botbar{-webkit-print-color-adjust:exact;print-color-adjust:exact}}
+input[type=color]{width:64px;height:38px;padding:2px}
+.grid2{display:grid;grid-template-columns:1fr 1fr;gap:1rem}@media(max-width:800px){.grid2{grid-template-columns:1fr}}
