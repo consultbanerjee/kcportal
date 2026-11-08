@@ -1,0 +1,5 @@
+{$PORTAL_DOMAIN:portal.kclegal.us} {
+	encode gzip
+	reverse_proxy portal:3000
+	header Strict-Transport-Security "max-age=31536000"
+}
