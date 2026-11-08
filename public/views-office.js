@@ -20,7 +20,7 @@ route(/^\/$/, async () => {
       <div class="card"><div class="row sp"><h2>Consultations</h2><a class="btn sm" href="#/book">Book a call</a></div>${d.appointments.length ? `<ul class="list">${d.appointments.map((a) => `<li><span>${dtm(a.start_at)}</span><span>${sp(a.status)} ${a.meet_link ? `<a href="${esc(a.meet_link)}" target="_blank" rel="noopener">Join</a>` : ''}</span></li>`).join('')}</ul>` : '<p class="mute">None booked.</p>'}</div>`);
     return;
   }
-  view(`<h1>Good day, ${esc(ME.name.split(' ')[0])}</h1>
+  view(`<div class="row sp"><h1>Good day, ${esc(ME.name.split(' ')[0])}</h1>${can('admin', 'advocate', 'staff', 'telecaller') ? '<button class="btn gold" id="qc">+ Add client</button>' : ''}</div>
     <div class="grid">
     <a class="stat" href="#/matters"><b>${d.open_matters}</b><span>Open matters</span></a>
     <a class="stat" href="#/tasks"><b>${d.my_tasks}</b><span>My tasks</span></a>
@@ -30,6 +30,7 @@ route(/^\/$/, async () => {
     <a class="stat" href="#/messages"><b>${d.unread_messages}</b><span>Client messages</span></a>
     <a class="stat" href="#/letters"><b>${d.drafts_to_approve}</b><span>Letter drafts</span></a></div>
     <div class="card" style="margin-top:1rem"><h2>Court dates — next 7 days</h2>${d.dates.length ? `<ul class="list">${d.dates.map((x) => `<li><span><a href="#/matter/${x.matter_id}">${esc(x.title)}</a><div class="mute">${esc(x.file_no)} · ${esc(x.forum || '')}</div></span><b>${dt(x.date)}</b></li>`).join('')}</ul>` : '<p class="mute">Nothing listed for the coming week.</p>'}</div>`);
+  const qc = $('#qc'); if (qc) qc.onclick = () => addClient();
 }, {});
 
 /* ===== clients ===== */
@@ -40,8 +41,21 @@ route(/^\/clients$/, async () => {
   };
   view(`<div class="row sp"><h1>Clients</h1>${can('admin', 'advocate', 'staff', 'telecaller') ? '<button class="btn" id="add">Add client</button>' : ''}</div>${searchBar('Search name, phone or email')}<div class="card" id="res"></div>`);
   liveSearch(draw); draw('');
-  const add = $('#add'); if (add) add.onclick = () => ask('New client', [{ name: 'name', label: 'Full name', required: true }, { name: 'phone', label: 'Phone', type: 'tel' }, { name: 'email', label: 'Email', type: 'email' }, { name: 'address', label: 'Address', type: 'textarea' }], 'Save', async (v) => { const r = await POST('/api/clients', v); location.hash = '#/client/' + r.id; });
+  const add = $('#add'); if (add) add.onclick = () => addClient();
 }, { office: true });
+
+/* add a client; optionally create the portal login straight away */
+function addClient() {
+  const canLogin = can('admin', 'advocate', 'staff');
+  return ask('New client', [{ name: 'name', label: 'Full name', required: true }, { name: 'phone', label: 'Phone', type: 'tel' }, { name: 'email', label: 'Email', type: 'email', hint: 'Needed if you give the client portal access.' }, { name: 'address', label: 'Address', type: 'textarea' },
+    ...(canLogin ? [{ name: 'portal', label: 'Give portal access now (creates a private invitation link)', type: 'checkbox' }] : [])], 'Save', async (v) => {
+    if (v.portal && !/^\S+@\S+\.\S+$/.test(v.email)) throw new Error('Enter the client\'s email to give portal access.');
+    const r = await POST('/api/clients', v); let link = null;
+    if (v.portal) link = (await POST(`/api/clients/${r.id}/login`, { email: v.email })).invite_path;
+    location.hash = '#/client/' + r.id;
+    if (link) setTimeout(() => show('Portal invitation', `<p>Send this private link to the client. It works once and expires in 7 days.</p><input readonly value="${esc(location.origin + '/' + link)}"><p class="mute">Share by WhatsApp or email. The client then sets their own password.</p>`), 300);
+  });
+}
 
 route(/^\/client\/(\d+)$/, async ([id]) => {
   const c = await GET('/api/clients/' + id);
@@ -223,14 +237,18 @@ route(/^\/team$/, async () => {
 }, { roles: ['admin'] });
 
 route(/^\/settings$/, async () => {
-  const [types, av] = await Promise.all([GET('/api/consult-types'), GET('/api/availability')]);
+  const [types, av, fees] = await Promise.all([GET('/api/consult-types'), GET('/api/availability'), GET('/api/consult-fees')]);
   const days = ['Sun', 'Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat'];
   const advs = (await team()).filter((u) => ['admin', 'advocate'].includes(u.role));
   view(`<h1>Settings</h1>
-    <div class="card"><div class="row sp"><h2>Consultation types & fees</h2><button class="btn sm" id="ct">Add type</button></div><ul class="list">${types.map((t) => `<li><span>${esc(t.name)} <span class="mute">${t.minutes} min</span></span><span class="row">${inr(t.fee_paise)} ${t.active ? '' : pill('off', 'bad')}<button class="btn sm ghost" data-et="${t.id}">Edit</button></span></li>`).join('')}</ul></div>
+    <div class="card"><div class="row sp"><h2>Consultation types & default fees</h2><button class="btn sm" id="ct">Add type</button></div><ul class="list">${types.map((t) => `<li><span>${esc(t.name)} <span class="mute">${t.minutes} min</span></span><span class="row">${inr(t.fee_paise)} ${t.active ? '' : pill('off', 'bad')}<button class="btn sm ghost" data-et="${t.id}">Edit</button></span></li>`).join('')}</ul></div>
+    <div class="card"><h2>Fee for each advocate</h2><p class="mute">Each advocate can charge a different fee. Leave a box blank to use the default fee shown above. Saved when you leave the box.</p>
+    <div class="tw"><table><tr><th>Advocate</th>${types.map((t) => `<th class="n">${esc(t.name)}<br><span class="mute">default ${inr(t.fee_paise)}</span></th>`).join('')}</tr>
+    ${advs.map((a) => `<tr><td>${esc(a.name)}</td>${types.map((t) => { const f = fees.find((x) => x.user_id === a.id && x.consult_type_id === t.id); return `<td class="n"><input type="number" min="0" step="1" style="width:110px" data-fee data-u="${a.id}" data-t="${t.id}" value="${f ? f.fee_paise / 100 : ''}" placeholder="${t.fee_paise / 100}"></td>`; }).join('')}</tr>`).join('')}</table></div></div>
     <div class="card"><h2>Weekly availability for online consultations</h2><p class="mute">Times are India time. One line per slot: <code>Mon 10:00-13:00</code>. Leave blank for no availability.</p>
     ${advs.map((a) => { const mine = av.filter((x) => x.user_id === a.id).map((x) => `${days[x.weekday]} ${x.start_time}-${x.end_time}`).join('\n'); return `<label>${esc(a.name)}</label><textarea data-av="${a.id}">${esc(mine)}</textarea>`; }).join('')}
     <p><button class="btn" id="sv">Save availability</button></p></div>`);
+  $$('[data-fee]').forEach((i) => (i.onchange = async () => { try { await PUT('/api/consult-fees', { user_id: +i.dataset.u, consult_type_id: +i.dataset.t, fee: i.value }); toast('Fee saved.'); } catch (e) { toast(e.message, true); } }));
   $('#ct').onclick = () => ask('New consultation type', [{ name: 'name', label: 'Name', required: true }, { name: 'minutes', label: 'Minutes', type: 'number', value: 30, required: true }, { name: 'fee', label: 'Fee (₹)', type: 'number', value: 1000, required: true }], 'Add', async (v) => { await POST('/api/consult-types', v); go(); });
   $$('[data-et]').forEach((b) => (b.onclick = () => { const t = types.find((x) => x.id == b.dataset.et); ask('Edit type', [{ name: 'name', label: 'Name', value: t.name }, { name: 'minutes', label: 'Minutes', type: 'number', value: t.minutes }, { name: 'fee', label: 'Fee (₹)', type: 'number', value: t.fee_paise / 100 }, { name: 'active', label: 'Offer this type', type: 'checkbox', value: t.active }], 'Save', async (v) => { await PATCH('/api/consult-types/' + t.id, v); go(); }); }));
   $('#sv').onclick = async () => {

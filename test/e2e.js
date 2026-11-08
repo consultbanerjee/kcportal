@@ -106,14 +106,19 @@ async function setup(c, invite, pw) { const tok = invite.split('/').pop(); retur
   const day = new Date(Date.now() + 3 * 86400000).toISOString().slice(0, 10);
   r = await pub('GET', `/api/public/slots?type=${types[0].id}&date=${day}`); ok(r.j.length === 9, 'slots 3h/20m = 9, got ' + r.j.length);
   const slot = r.j[0];
-  r = await pub('POST', '/api/public/book', { name: 'Walk In', phone: '9876543210', email: 'walk@in.com', issue: 'Divorce', type_id: types[0].id, start_at: slot.start_at }); ok(r.s === 200 && r.j.pay_ref, 'book'); const ref = r.j.pay_ref; const apId = r.j.id;
+  const advId = db.prepare("SELECT id FROM users WHERE role='admin'").get().id;
+  r = await admin('PUT', '/api/consult-fees', { user_id: advId, consult_type_id: types[0].id, fee: 777 }); ok(r.s === 200, 'set advocate fee');
+  r = await staff('PUT', '/api/consult-fees', { user_id: advId, consult_type_id: types[0].id, fee: 1 }); ok(r.s === 403, 'staff cannot set fees');
+  r = await pub('GET', '/api/public/booking'); ok(r.j.advocates.some((a) => a.id === advId && a.fees[types[0].id] === 77700), 'advocate fee shown');
+  r = await pub('GET', `/api/public/slots?type=${types[0].id}&date=${day}&advocate=${advId}`); ok(r.j[0].fee_paise === 77700, 'slot carries advocate fee');
+  r = await pub('POST', '/api/public/book', { name: 'Walk In', phone: '9876543210', email: 'walk@in.com', issue: 'Divorce', type_id: types[0].id, advocate_id: advId, start_at: slot.start_at }); ok(r.s === 200 && r.j.pay_ref && r.j.fee_paise === 77700, 'book at advocate fee'); const ref = r.j.pay_ref; const apId = r.j.id;
   r = await pub('GET', `/api/public/slots?type=${types[0].id}&date=${day}`); ok(r.j.length === 8, 'held slot removed');
   r = await pub('POST', '/api/public/book', { name: 'Late', phone: '9876543211', email: 'l@in.com', type_id: types[0].id, start_at: slot.start_at }); ok(r.s === 400, 'double booking blocked');
   r = await pub('GET', '/api/public/booking/' + ref); ok(r.j.status === 'awaiting_payment' && !r.j.meet_link, 'no link before payment');
   r = await pub('POST', '/api/payments/webhook', { pay_ref: ref, status: 'paid', amount_paise: types[0].fee_paise }); ok(r.s === 401, 'webhook needs secret');
   const wh = await fetch(base + '/api/payments/webhook', { method: 'POST', headers: { 'Content-Type': 'application/json', 'x-webhook-secret': 'whsec' }, body: JSON.stringify({ pay_ref: ref, status: 'paid', amount_paise: 100, txn_id: 't1' }) }); 
   r = await pub('GET', '/api/public/booking/' + ref); ok(r.j.status === 'awaiting_payment', 'short payment ignored');
-  await fetch(base + '/api/payments/webhook', { method: 'POST', headers: { 'Content-Type': 'application/json', 'x-webhook-secret': 'whsec' }, body: JSON.stringify({ pay_ref: ref, status: 'paid', amount_paise: types[0].fee_paise, txn_id: 't2' }) });
+  await fetch(base + '/api/payments/webhook', { method: 'POST', headers: { 'Content-Type': 'application/json', 'x-webhook-secret': 'whsec' }, body: JSON.stringify({ pay_ref: ref, status: 'paid', amount_paise: 77700, txn_id: 't2' }) });
   r = await pub('GET', '/api/public/booking/' + ref); ok(r.j.status === 'confirmed' && /meet\.jit\.si/.test(r.j.meet_link), 'confirmed after payment');
   r = await acct('GET', '/api/payments'); ok(r.j.some((p) => p.reference === 't2'), 'consult payment recorded');
 

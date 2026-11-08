@@ -126,22 +126,50 @@ module.exports = (app, limiter) => {
   // =============== Appointments: public booking + slots ===============
   const expireHolds = () => db.prepare("UPDATE appointments SET status='expired' WHERE status='awaiting_payment' AND hold_until<?").run(L.nowIso());
 
+  const effFee = (tenantId, userId, ct) => {
+    const o = db.prepare('SELECT fee_paise FROM consult_fees WHERE tenant_id=? AND user_id=? AND consult_type_id=?').get(tenantId, userId, ct.id);
+    return o ? o.fee_paise : ct.fee_paise;
+  };
+  const advocatesWithSlots = (tenantId) => db.prepare(`SELECT DISTINCT u.id,u.name FROM availability a JOIN users u ON u.id=a.user_id
+    WHERE a.tenant_id=? AND u.active=1 AND u.role IN ('admin','advocate') ORDER BY u.name`).all(tenantId);
+
+  app.get('/api/consult-fees', L.office, (req, res) => {
+    res.json(db.prepare('SELECT user_id,consult_type_id,fee_paise FROM consult_fees WHERE tenant_id=?').all(T(req)));
+  });
+  app.put('/api/consult-fees', L.need('admin', 'advocate'), (req, res) => {
+    const uid = L.int(req.body.user_id, req.user.id);
+    if (!L.must(res, req.user.role === 'admin' || uid === req.user.id, 'You can set only your own fees.')) return;
+    const u = db.prepare("SELECT id FROM users WHERE id=? AND tenant_id=? AND role IN ('admin','advocate')").get(uid, T(req));
+    const ct = db.prepare('SELECT id FROM consult_types WHERE id=? AND tenant_id=?').get(L.int(req.body.consult_type_id), T(req));
+    if (!L.must(res, u && ct, 'Choose an advocate and a consultation type.')) return;
+    if (req.body.fee === '' || req.body.fee == null) db.prepare('DELETE FROM consult_fees WHERE user_id=? AND consult_type_id=?').run(u.id, ct.id);
+    else {
+      const f = Number(req.body.fee);
+      if (!L.must(res, Number.isFinite(f) && f >= 0 && f <= 1000000, 'Enter a valid fee in rupees.')) return;
+      db.prepare('INSERT INTO consult_fees(tenant_id,user_id,consult_type_id,fee_paise) VALUES (?,?,?,?) ON CONFLICT(user_id,consult_type_id) DO UPDATE SET fee_paise=excluded.fee_paise').run(T(req), u.id, ct.id, L.paise(f));
+    }
+    audit(T(req), req.user.id, 'consult_fee_set', 'user', u.id, `type ${ct.id}: ${req.body.fee}`, L.ip(req));
+    res.json({ ok: true });
+  });
+
   app.get('/api/public/booking', (req, res) => {
     const t = firstTenant();
     res.json({
       firm: t.name,
       pay_note: process.env.PAY_NOTE || '',
       types: db.prepare('SELECT id,name,minutes,fee_paise FROM consult_types WHERE tenant_id=? AND active=1 ORDER BY fee_paise').all(t.id),
+      advocates: (() => { const types = db.prepare('SELECT * FROM consult_types WHERE tenant_id=? AND active=1').all(t.id);
+        return advocatesWithSlots(t.id).map((a) => ({ ...a, fees: Object.fromEntries(types.map((c) => [c.id, effFee(t.id, a.id, c)])) })); })(),
     });
   });
 
   // slots for a date (IST). Weekday: 0=Sunday. Skips past times and already-held/booked slots.
-  function slotsFor(tenantId, typeId, date) {
+  function slotsFor(tenantId, typeId, date, advocateId) {
     const ct = db.prepare('SELECT * FROM consult_types WHERE id=? AND tenant_id=? AND active=1').get(typeId, tenantId);
     if (!ct || !L.isDate(date)) return { ct: null, slots: [] };
     expireHolds();
     const wd = new Date(date + 'T12:00:00+05:30').getUTCDay();
-    const avail = db.prepare(`SELECT a.* FROM availability a JOIN users u ON u.id=a.user_id WHERE a.tenant_id=? AND a.weekday=? AND u.active=1 ORDER BY a.start_time`).all(tenantId, wd);
+    const avail = db.prepare(`SELECT a.* FROM availability a JOIN users u ON u.id=a.user_id WHERE a.tenant_id=? AND a.weekday=? AND u.active=1 AND (? IS NULL OR a.user_id=?) ORDER BY a.start_time`).all(tenantId, wd, advocateId || null, advocateId || null);
     const out = []; const now = Date.now() + 30 * 60000;
     for (const a of avail) {
       let s = new Date(`${date}T${a.start_time}:00+05:30`).getTime();
@@ -158,8 +186,8 @@ module.exports = (app, limiter) => {
   }
   app.get('/api/public/slots', (req, res) => {
     const t = firstTenant();
-    const { slots } = slotsFor(t.id, L.int(req.query.type), req.query.date);
-    res.json(slots);
+    const { ct, slots } = slotsFor(t.id, L.int(req.query.type), req.query.date, L.int(req.query.advocate));
+    res.json(slots.map((x) => ({ ...x, fee_paise: effFee(t.id, x.advocate_id, ct) })));
   });
 
   app.post('/api/public/book', limiter, (req, res) => {
@@ -167,7 +195,7 @@ module.exports = (app, limiter) => {
     const name = L.str(b.name, 150), phone = L.str(b.phone, 30), email = L.str(b.email, 200).toLowerCase();
     if (!L.must(res, name && /^[0-9+\-\s]{8,15}$/.test(phone) && /^\S+@\S+\.\S+$/.test(email), 'Please give your name, a valid phone number and email.')) return;
     const date = new Date(new Date(b.start_at).getTime() + 330 * 60000).toISOString().slice(0, 10);
-    const { ct, slots } = slotsFor(t.id, L.int(b.type_id), date);
+    const { ct, slots } = slotsFor(t.id, L.int(b.type_id), date, L.int(b.advocate_id));
     const slot = ct && slots.find((s) => s.start_at === new Date(b.start_at).toISOString());
     if (!L.must(res, slot, 'That time is no longer available. Please pick another.')) return;
     const clientId = req.user && req.user.role === 'client' ? req.user.client_id : null;
@@ -176,15 +204,15 @@ module.exports = (app, limiter) => {
     const payRef = 'PAY-' + L.rand(6).toUpperCase();
     const r = db.prepare(`INSERT INTO appointments(tenant_id,lead_id,client_id,name,phone,email,issue,advocate_id,consult_type_id,start_at,end_at,mode,fee_paise,status,pay_ref,hold_until)
       VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)`).run(t.id, lead.lastInsertRowid, clientId, name, phone, email, L.str(b.issue, 1500), slot.advocate_id, ct.id,
-      slot.start_at, slot.end_at, 'video', ct.fee_paise, 'awaiting_payment', payRef, new Date(Date.now() + 15 * 60000).toISOString());
-    res.json({ id: r.lastInsertRowid, pay_ref: payRef, fee_paise: ct.fee_paise, hold_minutes: 15, start_at: slot.start_at });
+      slot.start_at, slot.end_at, 'video', effFee(t.id, slot.advocate_id, ct), 'awaiting_payment', payRef, new Date(Date.now() + 15 * 60000).toISOString());
+    res.json({ id: r.lastInsertRowid, pay_ref: payRef, fee_paise: effFee(t.id, slot.advocate_id, ct), hold_minutes: 15, start_at: slot.start_at });
   });
 
   // Look up a booking by its payment reference (public — reference is the secret)
   app.get('/api/public/booking/:ref', (req, res) => {
     expireHolds();
-    const a = db.prepare(`SELECT a.status,a.start_at,a.end_at,a.fee_paise,a.pay_ref,a.meet_link,ct.name AS type_name FROM appointments a
-      JOIN consult_types ct ON ct.id=a.consult_type_id WHERE a.pay_ref=?`).get(L.str(req.params.ref, 30));
+    const a = db.prepare(`SELECT a.status,a.start_at,a.end_at,a.fee_paise,a.pay_ref,a.meet_link,ct.name AS type_name,u.name AS advocate FROM appointments a
+      JOIN consult_types ct ON ct.id=a.consult_type_id JOIN users u ON u.id=a.advocate_id WHERE a.pay_ref=?`).get(L.str(req.params.ref, 30));
     if (!a) return res.status(404).json({ error: 'Booking not found.' });
     if (a.status !== 'confirmed') delete a.meet_link;
     res.json(a);

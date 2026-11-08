@@ -96,6 +96,9 @@ CREATE TABLE IF NOT EXISTS consult_types (
   id INTEGER PRIMARY KEY, tenant_id INTEGER NOT NULL, name TEXT NOT NULL, minutes INTEGER NOT NULL,
   fee_paise INTEGER NOT NULL, active INTEGER NOT NULL DEFAULT 1);
 
+CREATE TABLE IF NOT EXISTS consult_fees (
+  tenant_id INTEGER NOT NULL, user_id INTEGER NOT NULL, consult_type_id INTEGER NOT NULL, fee_paise INTEGER NOT NULL,
+  PRIMARY KEY(user_id, consult_type_id));
 CREATE TABLE IF NOT EXISTS availability (
   id INTEGER PRIMARY KEY, tenant_id INTEGER NOT NULL, user_id INTEGER NOT NULL,
   weekday INTEGER NOT NULL, start_time TEXT NOT NULL, end_time TEXT NOT NULL);
