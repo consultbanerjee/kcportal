@@ -84,8 +84,8 @@ td.n,th.n{text-align:right;font-variant-numeric:tabular-nums}
 @media print{.side,.top,.bottom,.noprint,#toast{display:none!important}.main{padding:0;max-width:none}.card,.paper{border:0}body{background:#fff}}
 
 /* KC LEGAL letter-pad sheet (invoice / receipt) */
-.sheet{position:relative;width:210mm;min-height:297mm;margin:1rem auto;background:#fff;box-shadow:0 2px 14px rgba(20,30,60,.18);color:var(--pri,#1f2a44);font-size:10.5pt;overflow:hidden;--pri:#1f2a44;--acc:#f5a623;--ttl:#d0021b}
-.sheet .lh{position:absolute;left:0;top:0;width:210mm;height:297mm;z-index:0}
+.sheet{position:relative;width:var(--pw,210mm);min-height:var(--ph,297mm);margin:1rem auto;background:#fff;box-shadow:0 2px 14px rgba(20,30,60,.18);color:var(--pri,#1f2a44);font-size:10.5pt;--pri:#1f2a44;--acc:#f5a623;--ttl:#d0021b}
+.sheet .lh{position:absolute;left:0;top:0;width:var(--pw,210mm);height:var(--ph,297mm);z-index:0}
 .sbody{position:relative;z-index:1}
 .dochead{display:flex;justify-content:space-between;align-items:flex-end;border-bottom:2.5px solid var(--acc);padding-bottom:3mm;margin-bottom:6mm}
 .dochead h1{margin:0;font-size:26pt;letter-spacing:.14em;color:var(--ttl);font-weight:700}
@@ -98,7 +98,12 @@ td.n,th.n{text-align:right;font-variant-numeric:tabular-nums}
 .ttab .due td{background:var(--acc);color:var(--pri);font-weight:700;font-size:12pt;padding:2.6mm 3mm}
 .words{margin:5mm 0 3mm}.words span{color:#6b7488}.inote,.rtext{margin:2mm 0;font-size:9.5pt;line-height:1.55}.rtext{font-size:11pt;margin:4mm 0}
 .isign{margin-top:14mm;margin-left:auto;width:70mm;text-align:right;line-height:1.5}.isign .gap{height:16mm}
-@media print{@page{size:A4;margin:0}.sheet{margin:0;box-shadow:none;width:210mm}.main{padding:0!important}}
+table.flow{width:100%;border-collapse:collapse;position:relative;z-index:1}table.flow td,table.flow th{padding:0;vertical-align:top;border:0!important}
+.itab tr,.isign,.paybox,.ttab,.billto{break-inside:avoid;page-break-inside:avoid}.lbody p,.lbody{orphans:3;widows:3}
+@media print{.sheet{margin:0;box-shadow:none;width:100%;min-height:0;overflow:visible}.main{padding:0!important}
+.sheet .lh{position:fixed;left:0;top:0;width:var(--pw);height:var(--ph)}
+.sheet .topbar{position:fixed;left:0;top:0;right:0}.sheet .botbar{position:fixed;left:0;bottom:0;right:0}
+body,.sheet{-webkit-print-color-adjust:exact;print-color-adjust:exact}}
 .sheet h1{font-family:inherit}.itab th{white-space:nowrap}.itab th:nth-child(1){width:8mm}
 
 .sheet .topbar{position:absolute;left:0;top:0;right:0;height:9mm;background:var(--pri);border-bottom:2mm solid var(--acc)}

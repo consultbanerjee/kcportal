@@ -13,12 +13,12 @@ const KC = {
 };
 const base = (name) => ({
   header_name: name, tagline: '', address: '', phone: '', email: '', website: '',
-  primary: '#1f2a44', accent: '#f5a623', title_color: '#d0021b', font: 'sans', top_mm: 58, bottom_mm: 34, side_mm: 20,
+  primary: '#1f2a44', accent: '#f5a623', title_color: '#d0021b', font: 'sans', page_size: 'a4', top_mm: 58, bottom_mm: 34, left_mm: 20, right_mm: 20,
   invoice_title: 'INVOICE', receipt_title: 'RECEIPT', signatory_name: '', signatory_title: '', payment_details: '',
   invoice_footer: 'Kindly quote the invoice number when making payment.',
 });
 const STR = { header_name: 80, tagline: 120, address: 240, phone: 60, email: 120, website: 120, invoice_title: 30, receipt_title: 30, signatory_name: 80, signatory_title: 80, payment_details: 600, invoice_footer: 300 };
-const NUM = { top_mm: [0, 120], bottom_mm: [10, 60], side_mm: [10, 35] };
+const NUM = { top_mm: [0, 120], bottom_mm: [0, 80], left_mm: [5, 60], right_mm: [5, 60] };
 const COL = ['primary', 'accent', 'title_color'];
 
 const dir = (tid) => path.resolve(DATA_DIR, 'templates', String(tid));
@@ -41,6 +41,7 @@ function clean(body, cur) {
   for (const k of COL) if (body[k] !== undefined && /^#[0-9a-fA-F]{6}$/.test(body[k])) out[k] = body[k].toLowerCase();
   for (const [k, [lo, hi]] of Object.entries(NUM)) if (body[k] !== undefined) { const n = Number(body[k]); if (Number.isFinite(n)) out[k] = Math.max(lo, Math.min(hi, Math.round(n))); }
   if (['sans', 'serif'].includes(body.font)) out.font = body.font;
+  if (['a4', 'legal', 'letter'].includes(body.page_size)) out.page_size = body.page_size;
   if (!out.invoice_title) out.invoice_title = 'INVOICE';
   if (!out.receipt_title) out.receipt_title = 'RECEIPT';
   return out;

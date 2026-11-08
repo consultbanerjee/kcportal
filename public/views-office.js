@@ -287,14 +287,18 @@ route(/^\/template$/, async () => {
       <h3>Header (used when there is no image)</h3>${F('header_name', 'Firm name')}${F('tagline', 'Tagline')}${F('address', 'Address', { area: 1 })}${F('phone', 'Phone')}${F('email', 'Email')}${F('website', 'Website')}
       <h3>Colours &amp; font</h3><div class="row"><div><label>Main</label><input name="primary" type="color" value="${T.settings.primary}"></div><div><label>Accent</label><input name="accent" type="color" value="${T.settings.accent}"></div><div><label>Title</label><input name="title_color" type="color" value="${T.settings.title_color}"></div></div>
       <label>Font</label><select name="font"><option value="sans" ${T.settings.font === 'sans' ? 'selected' : ''}>Modern (sans-serif)</option><option value="serif" ${T.settings.font === 'serif' ? 'selected' : ''}>Classic (serif)</option></select>
-      <h3>Margins (mm)</h3><div class="row"><div>${F('top_mm', 'Top', { type: 'number' })}</div><div>${F('bottom_mm', 'Bottom', { type: 'number' })}</div><div>${F('side_mm', 'Sides', { type: 'number' })}</div></div>
+      <h3>Page &amp; margins</h3><label>Paper size</label><select name="page_size">${[['a4', 'A4 (210 × 297 mm)'], ['legal', 'Legal (216 × 356 mm)'], ['letter', 'Letter (216 × 279 mm)']].map(([v, l]) => `<option value="${v}" ${T.settings.page_size === v ? 'selected' : ''}>${l}</option>`).join('')}</select>
+      <p class="mute">Top and bottom are the space kept clear for the letterhead's header and footer. They apply on every page of a long document. Margins are in millimetres.</p>
+      <div class="row"><div>${F('top_mm', 'Top / header', { type: 'number' })}</div><div>${F('bottom_mm', 'Bottom / footer', { type: 'number' })}</div></div><div class="row"><div>${F('left_mm', 'Left', { type: 'number' })}</div><div>${F('right_mm', 'Right', { type: 'number' })}</div></div>
+      <div class="row" style="margin-top:.4rem"><button type="button" class="btn sm ghost" id="mstd">Standard A4 (25 mm all round)</button></div>
       <h3>Wording</h3>${F('invoice_title', 'Invoice title')}${F('receipt_title', 'Receipt title')}${F('signatory_name', 'Signatory name')}${F('signatory_title', 'Signatory designation')}${F('payment_details', 'Payment details (bank / UPI)', { area: 1 })}${F('invoice_footer', 'Invoice footer note', { area: 1 })}
       <p class="err" hidden></p><div style="margin-top:1rem"><button class="btn gold" style="width:100%">Save design</button></div></form></div>
       <div class="tplprev" id="pv"></div></div>`);
   const form = $('#tf'), pv = $('#pv');
-  const read = () => { const o = {}; new FormData(form).forEach((v, k) => { if (k !== 'file') o[k] = ['top_mm', 'bottom_mm', 'side_mm'].includes(k) ? Number(v) : v; }); return o; };
+  const read = () => { const o = {}; new FormData(form).forEach((v, k) => { if (k !== 'file') o[k] = ['top_mm', 'bottom_mm', 'left_mm', 'right_mm'].includes(k) ? Number(v) : v; }); return o; };
   const paint = () => { T = { ...T, settings: { ...T.settings, ...read() } }; pv.innerHTML = sample(); const sh = $('.sheet', pv); const z = Math.min(1, (pv.clientWidth - 16) / sh.offsetWidth); sh.style.zoom = z > 0 ? z : 1; };
   form.addEventListener('input', paint); paint();
+  $('#mstd').onclick = () => { form.elements.page_size.value = 'a4'; ['top_mm', 'bottom_mm', 'left_mm', 'right_mm'].forEach((k) => (form.elements[k].value = 25)); paint(); };
   form.onsubmit = async (e) => {
     e.preventDefault(); const err = $('.err', form); err.hidden = true;
     try { await PUT('/api/template', read()); T = await getTpl(true); paint(); toast('Design saved'); } catch (ex) { err.hidden = false; err.textContent = ex.message; }

@@ -43,7 +43,7 @@ async function setup(c, invite, pw) { const tok = invite.split('/').pop(); retur
   r = await beta('POST', '/api/login', { email: 'beta@x.com', password: 'BetaPass12345' }); ok(r.s === 200 && r.j.user.role === 'admin', 'beta admin login');
   r = await beta('GET', '/api/clients'); ok(r.s === 200 && r.j.length === 0, 'beta sees none of KC clients');
   r = await beta('GET', '/api/template'); ok(r.s === 200 && r.j.settings.header_name === 'Beta Law' && !r.j.has_letterhead, 'beta own template');
-  r = await beta('PUT', '/api/template', { primary: '#112233', invoice_title: 'TAX INVOICE', title_color: 'red' }); ok(r.s === 200 && r.j.settings.primary === '#112233' && r.j.settings.title_color !== 'red', 'beta saves template, bad colour ignored');
+  r = await beta('PUT', '/api/template', { page_size: 'legal', left_mm: 30, right_mm: 3, primary: '#112233', invoice_title: 'TAX INVOICE', title_color: 'red' }); ok(r.s === 200 && r.j.settings.page_size === 'legal' && r.j.settings.left_mm === 30 && r.j.settings.right_mm === 5 && r.j.settings.primary === '#112233' && r.j.settings.title_color !== 'red', 'beta saves template, bad colour ignored');
   r = await admin('GET', '/api/template'); ok(r.j.settings.header_name === 'KC LEGAL' && r.j.has_letterhead && r.j.settings.invoice_title === 'INVOICE' && r.j.settings.title_color === '#d0021b', 'KC template separate, with letterhead');
   r = await admin('GET', '/api/template/letterhead', null, true); ok(r.status === 200 && /image/.test(r.headers.get('content-type')), 'KC letterhead served');
   r = await beta('GET', '/api/template/letterhead', null, true); ok(r.status === 404, 'beta has no letterhead');
