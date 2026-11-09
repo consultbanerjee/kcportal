@@ -20,8 +20,10 @@ function client() { let cookie = ''; return async (method, url, body) => { const
   const past = new Date(Date.now() - 10 * 86400000).toISOString().slice(0, 10);
   let r = await admin('POST', '/api/invoices', { client_id: cid, inv_date: past, due_date: past, items: [{ description: 'Fee', qty: 1, rate: 10000 }] }); const inv = r.j.id; await admin('POST', `/api/invoices/${inv}/issue`);
   r = await admin('GET', '/api/reminders'); ok(r.j.on === false && r.j.wa_ready && r.j.email_ready && r.j.link_ready && r.j.every === 7, 'defaults and readiness');
-  r = await admin('PUT', '/api/reminders', { on: true, first: 3, every: 7, max: 2, wa: true, email: true }); ok(r.s === 200, 'saved');
+  r = await admin('PUT', '/api/reminders', { on: true, since: '2000-01-01', first: 3, every: 7, max: 2, wa: true, email: true }); ok(r.s === 200, 'saved');
   r = await admin('GET', '/api/reminders'); ok(r.j.on && r.j.first === 3 && r.j.pending === 1, 'one invoice is due a reminder');
+  r = await admin('PUT', '/api/reminders', { on: true, since: '2999-01-01', first: 3, every: 7, max: 2, wa: true, email: true }); r = await admin('GET', '/api/reminders'); ok(r.j.pending === 0, 'older invoices are not chased');
+  await admin('PUT', '/api/reminders', { on: true, since: '2000-01-01', first: 3, every: 7, max: 2, wa: true, email: true });
   r = await admin('POST', '/api/reminders/run'); ok(r.j.invoices === 1 && r.j.messages === 2, 'sent on both channels: ' + JSON.stringify(r.j));
   const wb = was[was.length - 1]; ok(wb.template.name === 'kc_payment_link' && wb.template.components[0].parameters[3].text === 'https://portal.kclegal.us/#/pay-us?firm=' + db.prepare('SELECT slug FROM tenants WHERE id=?').get(t).slug + '&amt=10000.00&note=' + encodeURIComponent(db.prepare('SELECT inv_no n FROM invoices WHERE id=?').get(inv).n), 'WhatsApp carries exact-amount pay link');
   const ml = mails[mails.length - 1]; ok(ml.to === 'sita@example.com' && /pay-us\?firm=/.test(ml.text) && /10,000.00/.test(ml.subject), 'e-mail carries link and amount');
@@ -30,7 +32,7 @@ function client() { let cookie = ''; return async (method, url, body) => { const
   r = await admin('POST', '/api/reminders/run'); ok(r.j.invoices === 1, 'repeats after the interval');
   db.prepare("UPDATE reminder_log SET created_at=datetime('now','-20 days') WHERE id<=2").run(); db.prepare("UPDATE reminder_log SET created_at=datetime('now','-9 days') WHERE id>2").run();
   r = await admin('POST', '/api/reminders/run'); ok(r.j.invoices === 0, 'stops at the maximum (2)');
-  await admin('PUT', `/api/clients/${cid}/access`, { no_reminders: true }); await admin('PUT', '/api/reminders', { on: true, first: 3, every: 7, max: 9, wa: true, email: true });
+  await admin('PUT', `/api/clients/${cid}/access`, { no_reminders: true }); await admin('PUT', '/api/reminders', { on: true, since: '2000-01-01', first: 3, every: 7, max: 9, wa: true, email: true });
   db.prepare("UPDATE reminder_log SET created_at=datetime('now','-30 days')").run(); r = await admin('POST', '/api/reminders/run'); ok(r.j.invoices === 0, 'client switched off is skipped');
   await admin('PUT', `/api/clients/${cid}/access`, { no_reminders: false });
   r = await admin('POST', `/api/invoices/${inv}/remind`); ok(r.s === 200 && r.j.sent.length === 2, 'manual reminder');

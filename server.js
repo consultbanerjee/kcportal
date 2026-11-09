@@ -104,6 +104,7 @@ require('./routes/files')(app);
 
 app.get('/chat.js', (req, res, next) => { res.set('Cross-Origin-Resource-Policy', 'cross-origin'); res.set('Cache-Control', 'public, max-age=300'); next(); });
 app.use('/api', (req, res) => res.status(404).json({ error: 'Not found.' }));
+app.get('/privacy', (req, res) => res.sendFile(path.join(__dirname, 'public', 'privacy.html')));
 app.use(express.static(path.join(__dirname, 'public'), { maxAge: '1h', index: 'index.html' }));
 app.use((err, req, res, _next) => {
   if (err.code === 'LIMIT_FILE_SIZE') return res.status(400).json({ error: 'File is larger than 25 MB.' });

@@ -9,7 +9,7 @@ const S = (t, k, d = '') => AI.getS(t, k, d);
 const today = () => new Date().toISOString().slice(0, 10);
 const inrStr = (p) => 'Rs. ' + (p / 100).toLocaleString('en-IN', { minimumFractionDigits: 2, maximumFractionDigits: 2 });
 const base = () => process.env.PUBLIC_URL || 'http://localhost:' + (process.env.PORT || 3000);
-const cfg = (t) => ({ on: S(t, 'rem_on') === '1', first: Math.max(0, L.int(S(t, 'rem_first', '0'), 0)), every: Math.max(1, L.int(S(t, 'rem_every', '7'), 7)), max: Math.max(1, Math.min(30, L.int(S(t, 'rem_max', '4'), 4))), wa: S(t, 'rem_wa', '1') === '1', email: S(t, 'rem_email', '1') === '1' });
+const cfg = (t) => ({ on: S(t, 'rem_on') === '1', first: Math.max(0, L.int(S(t, 'rem_first', '0'), 0)), every: Math.max(1, L.int(S(t, 'rem_every', '7'), 7)), max: Math.max(1, Math.min(30, L.int(S(t, 'rem_max', '4'), 4))), since: S(t, 'rem_since', ''), wa: S(t, 'rem_wa', '1') === '1', email: S(t, 'rem_email', '1') === '1' });
 const daysBetween = (a, b) => Math.round((new Date(b + 'T00:00:00Z') - new Date(a + 'T00:00:00Z')) / 86400000);
 
 function payLink(t, inv, outPaise) {
@@ -40,6 +40,7 @@ function due(t, now = today()) {
   const c = cfg(t), rows = db.prepare("SELECT i.* FROM invoices i JOIN clients c ON c.id=i.client_id WHERE i.tenant_id=? AND i.status IN ('sent','part_paid') AND COALESCE(c.no_reminders,0)=0 AND COALESCE(c.portal_blocked,0)=0").all(t), out = [];
   for (const inv of rows) {
     if (outstanding(inv) <= 0) continue;
+    if (c.since && String(inv.inv_date || '') < c.since) continue; // older invoices (e.g. imported) are never chased
     if (daysBetween(inv.due_date || inv.inv_date, now) < c.first) continue;
     const sent = db.prepare("SELECT COUNT(DISTINCT date(created_at)) n, MAX(date(created_at)) last FROM reminder_log WHERE tenant_id=? AND invoice_id=? AND status='sent' AND manual=0").get(t, inv.id);
     if (sent.n >= c.max || (sent.last && daysBetween(sent.last, now) < c.every)) continue;
@@ -67,7 +68,8 @@ module.exports = (app) => {
   });
   app.put('/api/reminders', adm, (req, res) => {
     const t = T(req), b = req.body;
-    AI.setS(t, 'rem_on', b.on ? '1' : '0'); AI.setS(t, 'rem_first', String(Math.max(0, Math.min(365, L.int(b.first, 0))))); AI.setS(t, 'rem_every', String(Math.max(1, Math.min(180, L.int(b.every, 7)))));
+    const was = S(t, 'rem_since', ''), ds = /^\d{4}-\d{2}-\d{2}$/.test(String(b.since || '')) ? b.since : ((b.on && S(t, 'rem_on') !== '1') || !was ? today() : was);
+    AI.setS(t, 'rem_since', ds); AI.setS(t, 'rem_on', b.on ? '1' : '0'); AI.setS(t, 'rem_first', String(Math.max(0, Math.min(365, L.int(b.first, 0))))); AI.setS(t, 'rem_every', String(Math.max(1, Math.min(180, L.int(b.every, 7)))));
     AI.setS(t, 'rem_max', String(Math.max(1, Math.min(30, L.int(b.max, 4))))); AI.setS(t, 'rem_wa', b.wa ? '1' : '0'); AI.setS(t, 'rem_email', b.email ? '1' : '0');
     audit(t, req.user.id, 'reminders_settings', 'settings', 0, b.on ? 'on' : 'off', L.ip(req)); res.json({ ok: true });
   });
