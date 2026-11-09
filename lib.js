@@ -33,29 +33,41 @@ function loadUser(req, _res, next) {
   if (token) {
     const row = db.prepare(`SELECT u.*, s.expires_at FROM sessions s JOIN users u ON u.id=s.user_id JOIN tenants t ON t.id=u.tenant_id
       WHERE s.token=? AND u.active=1 AND t.active=1`).get(token);
-    if (row && row.expires_at > nowIso()) req.user = row;
+    if (row && row.expires_at > nowIso()) {
+      req.user = row;
+      if (row.role === 'client' && portalClosed(row)) { req.user = null; req.portalBlocked = true; }
+    }
   }
   next();
 }
+// The office can close the client portal for the whole firm, or for one client.
+const CLOSED_MSG = 'Client portal access has been switched off by the office. Please contact the office.';
+function portalClosed(u) {
+  const f = db.prepare("SELECT value FROM firm_settings WHERE tenant_id=? AND key='client_portal'").get(u.tenant_id);
+  if (f && f.value === '0') return true;
+  const c = db.prepare('SELECT portal_blocked FROM clients WHERE id=? AND tenant_id=?').get(u.client_id, u.tenant_id);
+  return !!(c && c.portal_blocked);
+}
+const unauth = (req, res) => (req.portalBlocked ? res.status(403).json({ error: CLOSED_MSG, blocked: true }) : res.status(401).json({ error: 'Please sign in.' }));
 
 function requireLogin(req, res, next) {
-  if (!req.user) return res.status(401).json({ error: 'Please sign in.' });
+  if (!req.user) return unauth(req, res);
   next();
 }
 const need = (...roles) => (req, res, next) => {
-  if (!req.user) return res.status(401).json({ error: 'Please sign in.' });
+  if (!req.user) return unauth(req, res);
   if (!roles.includes(req.user.role)) return res.status(403).json({ error: 'You do not have access to this.' });
   next();
 };
 const office = (req, res, next) => {
-  if (!req.user) return res.status(401).json({ error: 'Please sign in.' });
+  if (!req.user) return unauth(req, res);
   if (!OFFICE_ROLES.includes(req.user.role)) return res.status(403).json({ error: 'Office access only.' });
   next();
 };
 
 // Block cross-site form posts: every state-changing API call must carry this header (browsers will not add it cross-site without CORS).
 function csrfGuard(req, res, next) {
-  if (['POST', 'PUT', 'PATCH', 'DELETE'].includes(req.method) && req.path.startsWith('/api/') && req.path !== '/api/payments/webhook') {
+  if (['POST', 'PUT', 'PATCH', 'DELETE'].includes(req.method) && req.path.startsWith('/api/') && req.path !== '/api/payments/webhook' && !req.path.startsWith('/api/whatsapp/webhook/')) {
     if (req.headers['x-requested-with'] !== 'kcportal') return res.status(403).json({ error: 'Blocked request.' });
   }
   next();
@@ -87,9 +99,9 @@ const storage = {
   },
 };
 
-const ALLOWED_EXT = new Set(['.pdf', '.doc', '.docx', '.xls', '.xlsx', '.csv', '.txt', '.jpg', '.jpeg', '.png', '.zip']);
+const ALLOWED_EXT = new Set(['.pdf', '.doc', '.docx', '.xls', '.xlsx', '.csv', '.txt', '.rtf', '.odt', '.ods', '.ppt', '.pptx', '.jpg', '.jpeg', '.png', '.gif', '.webp', '.tif', '.tiff', '.heic', '.zip', '.eml', '.msg', '.mp3', '.m4a', '.wav', '.mp4']);
 
 module.exports = {
   db, audit, nextNumber, rand, nowIso, addDays, ip, hashPassword, checkPassword, passwordProblem, createSession,
-  loadUser, defaultFirm, firmBySlug, requireLogin, need, office, csrfGuard, str, int, paise, isDate, must, storage, ALLOWED_EXT, OFFICE_ROLES,
+  portalClosed, CLOSED_MSG, loadUser, defaultFirm, firmBySlug, requireLogin, need, office, csrfGuard, str, int, paise, isDate, must, storage, ALLOWED_EXT, OFFICE_ROLES,
 };

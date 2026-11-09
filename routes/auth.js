@@ -24,6 +24,7 @@ module.exports = (app, limiter) => {
       }
       return fail();
     }
+    if (u.role === 'client' && L.portalClosed(u)) { audit(u.tenant_id, u.id, 'login_refused', 'user', u.id, 'portal closed', L.ip(req)); return res.status(403).json({ error: L.CLOSED_MSG, blocked: true }); }
     const t = { id: u.tenant_id };
     db.prepare('UPDATE users SET failed_logins=0, locked_until=NULL WHERE id=?').run(u.id);
     const token = L.createSession(u.id);
@@ -34,7 +35,7 @@ module.exports = (app, limiter) => {
 
   app.post('/api/logout', (req, res) => {
     const token = req.cookies && req.cookies.kc_session;
-    if (token) db.prepare('DELETE FROM sessions WHERE token=?').run(token);
+    if (token) { if (req.user && req.user.role === 'client') audit(req.user.tenant_id, req.user.id, 'logout', 'user', req.user.id, null, L.ip(req)); db.prepare('DELETE FROM sessions WHERE token=?').run(token); }
     res.clearCookie('kc_session', { path: '/' });
     res.json({ ok: true });
   });

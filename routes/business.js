@@ -210,17 +210,20 @@ module.exports = (app, limiter) => {
   });
 
   // Look up a booking by its payment reference (public — reference is the secret)
-  app.get('/api/public/booking/:ref', (req, res) => {
+  app.get('/api/public/booking/:ref', async (req, res) => {
     expireHolds();
-    const a = db.prepare(`SELECT a.status,a.start_at,a.end_at,a.fee_paise,a.pay_ref,a.meet_link,ct.name AS type_name,u.name AS advocate FROM appointments a
+    const a = db.prepare(`SELECT a.status,a.start_at,a.end_at,a.fee_paise,a.pay_ref,a.pay_claim,a.tenant_id,a.meet_link,ct.name AS type_name,u.name AS advocate FROM appointments a
       JOIN consult_types ct ON ct.id=a.consult_type_id JOIN users u ON u.id=a.advocate_id WHERE a.pay_ref=?`).get(L.str(req.params.ref, 30));
     if (!a) return res.status(404).json({ error: 'Booking not found.' });
     if (a.status !== 'confirmed') delete a.meet_link;
+    const U = require('./upi'); a.upi_link = U.link(a.tenant_id, a.fee_paise, a.pay_ref); a.upi_id = U.cfg(a.tenant_id).vpa; a.claimed = !!a.pay_claim; delete a.pay_claim; delete a.tenant_id;
+    if (a.upi_link && a.status === 'awaiting_payment') a.upi_qr = 'data:image/svg+xml;utf8,' + encodeURIComponent(await require('qrcode').toString(a.upi_link, { type: 'svg', margin: 1, width: 220 }));
     res.json(a);
   });
 
   function confirmAppointment(a, mode, reference, userId) {
-    const meet = 'https://meet.jit.si/KCLEGAL-' + L.rand(8);
+    const Meet = require('./meet'), Drv = require('./drive'), viaGoogle = Drv.canMeet(a.tenant_id);
+    const meet = viaGoogle ? null : 'https://meet.jit.si/KCLEGAL-' + L.rand(8); // with Google connected, the Meet link is created right after (below)
     db.transaction(() => {
       let clientId = a.client_id;
       if (!clientId) {
@@ -234,6 +237,15 @@ module.exports = (app, limiter) => {
       db.prepare("UPDATE appointments SET status='confirmed', client_id=?, meet_link=?, hold_until=NULL WHERE id=?").run(clientId, meet, a.id);
       if (a.lead_id) db.prepare("UPDATE leads SET client_id=?, stage='booked' WHERE id=?").run(clientId, a.lead_id);
     })();
+    // Google Meet link first (if connected), then the WhatsApp confirmation (if the firm switched that on)
+    (viaGoogle ? Meet.createFor(a.id) : Promise.resolve()).catch((e) => console.error('meet:', e.message)).then(async () => {
+      try {
+        const WA = require('./whatsapp'), AIc = require('../aicore'), x = db.prepare('SELECT * FROM appointments WHERE id=?').get(a.id);
+        if (!x.client_id || !WA.configured(x.tenant_id) || AIc.getS(x.tenant_id, 'wa_auto_booking') !== '1') return;
+        const when = new Date(x.start_at).toLocaleString('en-IN', { timeZone: 'Asia/Kolkata', dateStyle: 'medium', timeStyle: 'short' }) + ' IST';
+        await WA.sendToClient(x.tenant_id, x.client_id, { template: 'kc_appointment_confirmed', vars: [x.name, when, x.meet_link || '', db.prepare('SELECT name FROM tenants WHERE id=?').get(x.tenant_id).name] }, null);
+      } catch (e) { console.error('whatsapp (booking):', e.message); }
+    });
   }
 
   // Gateway webhook placeholder: replace the shared-secret check with Razorpay signature verification when the gateway is live.
@@ -253,9 +265,9 @@ module.exports = (app, limiter) => {
       return res.json(db.prepare(`SELECT a.id,a.start_at,a.end_at,a.status,a.fee_paise,a.pay_ref,CASE WHEN a.status='confirmed' THEN a.meet_link END AS meet_link,ct.name AS type_name
         FROM appointments a JOIN consult_types ct ON ct.id=a.consult_type_id WHERE a.client_id=? ORDER BY a.start_at DESC`).all(req.user.client_id));
     }
-    res.json(db.prepare(`SELECT a.*, ct.name AS type_name, u.name AS advocate FROM appointments a JOIN consult_types ct ON ct.id=a.consult_type_id
+    res.json(require('./meet').filterLinks(req.user, db.prepare(`SELECT a.*, ct.name AS type_name, u.name AS advocate FROM appointments a JOIN consult_types ct ON ct.id=a.consult_type_id
       JOIN users u ON u.id=a.advocate_id WHERE a.tenant_id=? AND a.start_at>=? AND a.status<>'expired' ORDER BY a.start_at LIMIT 200`)
-      .all(T(req), new Date(Date.now() - 7 * 86400000).toISOString()));
+      .all(T(req), new Date(Date.now() - 7 * 86400000).toISOString())));
   });
   app.post('/api/appointments/:id/confirm', L.need('admin', 'advocate', 'staff', 'accounts'), (req, res) => {
     const a = db.prepare('SELECT * FROM appointments WHERE id=? AND tenant_id=?').get(req.params.id, T(req));
@@ -271,16 +283,17 @@ module.exports = (app, limiter) => {
     const a = db.prepare('SELECT * FROM appointments WHERE id=? AND tenant_id=?').get(req.params.id, T(req));
     if (!a || (isClient(req.user) && a.client_id !== req.user.client_id)) return res.status(404).json({ error: 'Not found.' });
     db.prepare("UPDATE appointments SET status='cancelled' WHERE id=?").run(a.id);
+    require('./meet').cancelFor(a).catch(() => {});
     res.json({ ok: true });
   });
 
   // =============== Billing: invoices ===============
   app.get('/api/invoices', L.requireLogin, (req, res) => {
-    const cli = isClient(req.user);
+    const cli = isClient(req.user), fcl = L.int(req.query.client_id);
     const rows = db.prepare(`SELECT i.*, c.name AS client_name,
       COALESCE((SELECT SUM(amount_paise) FROM payments p WHERE p.invoice_id=i.id),0) AS paid_paise
-      FROM invoices i JOIN clients c ON c.id=i.client_id WHERE i.tenant_id=? ${cli ? "AND i.client_id=? AND i.status NOT IN ('draft','cancelled')" : ''}
-      ORDER BY i.id DESC LIMIT 300`).all(...(cli ? [T(req), req.user.client_id] : [T(req)]));
+      FROM invoices i JOIN clients c ON c.id=i.client_id WHERE i.tenant_id=? ${cli ? "AND i.client_id=? AND i.status NOT IN ('draft','cancelled')" : fcl ? 'AND i.client_id=?' : ''}
+      ORDER BY i.id DESC LIMIT 300`).all(...(cli ? [T(req), req.user.client_id] : fcl ? [T(req), fcl] : [T(req)]));
     if (!cli && req.user.role === 'telecaller') return res.status(403).json({ error: 'Not permitted.' });
     res.json(rows);
   });
@@ -301,8 +314,19 @@ module.exports = (app, limiter) => {
     if (!L.must(res, client && items.length, 'Choose a client and add at least one line with an amount.')) return;
     const date = L.isDate(req.body.inv_date) ? req.body.inv_date : todayStr();
     const total = items.reduce((s, x) => s + Math.round(x.q * x.r), 0);
-    const { n, year } = nextNumber(T(req), 'inv');
-    const no = `${prefix(T(req))}/INV/${pad(n)}/${year}`;
+    // one running series with no year in it: KC/INV/000101, KC/INV/000102 ... (first number is the firm's 'inv_start' setting, default 101)
+    const no = (() => {
+      const t = T(req), AIc = require('../aicore');
+      return db.transaction(() => {
+        db.prepare("INSERT OR IGNORE INTO counters(tenant_id,kind,year,n) VALUES (?,'invseq',0,?)").run(t, Math.max(0, (parseInt(AIc.getS(t, 'inv_start'), 10) || 101) - 1));
+        for (;;) {
+          db.prepare("UPDATE counters SET n=n+1 WHERE tenant_id=? AND kind='invseq' AND year=0").run(t);
+          const n = db.prepare("SELECT n FROM counters WHERE tenant_id=? AND kind='invseq' AND year=0").get(t).n;
+          const cand = `${prefix(t)}/INV/${pad(n, 6)}`;
+          if (!db.prepare('SELECT 1 FROM invoices WHERE tenant_id=? AND inv_no=?').get(t, cand)) return cand;
+        }
+      })();
+    })();
     const id = db.transaction(() => {
       const r = db.prepare('INSERT INTO invoices(tenant_id,client_id,matter_id,inv_no,inv_date,due_date,notes,total_paise) VALUES (?,?,?,?,?,?,?,?)')
         .run(T(req), client.id, L.int(req.body.matter_id), no, date, L.isDate(req.body.due_date) ? req.body.due_date : null, L.str(req.body.notes, 800), total);
@@ -375,6 +399,7 @@ module.exports = (app, limiter) => {
   });
 
   // =============== Billing: payments & receipts ===============
+  app.locals.recordPayment = (req, d) => recordPayment(req, d);
   function recordPayment(req, d) {
     const { n, year } = nextNumber(T(req), 'rct');
     const rec = `${prefix(T(req))}/RCT/${pad(n)}/${year}`;
@@ -400,8 +425,9 @@ module.exports = (app, limiter) => {
       pay_date: L.isDate(req.body.pay_date) ? req.body.pay_date : todayStr(), reference: L.str(req.body.reference, 80), notes: L.str(req.body.notes, 300) }));
   });
   app.get('/api/payments', BILL, (req, res) => {
+    const fcl = L.int(req.query.client_id);
     res.json(db.prepare(`SELECT p.*, c.name AS client_name, i.inv_no FROM payments p JOIN clients c ON c.id=p.client_id LEFT JOIN invoices i ON i.id=p.invoice_id
-      WHERE p.tenant_id=? ORDER BY p.id DESC LIMIT 300`).all(T(req)));
+      WHERE p.tenant_id=? ${fcl ? 'AND p.client_id=?' : ''} ORDER BY p.id DESC LIMIT 300`).all(...(fcl ? [T(req), fcl] : [T(req)])));
   });
   app.get('/api/payments/:id', L.requireLogin, (req, res) => {
     const p = db.prepare(`SELECT p.*, c.name AS client_name, i.inv_no FROM payments p JOIN clients c ON c.id=p.client_id LEFT JOIN invoices i ON i.id=p.invoice_id
@@ -418,6 +444,12 @@ module.exports = (app, limiter) => {
 
   // =============== Cash book ===============
   app.get('/api/cash', BILL, (req, res) => {
+    const fcl = L.int(req.query.client_id);
+    if (fcl) {   // one client's cash entries (all dates) with a running balance
+      const rows = db.prepare('SELECT * FROM cash_entries WHERE tenant_id=? AND client_id=? ORDER BY entry_date,id').all(T(req), fcl);
+      let bal = 0; rows.forEach((r) => { bal += r.kind === 'in' ? r.amount_paise : -r.amount_paise; r.balance_paise = bal; });
+      return res.json({ opening_paise: 0, closing_paise: bal, rows });
+    }
     const from = L.isDate(req.query.from) ? req.query.from : '0000-01-01', to = L.isDate(req.query.to) ? req.query.to : '9999-12-31';
     const sum = (k, where, ...a) => db.prepare(`SELECT COALESCE(SUM(amount_paise),0) v FROM cash_entries WHERE tenant_id=? AND kind=? AND ${where}`).get(T(req), k, ...a).v;
     const opening = sum('in', 'entry_date<?', from) - sum('out', 'entry_date<?', from);
@@ -434,16 +466,7 @@ module.exports = (app, limiter) => {
   });
 
   // =============== Bank statement import + reconciliation ===============
-  function suggest(tenantId, t) {
-    if (!t.credit_paise) return;
-    const narr = (t.narration || '').toUpperCase();
-    const clients = db.prepare('SELECT id,name,phone FROM clients WHERE tenant_id=?').all(tenantId);
-    const hits = clients.filter((c) => {
-      const words = c.name.toUpperCase().split(/\s+/).filter((w) => w.length >= 4 && !['MRS', 'MESSRS', 'LTD', 'PVT', 'LIMITED', 'PRIVATE'].includes(w));
-      return (words.length && words.every((w) => narr.includes(w))) || (c.phone && c.phone.replace(/\D/g, '').length >= 10 && narr.includes(c.phone.replace(/\D/g, '').slice(-10)));
-    });
-    if (hits.length === 1) db.prepare("UPDATE bank_txns SET matched_client_id=?, status='suggested' WHERE id=?").run(hits[0].id, t.id);
-  }
+  function suggest(tenantId, t) { require('./bankstmt').localMatch(tenantId, t); }
   app.post('/api/bank/import', BILL, (req, res) => {
     const rows = parseCsv(String(req.body.csv || ''));
     if (!L.must(res, rows.length > 1, 'The file looks empty. Upload the bank statement as CSV.')) return;
@@ -458,11 +481,11 @@ module.exports = (app, limiter) => {
     db.transaction(() => {
       for (const r of rows.slice(hi + 1)) {
         const d = parseDate(r[c.d]); const dr = c.dr >= 0 ? money(r[c.dr]) : 0, cr = c.cr >= 0 ? money(r[c.cr]) : 0;
-        if (!d || (!dr && !cr)) { bad++; continue; }
+        if (!d || (!dr && !cr)) { bad++; db.prepare('INSERT INTO bank_import_errors(tenant_id,raw,reason) VALUES (?,?,?)').run(T(req), r.join(' | ').slice(0, 400), !d ? 'Date not understood' : 'No debit or credit amount'); continue; }
         const narr = L.str(c.n >= 0 ? r[c.n] : '', 300), ref = L.str(c.ref >= 0 ? r[c.ref] : '', 80);
         if (find.get(T(req), d, narr, ref, dr, cr)) { skipped++; continue; }
         const x = ins.run(T(req), d, narr, ref, dr, cr, c.bal >= 0 && r[c.bal] ? money(r[c.bal]) : null);
-        suggest(T(req), { id: x.lastInsertRowid, narration: narr, credit_paise: cr });
+        suggest(T(req), { id: x.lastInsertRowid, narration: narr, credit_paise: cr, debit_paise: dr });
         added++;
       }
     })();
@@ -521,6 +544,9 @@ module.exports = (app, limiter) => {
     const expenses = db.prepare("SELECT head, SUM(amount_paise) AS paise FROM cash_entries WHERE tenant_id=? AND kind='out' AND entry_date>=? AND entry_date<=? GROUP BY head").all(t, from, to);
     const bankOut = one("SELECT COALESCE(SUM(debit_paise),0) v FROM bank_txns WHERE tenant_id=? AND status<>'ignored' AND txn_date>=? AND txn_date<=?", t, from, to);
     if (bankOut) expenses.push({ head: 'Bank payments (from statement)', paise: bankOut });
+    // client-page expenses paid some other way (not via cash book or bank statement) would otherwise be missed
+    db.prepare("SELECT head, SUM(amount_paise) AS paise FROM expenses WHERE tenant_id=? AND mode='other' AND exp_date>=? AND exp_date<=? GROUP BY head").all(t, from, to)
+      .forEach((x) => expenses.push({ head: 'Client expense — ' + x.head, paise: x.paise }));
     const totalIncome = income.reduce((s, x) => s + x.paise, 0), totalExp = expenses.reduce((s, x) => s + x.paise, 0);
     const cashBal = one("SELECT COALESCE(SUM(CASE kind WHEN 'in' THEN amount_paise ELSE -amount_paise END),0) v FROM cash_entries WHERE tenant_id=? AND entry_date<=?", t, to);
     const lastBank = db.prepare('SELECT balance_paise FROM bank_txns WHERE tenant_id=? AND balance_paise IS NOT NULL AND txn_date<=? ORDER BY txn_date DESC, id DESC LIMIT 1').get(t, to);

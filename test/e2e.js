@@ -83,8 +83,8 @@ async function setup(c, invite, pw) { const tok = invite.split('/').pop(); retur
   r = await cl('GET', '/api/matters'); ok(r.j.length === 1 && r.j[0].id === mid, 'client sees only own matter');
   r = await cl('GET', '/api/matters/' + mid2); ok(r.s === 404, 'client cannot open other matter');
   r = await cl('GET', '/api/matters/' + mid); ok(r.j.documents.length === 1 && !r.j.notings && !r.j.opposite_party, 'client view hides internal data');
-  r = await cl('GET', `/api/documents/${did}/download`, null, true); ok(r.status === 200, 'client downloads visible doc');
-  r = await cl('GET', `/api/documents/${hidden}/download`, null, true); ok(r.status === 404, 'client cannot download hidden doc');
+  r = await cl('GET', `/api/fs/${did}/download`, null, true); ok(r.status === 200, 'client downloads visible doc');
+  r = await cl('GET', `/api/fs/${hidden}/download`, null, true); ok(r.status === 404, 'client cannot download hidden doc');
   r = await cl('GET', '/api/users'); ok(r.s === 403, 'client blocked from users');
   r = await cl('DELETE', '/api/documents/' + did); ok(r.s === 403, 'client cannot delete');
   r = await cl('PATCH', '/api/documents/' + did, { client_visible: 0 }); ok(r.s === 403, 'client cannot alter');
@@ -92,6 +92,81 @@ async function setup(c, invite, pw) { const tok = invite.split('/').pop(); retur
   r = await cl('POST', '/api/documents', fd4); ok(r.s === 200, 'client uploads to own matter');
   const fd5 = new FormData(); fd5.append('matter_id', mid2); fd5.append('file', new Blob(['x']), 'a.pdf');
   r = await cl('POST', '/api/documents', fd5); ok(r.s === 403, 'client cannot upload to other matter');
+
+
+  // ---- file explorer, firm vs client files, books ----
+  r = await staff('GET', `/api/fs/list?client_id=${cid}`); ok(r.s === 200 && r.j.items.some((x) => x.name === 'Drafts') && r.j.items.some((x) => x.name === 'Uploaded'), 'client folders seeded');
+  const root = r.j.items, cp = root.find((x) => x.name === 'Drafts').id;
+  r = await staff('GET', '/api/fs/list'); ok(r.s === 200 && r.j.items.some((x) => x.name === 'Templates'), 'firm folders seeded');
+  r = await staff('POST', '/api/fs/folder', { client_id: cid, parent: cp, name: 'Pleadings' }); ok(r.s === 200, 'create folder'); const pl = r.j.id;
+  r = await staff('POST', '/api/fs/folder', { client_id: cid, parent: cp, name: 'pleadings' }); ok(r.s === 409, 'duplicate folder name rejected');
+  const ufd = new FormData(); ufd.append('client_id', cid); ufd.append('parent', pl); ufd.append('files', new Blob(['plaint']), 'plaint.pdf');
+  r = await staff('POST', '/api/fs/upload', ufd); ok(r.s === 200, 'upload ' + JSON.stringify(r.j)); const fid = r.j.added[0].id;
+  r = await staff('PATCH', '/api/fs/' + fid, { client_id: cid, name: 'plaint-final.pdf' }); ok(r.s === 200, 'rename');
+  r = await staff('GET', `/api/fs/search?client_id=${cid}&q=plaint`); ok(r.s === 200 && r.j.length === 1, 'search');
+  r = await cl('GET', `/api/fs/${fid}/download`, null, true); ok(r.status === 404, 'client cannot see unshared file');
+  r = await staff('PATCH', '/api/fs/' + fid, { client_id: cid, shared: true }); ok(r.s === 200, 'share file');
+  r = await cl('GET', `/api/fs/${fid}/download`, null, true); ok(r.status === 200, 'client sees shared file');
+  // firm file moved to a client folder (and back out)
+  const ffd = new FormData(); ffd.append('files', new Blob(['precedent']), 'precedent.docx');
+  r = await staff('POST', '/api/fs/upload', ffd); ok(r.s === 200, 'firm upload'); const firmFile = r.j.added[0].id;
+  r = await staff('POST', '/api/fs/move', { ids: [firmFile], parent: cp, to_client: cid }); ok(r.s === 200 && r.j.moved.length === 1, 'move firm file into client folder');
+  r = await staff('GET', `/api/fs/list?client_id=${cid}&parent=${cp}`); ok(r.j.items.some((x) => x.name === 'precedent.docx' && !x.shared), 'moved file lands private');
+  r = await staff('POST', '/api/fs/move', { client_id: cid, ids: [firmFile], parent: null, to_client: 0 }); ok(r.s === 200, 'move client file back to firm files');
+  r = await staff('POST', '/api/fs/copy', { ids: [firmFile], parent: cp, to_client: cid }); ok(r.s === 200, 'copy firm file to client');
+  r = await staff('POST', '/api/fs/move', { client_id: cid, ids: [cp], parent: pl }); ok(r.s === 400, 'system folder cannot be moved');
+  r = await staff('POST', '/api/fs/trash', { client_id: cid, ids: [fid] }); ok(r.s === 200, 'trash');
+  r = await staff('GET', `/api/fs/bin?client_id=${cid}`); ok(r.j.items.length >= 1, 'in bin');
+  r = await staff('POST', '/api/fs/restore', { client_id: cid, ids: [fid] }); ok(r.s === 200, 'restore');
+  // client portal: inbox only
+  r = await cl('GET', '/api/fs/list'); ok(r.s === 200, 'client lists own files');
+  r = await cl('GET', '/api/fs/list'); const inbox = r.j.items.find((x) => x.name === 'Uploaded').id;
+  const cfd = new FormData(); cfd.append('parent', inbox); cfd.append('files', new Blob(['id']), 'pan.pdf');
+  r = await cl('POST', '/api/fs/upload', cfd); ok(r.s === 200, 'client uploads to inbox');
+  // expenses + accounts
+  r = await acct('POST', '/api/expenses', { client_id: cid, exp_date: '2026-11-01', head: 'Court fees', amount: 500, mode: 'cash', reimbursable: true }); ok(r.s === 200, 'expense add ' + JSON.stringify(r.j)); const ex = r.j.id;
+  r = await acct('GET', `/api/cash?client_id=${cid}`); ok(r.s === 200 && r.j.rows.some((x) => x.head === 'Court fees'), 'cash expense in cash book');
+  r = await acct('GET', `/api/clients/${cid}/accounts`); ok(r.s === 200 && Array.isArray(r.j.statement), 'client accounts');
+  r = await staff('GET', `/api/clients/${cid}/drafts`); ok(r.s === 200 && Array.isArray(r.j.letters), 'client drafts');
+  r = await cl('GET', `/api/clients/${cid}/accounts`); ok(r.s === 403, 'client blocked from accounts');
+  r = await acct('DELETE', '/api/expenses/' + ex); ok(r.s === 200, 'expense delete');
+
+
+  // ---- Shared folder, access switches, activity log ----
+  r = await cl('GET', '/api/fs/list'); const shFolder = r.j.items.find((x) => x.name === 'Shared'); ok(!!shFolder, 'client sees the Shared folder');
+  const sfd = new FormData(); sfd.append('client_id', cid); sfd.append('parent', shFolder.id); sfd.append('files', new Blob(['for client']), 'advice.pdf');
+  r = await staff('POST', '/api/fs/upload', sfd); ok(r.s === 200, 'office uploads into Shared'); const shf = r.j.added[0].id;
+  r = await cl('GET', `/api/fs/${shf}/download`, null, true); ok(r.status === 200, 'file in Shared is visible to the client without any extra step');
+  r = await cl('GET', '/api/fs/list?parent=' + shFolder.id); ok(r.j.items.some((x) => x.name === 'advice.pdf'), 'client lists Shared');
+  const ofd = new FormData(); ofd.append('client_id', cid); ofd.append('parent', cp); ofd.append('files', new Blob(['internal']), 'note.pdf');
+  r = await staff('POST', '/api/fs/upload', ofd); const priv = r.j.added[0].id;
+  r = await cl('GET', `/api/fs/${priv}/download`, null, true); ok(r.status === 404, 'file outside Shared stays private');
+  r = await staff('POST', '/api/fs/move', { client_id: cid, ids: [priv], parent: shFolder.id, to_client: cid }); r = await cl('GET', `/api/fs/${priv}/download`, null, true); ok(r.status === 200, 'moving into Shared shares it');
+  r = await staff('POST', '/api/fs/move', { client_id: cid, ids: [priv], parent: cp, to_client: cid }); r = await cl('GET', `/api/fs/${priv}/download`, null, true); ok(r.status === 404, 'moving out of Shared hides it again');
+  // sharing switch (one client)
+  r = await adv('PUT', `/api/clients/${cid}/access`, { share_blocked: true }); ok(r.s === 200, 'sharing switched off');
+  r = await cl('GET', `/api/fs/${shf}/download`, null, true); ok(r.status === 404, 'client cannot open shared files while sharing is off');
+  r = await cl('GET', '/api/fs/list?parent=' + shFolder.id); ok(r.j.share_blocked === true && r.j.items.length === 0, 'client list is empty while sharing is off');
+  r = await cl('GET', '/api/matters/' + mid); ok(r.s === 200 && r.j.documents.every((d) => d.by_client), 'matter documents hidden while sharing is off');
+  r = await staff('PUT', `/api/clients/${cid}/access`, { share_blocked: false }); ok(r.s === 403, 'staff cannot change access');
+  await adv('PUT', `/api/clients/${cid}/access`, { share_blocked: false }); r = await cl('GET', `/api/fs/${shf}/download`, null, true); ok(r.status === 200, 'sharing switched back on');
+  // full block (one client) — signed-in client is shut out at once, and cannot sign in again
+  r = await adv('PUT', `/api/clients/${cid}/access`, { portal_blocked: true }); ok(r.s === 200, 'portal blocked for client');
+  r = await cl('GET', '/api/matters'); ok(r.s === 403 && r.j.blocked, 'blocked client is refused');
+  const cl2 = client(); r = await cl2('POST', '/api/login', { email: 'ramesh@c.com', password: 'ClientPass123' }); ok(r.s === 403 && r.j.blocked, 'blocked client cannot sign in');
+  r = await staff('GET', '/api/matters'); ok(r.s === 200, 'office unaffected by a client block');
+  await adv('PUT', `/api/clients/${cid}/access`, { portal_blocked: false }); r = await cl2('POST', '/api/login', { email: 'ramesh@c.com', password: 'ClientPass123' }); ok(r.s === 200, 'client can sign in again');
+  // firm-wide switch
+  r = await admin('PUT', '/api/portal-access', { client_portal: false }); ok(r.s === 200 && r.j.client_portal === false, 'firm closes the client portal');
+  r = await cl2('GET', '/api/matters'); ok(r.s === 403, 'every client is refused');
+  r = await staff('GET', '/api/matters'); ok(r.s === 200, 'office still works');
+  r = await adv('PUT', '/api/portal-access', { client_portal: true }); ok(r.s === 403, 'only admin may use the firm switch');
+  await admin('PUT', '/api/portal-access', { client_portal: true }); r = await cl2('GET', '/api/matters'); ok(r.s === 200, 'firm reopens the client portal');
+  // activity log
+  await cl2('GET', '/api/fs/list'); await cl2('POST', '/api/messages', { body: 'Hello' }); await adv('GET', `/api/messages?client_id=${cid}`);
+  r = await adv('GET', `/api/clients/${cid}/activity`); ok(r.s === 200 && r.j.rows.some((x) => x.what === 'Signed in') && r.j.rows.some((x) => x.what === 'Sent a message') && r.j.rows.some((x) => /Downloaded/.test(x.what) && x.detail), 'activity log lists what the client did');
+  r = await cl2('GET', `/api/clients/${cid}/activity`); ok(r.s === 403, 'client cannot read the activity log');
+  r = await adv('GET', `/api/clients/${cid}/activity?from=2099-01-01`); ok(r.j.rows.length === 0, 'activity date filter');
 
   // letters
   r = await staff('POST', '/api/letters', { matter_id: mid, to_name: 'Bank Manager', subject: 'Notice', body: 'Dear Sir…', client_visible: true }); const lid = r.j.id;

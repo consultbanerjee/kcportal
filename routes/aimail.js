@@ -200,3 +200,6 @@ module.exports = (app) => {
 };
 module.exports.setMailer = setMailer; module.exports.startWorker = startWorker; module.exports.poll = poll; module.exports.sendDue = sendDue; module.exports.verify = (tid) => M().verify(conf(tid));
 module.exports.conf = conf;
+
+module.exports.mailReady = (tid) => sendReady(conf(tid));
+module.exports.sendMail = async (tid, m) => { const c = conf(tid); if (!sendReady(c)) throw new Error('E-mail sending is not set up (AI Control → mailbox).'); await M().send(c, m); };

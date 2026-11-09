@@ -84,6 +84,12 @@ CREATE TABLE IF NOT EXISTS messages (
   from_user INTEGER NOT NULL, to_user INTEGER, body TEXT NOT NULL, read_at TEXT,
   created_at TEXT DEFAULT CURRENT_TIMESTAMP);
 
+CREATE TABLE IF NOT EXISTS wa_messages (
+  id INTEGER PRIMARY KEY, tenant_id INTEGER NOT NULL, client_id INTEGER, phone TEXT, direction TEXT NOT NULL, kind TEXT NOT NULL DEFAULT 'text',
+  template TEXT, body TEXT, wa_id TEXT, status TEXT NOT NULL DEFAULT 'queued', error TEXT, created_by INTEGER, created_at TEXT DEFAULT CURRENT_TIMESTAMP);
+CREATE INDEX IF NOT EXISTS idx_wa_client ON wa_messages(tenant_id, client_id, id);
+CREATE INDEX IF NOT EXISTS idx_wa_waid ON wa_messages(wa_id);
+
 CREATE TABLE IF NOT EXISTS leads (
   id INTEGER PRIMARY KEY, tenant_id INTEGER NOT NULL, name TEXT NOT NULL, phone TEXT, email TEXT,
   source TEXT, issue TEXT, stage TEXT NOT NULL DEFAULT 'new', assigned_to INTEGER, callback_at TEXT,
@@ -140,6 +146,17 @@ CREATE TABLE IF NOT EXISTS bank_txns (
   ref TEXT, debit_paise INTEGER NOT NULL DEFAULT 0, credit_paise INTEGER NOT NULL DEFAULT 0,
   balance_paise INTEGER, matched_payment_id INTEGER, matched_client_id INTEGER,
   status TEXT NOT NULL DEFAULT 'unmatched', created_at TEXT DEFAULT CURRENT_TIMESTAMP);
+
+CREATE TABLE IF NOT EXISTS bank_imports (
+  id INTEGER PRIMARY KEY, tenant_id INTEGER NOT NULL, filename TEXT, source TEXT NOT NULL DEFAULT 'pdf',
+  status TEXT NOT NULL DEFAULT 'processing', pages_total INTEGER DEFAULT 0, pages_done INTEGER DEFAULT 0,
+  added INTEGER DEFAULT 0, duplicates INTEGER DEFAULT 0, message TEXT, created_by INTEGER, created_at TEXT DEFAULT CURRENT_TIMESTAMP);
+CREATE TABLE IF NOT EXISTS bank_import_errors (
+  id INTEGER PRIMARY KEY, tenant_id INTEGER NOT NULL, import_id INTEGER, raw TEXT, reason TEXT,
+  resolved INTEGER NOT NULL DEFAULT 0, created_at TEXT DEFAULT CURRENT_TIMESTAMP);
+CREATE TABLE IF NOT EXISTS bank_rules (
+  id INTEGER PRIMARY KEY, tenant_id INTEGER NOT NULL, alias TEXT NOT NULL, party_kind TEXT NOT NULL, party_id INTEGER, party_name TEXT, head TEXT,
+  created_at TEXT DEFAULT CURRENT_TIMESTAMP, UNIQUE(tenant_id, alias));
 
 CREATE TABLE IF NOT EXISTS judgments (
   id INTEGER PRIMARY KEY, tenant_id INTEGER NOT NULL, court TEXT NOT NULL, case_no TEXT, title TEXT NOT NULL,
@@ -220,5 +237,66 @@ function audit(tenantId, userId, action, entity, entityId, detail, ip) {
   db.prepare('INSERT INTO audit_log(tenant_id,user_id,action,entity,entity_id,detail,ip) VALUES (?,?,?,?,?,?,?)')
     .run(tenantId || null, userId || null, action, entity || null, entityId || null, detail ? String(detail).slice(0, 500) : null, ip || null);
 }
+
+
+// ---------- Files (Explorer), Drive sync queue, client expenses ----------
+db.exec(`
+CREATE TABLE IF NOT EXISTS fs_nodes (
+  id INTEGER PRIMARY KEY, tenant_id INTEGER NOT NULL, client_id INTEGER, parent_id INTEGER,
+  kind TEXT NOT NULL CHECK(kind IN ('folder','file')), name TEXT NOT NULL, mime TEXT, size INTEGER NOT NULL DEFAULT 0,
+  storage TEXT, storage_ref TEXT, md5 TEXT, sys TEXT, client_visible INTEGER NOT NULL DEFAULT 0,
+  created_by INTEGER, by_client INTEGER NOT NULL DEFAULT 0,
+  created_at TEXT DEFAULT CURRENT_TIMESTAMP, updated_at TEXT DEFAULT CURRENT_TIMESTAMP,
+  deleted_at TEXT, deleted_by INTEGER, del_root INTEGER,
+  drive_id TEXT, drive_name TEXT, drive_parent TEXT, drive_trashed INTEGER NOT NULL DEFAULT 0,
+  dirty INTEGER NOT NULL DEFAULT 1, sync_error TEXT, sync_tries INTEGER NOT NULL DEFAULT 0);
+CREATE INDEX IF NOT EXISTS idx_fs_parent ON fs_nodes(tenant_id, client_id, parent_id);
+CREATE INDEX IF NOT EXISTS idx_fs_dirty ON fs_nodes(tenant_id, dirty);
+CREATE TABLE IF NOT EXISTS drive_folders (tenant_id INTEGER NOT NULL, key TEXT NOT NULL, drive_id TEXT NOT NULL, PRIMARY KEY(tenant_id, key));
+CREATE TABLE IF NOT EXISTS drive_tombstones (id INTEGER PRIMARY KEY, tenant_id INTEGER NOT NULL, drive_id TEXT NOT NULL);
+CREATE TABLE IF NOT EXISTS reminder_log (
+  id INTEGER PRIMARY KEY, tenant_id INTEGER NOT NULL, invoice_id INTEGER NOT NULL, client_id INTEGER, channel TEXT NOT NULL,
+  status TEXT NOT NULL, error TEXT, manual INTEGER NOT NULL DEFAULT 0, created_at TEXT DEFAULT CURRENT_TIMESTAMP);
+CREATE INDEX IF NOT EXISTS idx_rem_inv ON reminder_log(tenant_id, invoice_id, status);
+
+CREATE TABLE IF NOT EXISTS payees (
+  id INTEGER PRIMARY KEY, tenant_id INTEGER NOT NULL, name TEXT NOT NULL,
+  kind TEXT NOT NULL DEFAULT 'other' CHECK(kind IN ('advocate','staff','client','other')),
+  user_id INTEGER, client_id INTEGER, phone TEXT, upi_id TEXT, bank_details TEXT, notes TEXT,
+  active INTEGER NOT NULL DEFAULT 1, created_at TEXT DEFAULT CURRENT_TIMESTAMP);
+CREATE TABLE IF NOT EXISTS pay_schedules (
+  id INTEGER PRIMARY KEY, tenant_id INTEGER NOT NULL, payee_id INTEGER NOT NULL REFERENCES payees(id),
+  head TEXT NOT NULL, amount_paise INTEGER NOT NULL, frequency TEXT NOT NULL DEFAULT 'monthly' CHECK(frequency IN ('once','weekly','monthly','quarterly','yearly')),
+  next_due TEXT NOT NULL, end_date TEXT, mode TEXT NOT NULL DEFAULT 'bank', narration TEXT,
+  active INTEGER NOT NULL DEFAULT 1, created_by INTEGER, created_at TEXT DEFAULT CURRENT_TIMESTAMP);
+CREATE TABLE IF NOT EXISTS payee_payments (
+  id INTEGER PRIMARY KEY, tenant_id INTEGER NOT NULL, schedule_id INTEGER, payee_id INTEGER NOT NULL REFERENCES payees(id),
+  head TEXT NOT NULL, amount_paise INTEGER NOT NULL, due_date TEXT NOT NULL,
+  status TEXT NOT NULL DEFAULT 'due' CHECK(status IN ('due','paid','skipped')),
+  paid_on TEXT, mode TEXT, reference TEXT, cash_entry_id INTEGER, narration TEXT, paid_by INTEGER,
+  created_at TEXT DEFAULT CURRENT_TIMESTAMP, UNIQUE(schedule_id, due_date));
+CREATE INDEX IF NOT EXISTS idx_pp_due ON payee_payments(tenant_id, status, due_date);
+
+CREATE TABLE IF NOT EXISTS expenses (
+  id INTEGER PRIMARY KEY, tenant_id INTEGER NOT NULL, client_id INTEGER NOT NULL, matter_id INTEGER,
+  exp_date TEXT NOT NULL, head TEXT NOT NULL, amount_paise INTEGER NOT NULL,
+  mode TEXT NOT NULL DEFAULT 'cash' CHECK(mode IN ('cash','bank','other')), reimbursable INTEGER NOT NULL DEFAULT 0,
+  narration TEXT, cash_entry_id INTEGER, created_by INTEGER, created_at TEXT DEFAULT CURRENT_TIMESTAMP);
+CREATE INDEX IF NOT EXISTS idx_exp_client ON expenses(tenant_id, client_id);
+`);
+const hasCol = (t, c) => db.prepare(`PRAGMA table_info(${t})`).all().some((x) => x.name === c);
+if (!hasCol('ai_drafts', 'client_id')) db.exec('ALTER TABLE ai_drafts ADD COLUMN client_id INTEGER');
+if (!hasCol('appointments', 'pay_claim')) db.exec('ALTER TABLE appointments ADD COLUMN pay_claim TEXT');
+for (const [c, d] of [['party_kind', 'TEXT'], ['party_id', 'INTEGER'], ['party_name', 'TEXT'], ['head', 'TEXT'], ['remark', 'TEXT'], ['import_id', 'INTEGER'], ['source', 'TEXT'], ['conf', 'REAL'], ['by_ai', 'INTEGER DEFAULT 0']]) if (!hasCol('bank_txns', c)) db.exec(`ALTER TABLE bank_txns ADD COLUMN ${c} ${d}`);
+for (const [c, d] of [['bank_txn_id', 'INTEGER'], ['bank_created', 'INTEGER DEFAULT 0']]) if (!hasCol('payee_payments', c)) db.exec(`ALTER TABLE payee_payments ADD COLUMN ${c} ${d}`);
+if (!hasCol('clients', 'no_reminders')) db.exec('ALTER TABLE clients ADD COLUMN no_reminders INTEGER NOT NULL DEFAULT 0');
+for (const [c, d] of [['gc_resource', 'TEXT'], ['gc_hash', 'TEXT'], ['gc_synced_at', 'TEXT']]) if (!hasCol('clients', c)) db.exec(`ALTER TABLE clients ADD COLUMN ${c} ${d}`);
+if (!hasCol('clients', 'wa_welcomed_at')) { db.exec('ALTER TABLE clients ADD COLUMN wa_welcomed_at TEXT'); db.exec("UPDATE clients SET wa_welcomed_at='existing' WHERE phone IS NOT NULL AND phone<>''"); }
+if (!hasCol('fs_nodes', 'matter_id')) db.exec('ALTER TABLE fs_nodes ADD COLUMN matter_id INTEGER');
+if (!hasCol('clients', 'portal_blocked')) db.exec('ALTER TABLE clients ADD COLUMN portal_blocked INTEGER NOT NULL DEFAULT 0');
+if (!hasCol('clients', 'share_blocked')) db.exec('ALTER TABLE clients ADD COLUMN share_blocked INTEGER NOT NULL DEFAULT 0');
+for (const c of ['meet_event_id TEXT', 'meet_code TEXT', 'meet_note TEXT', 'rec_status TEXT', 'rec_node_id INTEGER']) if (!hasCol('appointments', c.split(' ')[0])) db.exec('ALTER TABLE appointments ADD COLUMN ' + c);
+if (!hasCol('clients', 'wa_optout')) db.exec('ALTER TABLE clients ADD COLUMN wa_optout INTEGER NOT NULL DEFAULT 0');
+if (!hasCol('documents', 'fs_id')) db.exec('ALTER TABLE documents ADD COLUMN fs_id INTEGER');
 
 module.exports = { db, nextNumber, audit, DATA_DIR };

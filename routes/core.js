@@ -107,7 +107,8 @@ module.exports = (app) => {
     const m = loadMatter(req, res); if (!m) return;
     const cli = isClient(req.user);
     m.hearings = db.prepare('SELECT * FROM hearings WHERE matter_id=? ORDER BY hearing_date DESC').all(m.id);
-    m.documents = db.prepare(`SELECT id,name,category,size,created_at,client_visible FROM documents WHERE matter_id=? ${cli ? 'AND client_visible=1' : ''} ORDER BY id DESC`).all(m.id);
+    m.documents = db.prepare(`SELECT id,name,size,created_at,client_visible,by_client FROM fs_nodes WHERE matter_id=? AND kind='file' AND deleted_at IS NULL ${cli ? 'AND client_visible=1' : ''} ORDER BY id DESC`).all(m.id);
+    if (cli && db.prepare('SELECT share_blocked b FROM clients WHERE id=?').get(m.client_id).b) m.documents = m.documents.filter((d) => d.by_client);
     m.letters = db.prepare(`SELECT id,ref_no,subject,status,sent_at,read_at FROM letters WHERE matter_id=? ${cli ? "AND client_visible=1 AND status='sent'" : ''} ORDER BY id DESC`).all(m.id);
     if (!cli) {
       m.tasks = db.prepare(`SELECT t.id,t.title,t.status,t.due_date,u.name AS assignee FROM tasks t LEFT JOIN users u ON u.id=t.assigned_to WHERE t.matter_id=? ORDER BY t.id DESC`).all(m.id);
@@ -155,61 +156,37 @@ module.exports = (app) => {
       ORDER BY h.next_date`).all(T(req), days));
   });
 
-  // ---------- Documents ----------
+  // ---------- Documents (matter screen) — stored in the client's folder tree: Matters / <file no.> ----------
   app.post('/api/documents', L.requireLogin, upload.single('file'), async (req, res) => {
     try {
       if (!req.file) return res.status(400).json({ error: 'Choose a file.' });
       const ext = path.extname(req.file.originalname).toLowerCase();
       if (!L.ALLOWED_EXT.has(ext)) return res.status(400).json({ error: 'This file type is not allowed.' });
-      const matterId = L.int(req.body.matter_id);
-      const m = matterId ? db.prepare('SELECT * FROM matters WHERE id=? AND tenant_id=?').get(matterId, T(req)) : null;
-      if (matterId && !m) return res.status(404).json({ error: 'Matter not found.' });
-      let clientId = m ? m.client_id : L.int(req.body.client_id);
-      let visible = req.body.client_visible === '1' || req.body.client_visible === 'true' ? 1 : 0;
-      let category = L.str(req.body.category, 60) || 'General';
-      if (isClient(req.user)) {            // clients may only add to their own matters; never alter or remove
-        if (!m || m.client_id !== req.user.client_id) return res.status(403).json({ error: 'You can upload only to your own matters.' });
-        visible = 1; category = 'Uploaded by client'; clientId = req.user.client_id;
-      }
-      const saved = await L.storage.save(T(req), req.file.buffer, req.file.originalname);
-      const r = db.prepare(`INSERT INTO documents(tenant_id,matter_id,client_id,name,category,storage,storage_ref,mime,size,uploaded_by,client_visible)
-        VALUES (?,?,?,?,?,?,?,?,?,?,?)`).run(T(req), matterId, clientId, L.str(req.file.originalname, 200), category, saved.storage, saved.ref,
-        req.file.mimetype, req.file.size, req.user.id, visible);
-      audit(T(req), req.user.id, 'document_uploaded', 'document', r.lastInsertRowid, req.file.originalname, L.ip(req));
-      res.json({ id: r.lastInsertRowid });
+      const m = db.prepare('SELECT * FROM matters WHERE id=? AND tenant_id=?').get(L.int(req.body.matter_id), T(req));
+      if (!m) return res.status(404).json({ error: 'Matter not found.' });
+      const h = app.locals.fsHelpers, cli = isClient(req.user);
+      if (cli && m.client_id !== req.user.client_id) return res.status(403).json({ error: 'You can upload only to your own matters.' });
+      const visible = cli || req.body.client_visible === '1' || req.body.client_visible === 'true';
+      const parent = cli ? h.ensureInbox(T(req), m.client_id) : h.matterFolder(T(req), m, req.user.id, false);
+      const r = await h.putFile(T(req), { clientId: m.client_id, parent, name: req.file.originalname, buffer: req.file.buffer, mime: req.file.mimetype,
+        uid: cli ? null : req.user.id, byClient: cli, visible, matterId: m.id });
+      if (visible && !cli) h.shareUp(db.prepare('SELECT * FROM fs_nodes WHERE id=?').get(r.id));
+      audit(T(req), req.user.id, 'document_uploaded', 'fs', r.id, req.file.originalname, L.ip(req));
+      res.json({ id: r.id });
     } catch (e) { console.error(e); res.status(500).json({ error: 'Upload failed.' }); }
   });
-
-  app.get('/api/documents', L.office, (req, res) => {
-    const q = '%' + L.str(req.query.q, 80) + '%';
-    res.json(db.prepare(`SELECT d.id,d.name,d.category,d.size,d.created_at,d.client_visible,m.file_no,c.name AS client_name
-      FROM documents d LEFT JOIN matters m ON m.id=d.matter_id LEFT JOIN clients c ON c.id=d.client_id
-      WHERE d.tenant_id=? AND (d.name LIKE ? OR m.file_no LIKE ? OR c.name LIKE ?) ORDER BY d.id DESC LIMIT 300`).all(T(req), q, q, q));
-  });
-
-  app.get('/api/documents/:id/download', L.requireLogin, (req, res) => {
-    const d = db.prepare('SELECT * FROM documents WHERE id=? AND tenant_id=?').get(req.params.id, T(req));
-    if (!d || (isClient(req.user) && (d.client_id !== req.user.client_id || !d.client_visible))) return res.status(404).json({ error: 'Not found.' });
-    const p = L.storage.path(T(req), d.storage_ref);
-    if (!p) return res.status(404).json({ error: 'File is missing.' });
-    audit(T(req), req.user.id, 'document_downloaded', 'document', d.id, null, L.ip(req));
-    res.download(p, d.name);
-  });
-
   app.patch('/api/documents/:id', L.need('admin', 'advocate', 'staff'), (req, res) => {
-    const d = db.prepare('SELECT * FROM documents WHERE id=? AND tenant_id=?').get(req.params.id, T(req));
+    const d = db.prepare('SELECT * FROM fs_nodes WHERE id=? AND tenant_id=?').get(req.params.id, T(req));
     if (!d) return res.status(404).json({ error: 'Not found.' });
-    db.prepare('UPDATE documents SET client_visible=?, category=? WHERE id=?').run(req.body.client_visible ? 1 : 0, L.str(req.body.category || d.category, 60), d.id);
+    db.prepare('UPDATE fs_nodes SET client_visible=? WHERE id=?').run(req.body.client_visible ? 1 : 0, d.id);
+    if (req.body.client_visible) app.locals.fsHelpers.shareUp(d);
     res.json({ ok: true });
   });
-
   app.delete('/api/documents/:id', L.need('admin'), (req, res) => {
-    const d = db.prepare('SELECT * FROM documents WHERE id=? AND tenant_id=?').get(req.params.id, T(req));
+    const d = db.prepare('SELECT * FROM fs_nodes WHERE id=? AND tenant_id=?').get(req.params.id, T(req));
     if (!d) return res.status(404).json({ error: 'Not found.' });
-    const p = L.storage.path(T(req), d.storage_ref);
-    if (p) fs.unlinkSync(p);
-    db.prepare('DELETE FROM documents WHERE id=?').run(d.id);
-    audit(T(req), req.user.id, 'document_deleted', 'document', d.id, d.name, L.ip(req));
+    db.prepare('UPDATE fs_nodes SET deleted_at=CURRENT_TIMESTAMP, deleted_by=?, del_root=id, dirty=1, sync_tries=0 WHERE id=?').run(req.user.id, d.id);
+    audit(T(req), req.user.id, 'document_deleted', 'fs', d.id, d.name, L.ip(req));
     res.json({ ok: true });
   });
 

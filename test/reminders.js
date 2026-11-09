@@ -1,0 +1,43 @@
+'use strict';
+const fs = require('fs'), os = require('os'), path = require('path');
+process.env.DATA_DIR = fs.mkdtempSync(path.join(os.tmpdir(), 'kcr-')); process.env.PUBLIC_URL = 'https://portal.kclegal.us';
+const app = require('../server'); const { db } = require('../db'); const AI = require('../aicore'); const AIM = require('../routes/aimail'); const WA = require('../routes/whatsapp'); const R = require('../routes/reminders');
+let pass = 0, fail = 0; const ok = (c, m) => { if (c) pass++; else { fail++; console.log('  FAIL:', m); } };
+const mails = [], was = [];
+AIM.setMailer({ fetch: async () => ({ messages: [], maxUid: 0 }), send: async (c, m) => { mails.push(m); }, verify: async () => ({}) });
+WA.setTransport(async (method, url, { body }) => { was.push(JSON.parse(body)); return { status: 200, json: async () => ({ messages: [{ id: 'w' + was.length }] }) }; });
+const srv = app.listen(0), base = 'http://127.0.0.1:' + srv.address().port;
+function client() { let cookie = ''; return async (method, url, body) => { const h = { 'X-Requested-With': 'kcportal', cookie }; let b = body; if (body) { h['Content-Type'] = 'application/json'; b = JSON.stringify(body); }
+  const r = await fetch(base + url, { method, headers: h, body: b }); const sc = r.headers.get('set-cookie'); if (sc) cookie = sc.split(';')[0]; let j = null; try { j = await r.json(); } catch (e) {} return { s: r.status, j }; }; }
+(async () => {
+  const admin = client(), tok = db.prepare("SELECT invite_token t FROM users WHERE role='admin' AND email='kclegal.in@gmail.com'").get().t;
+  await admin('POST', '/api/invite/' + tok, { password: 'StrongPass123' }); await admin('POST', '/api/login', { email: 'kclegal.in@gmail.com', password: 'StrongPass123' });
+  const t = db.prepare("SELECT id FROM tenants WHERE kind='firm'").get().id;
+  const cid = (await admin('POST', '/api/clients', { name: 'Sita Devi', phone: '9830012345', email: 'sita@example.com' })).j.id;
+  await admin('PUT', '/api/upi', { upi_id: 'kclegal@okhdfcbank', upi_name: 'KC LEGAL' });
+  await admin('PUT', '/api/whatsapp', { phone_id: '1', waba: '2', token: 'EAAtok', app_secret: 's', lang: 'en' });
+  AI.setS(t, 'mail_smtp_host', 'smtp.x'); AI.setS(t, 'mail_smtp_user', 'info@kclegal.us'); AI.setSecret(t, 'mail_smtp_pass', 'pw');
+  const past = new Date(Date.now() - 10 * 86400000).toISOString().slice(0, 10);
+  let r = await admin('POST', '/api/invoices', { client_id: cid, inv_date: past, due_date: past, items: [{ description: 'Fee', qty: 1, rate: 10000 }] }); const inv = r.j.id; await admin('POST', `/api/invoices/${inv}/issue`);
+  r = await admin('GET', '/api/reminders'); ok(r.j.on === false && r.j.wa_ready && r.j.email_ready && r.j.link_ready && r.j.every === 7, 'defaults and readiness');
+  r = await admin('PUT', '/api/reminders', { on: true, first: 3, every: 7, max: 2, wa: true, email: true }); ok(r.s === 200, 'saved');
+  r = await admin('GET', '/api/reminders'); ok(r.j.on && r.j.first === 3 && r.j.pending === 1, 'one invoice is due a reminder');
+  r = await admin('POST', '/api/reminders/run'); ok(r.j.invoices === 1 && r.j.messages === 2, 'sent on both channels: ' + JSON.stringify(r.j));
+  const wb = was[was.length - 1]; ok(wb.template.name === 'kc_payment_link' && wb.template.components[0].parameters[3].text === 'https://portal.kclegal.us/#/pay-us?firm=' + db.prepare('SELECT slug FROM tenants WHERE id=?').get(t).slug + '&amt=10000.00&note=' + encodeURIComponent(db.prepare('SELECT inv_no n FROM invoices WHERE id=?').get(inv).n), 'WhatsApp carries exact-amount pay link');
+  const ml = mails[mails.length - 1]; ok(ml.to === 'sita@example.com' && /pay-us\?firm=/.test(ml.text) && /10,000.00/.test(ml.subject), 'e-mail carries link and amount');
+  r = await admin('POST', '/api/reminders/run'); ok(r.j.invoices === 0, 'not repeated before the interval');
+  db.prepare("UPDATE reminder_log SET created_at=datetime('now','-8 days')").run();
+  r = await admin('POST', '/api/reminders/run'); ok(r.j.invoices === 1, 'repeats after the interval');
+  db.prepare("UPDATE reminder_log SET created_at=datetime('now','-20 days') WHERE id<=2").run(); db.prepare("UPDATE reminder_log SET created_at=datetime('now','-9 days') WHERE id>2").run();
+  r = await admin('POST', '/api/reminders/run'); ok(r.j.invoices === 0, 'stops at the maximum (2)');
+  await admin('PUT', `/api/clients/${cid}/access`, { no_reminders: true }); await admin('PUT', '/api/reminders', { on: true, first: 3, every: 7, max: 9, wa: true, email: true });
+  db.prepare("UPDATE reminder_log SET created_at=datetime('now','-30 days')").run(); r = await admin('POST', '/api/reminders/run'); ok(r.j.invoices === 0, 'client switched off is skipped');
+  await admin('PUT', `/api/clients/${cid}/access`, { no_reminders: false });
+  r = await admin('POST', `/api/invoices/${inv}/remind`); ok(r.s === 200 && r.j.sent.length === 2, 'manual reminder');
+  const pay = await admin('POST', '/api/payments', { client_id: cid, invoice_id: inv, amount: 10000, mode: 'cash', pay_date: new Date().toISOString().slice(0, 10) }); ok(pay.s === 200, 'paid');
+  db.prepare("UPDATE reminder_log SET created_at=datetime('now','-30 days')").run(); r = await admin('POST', '/api/reminders/run'); ok(r.j.invoices === 0, 'paid invoice no longer reminded');
+  const staff = client(); await admin('POST', '/api/users', { name: 'Stf', email: 'stf@example.com', role: 'staff' }); const st = db.prepare("SELECT invite_token t FROM users WHERE email='stf@example.com'").get().t;
+  await staff('POST', '/api/invite/' + st, { password: 'StrongPass123' }); await staff('POST', '/api/login', { email: 'stf@example.com', password: 'StrongPass123' });
+  r = await staff('PUT', '/api/reminders', { on: false }); ok(r.s === 403, 'only admin sets reminders');
+  console.log(`${pass} passed, ${fail} failed`); srv.close(); process.exit(fail ? 1 : 0);
+})();

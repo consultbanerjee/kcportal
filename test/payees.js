@@ -1,0 +1,40 @@
+'use strict';
+const fs = require('fs'), os = require('os'), path = require('path');
+process.env.DATA_DIR = fs.mkdtempSync(path.join(os.tmpdir(), 'kcp-'));
+const app = require('../server'); const { db } = require('../db'); const P = require('../routes/payees');
+let pass = 0, fail = 0; const ok = (c, m) => { if (c) pass++; else { fail++; console.log('  FAIL:', m); } };
+const srv = app.listen(0), base = 'http://127.0.0.1:' + srv.address().port;
+function client() { let cookie = ''; return async (method, url, body) => { const h = { 'X-Requested-With': 'kcportal', cookie }; let b = body; if (body) { h['Content-Type'] = 'application/json'; b = JSON.stringify(body); }
+  const r = await fetch(base + url, { method, headers: h, body: b }); const sc = r.headers.get('set-cookie'); if (sc) cookie = sc.split(';')[0]; let j = null; try { j = await r.json(); } catch (e) {} return { s: r.status, j }; }; }
+(async () => {
+  ok(P.addPeriod('2026-01-31', 'monthly', 31) === '2026-02-28' && P.addPeriod('2026-02-28', 'monthly', 31) === '2026-03-31' && P.addPeriod('2026-11-09', 'weekly') === '2026-11-16' && P.addPeriod('2026-11-30', 'quarterly', 30) === '2027-02-28' && P.addPeriod('2026-11-09', 'yearly') === '2027-11-09', 'date arithmetic keeps month-end');
+  const admin = client(), tok = db.prepare("SELECT invite_token t FROM users WHERE role='admin' AND email='kclegal.in@gmail.com'").get().t;
+  await admin('POST', '/api/invite/' + tok, { password: 'StrongPass123' }); await admin('POST', '/api/login', { email: 'kclegal.in@gmail.com', password: 'StrongPass123' });
+  let r = await admin('POST', '/api/users', { name: 'Adv One', email: 'adv1@example.com', role: 'advocate' }); const uid = r.j.id || db.prepare("SELECT id FROM users WHERE email='adv1@example.com'").get().id;
+  r = await admin('POST', '/api/clients', { name: 'Sita Devi', phone: '9830012345' }); const cid = r.j.id;
+  r = await admin('GET', '/api/payee-sources'); ok(r.j.team.some((u) => u.id === uid) && r.j.clients.some((c) => c.id === cid), 'team and clients can be picked');
+  const a = (await admin('POST', '/api/payees', { kind: 'advocate', user_id: uid, upi_id: 'adv1@okaxis' })).j.id;
+  const c = (await admin('POST', '/api/payees', { kind: 'client', client_id: cid })).j.id;
+  const o = (await admin('POST', '/api/payees', { kind: 'other', name: 'Stationer', bank_details: 'SBI 123' })).j.id;
+  r = await admin('GET', '/api/payees'); ok(r.j.length === 3 && r.j.find((x) => x.id === a).name === 'Adv One' && r.j.find((x) => x.id === c).name === 'Sita Devi', 'payees: advocate, client, other');
+  r = await admin('POST', '/api/payees', { kind: 'other', name: 'X', upi_id: 'bad' }); ok(r.s === 400, 'bad UPI refused');
+  const past = new Date(Date.now() - 70 * 86400000).toISOString().slice(0, 10);
+  r = await admin('POST', '/api/pay-schedules', { payee_id: a, head: 'Retainer', amount: 20000, frequency: 'monthly', next_due: past, mode: 'upi' }); ok(r.s === 200, 'schedule created');
+  r = await admin('GET', '/api/payee-payments?status=due'); ok(r.j.length >= 3 && r.j.every((x) => x.head === 'Retainer' && x.amount_paise === 2000000) && r.j[0].overdue && r.j[0].upi_link.startsWith('upi://pay?pa=adv1%40okaxis'), 'catch-up raised overdue payments with GPay link: ' + r.j.length);
+  const n = r.j.length; r = await admin('GET', '/api/payee-payments?status=due'); ok(r.j.length === n, 'no duplicates on repeat');
+  const first = r.j[0].id;
+  r = await admin('POST', `/api/payee-payments/${first}/pay`, { mode: 'upi' }); ok(r.s === 400, 'reference required for non-cash');
+  r = await admin('POST', `/api/payee-payments/${first}/pay`, { mode: 'upi', reference: 'UTR123456789' }); ok(r.s === 200, 'paid');
+  r = await admin('POST', `/api/payee-payments/${first}/pay`, { mode: 'upi', reference: 'x' }); ok(r.s === 400, 'cannot pay twice');
+  r = await admin('POST', '/api/payee-payments', { payee_id: o, head: 'Stationery', amount: 450 }); const one = r.j.id;
+  r = await admin('POST', `/api/payee-payments/${one}/pay`, { mode: 'cash' }); ok(r.s === 200, 'cash payout');
+  r = await admin('GET', '/api/cash?from=2020-01-01&to=2099-01-01'); ok(r.j.rows.some((x) => x.kind === 'out' && x.head === 'Stationery' && x.amount_paise === 45000), 'cash payout in cash book');
+  r = await admin('POST', '/api/pay-schedules', { payee_id: c, head: 'Refund', amount: 1000, frequency: 'once', next_due: past }); r = await admin('GET', '/api/pay-schedules'); ok(r.j.find((x) => x.head === 'Refund').active === 0, 'one-off schedule finishes');
+  r = await admin('GET', `/api/ledger/payee/${a}`); ok(r.j.paid_paise === 2000000 && r.j.due_paise >= 4000000, 'payee ledger');
+  r = await admin('GET', '/api/ledger/heads'); ok(r.j.some((x) => x.head === 'Stationery' && x.out_paise === 45000) && r.j.some((x) => x.head === 'Retainer' && x.out_paise === 2000000), 'head ledger');
+  const sk = (await admin('GET', '/api/payee-payments?status=due')).j[0].id; r = await admin('POST', `/api/payee-payments/${sk}/skip`, { reason: 'waived' }); ok(r.s === 200, 'skip');
+  const staff = client(); r = await admin('POST', '/api/users', { name: 'Stf', email: 'stf@example.com', role: 'staff' });
+  const st = db.prepare("SELECT invite_token t FROM users WHERE email='stf@example.com'").get().t; await staff('POST', '/api/invite/' + st, { password: 'StrongPass123' }); await staff('POST', '/api/login', { email: 'stf@example.com', password: 'StrongPass123' });
+  r = await staff('GET', '/api/payees'); ok(r.s === 403, 'staff cannot see payees');
+  console.log(`${pass} passed, ${fail} failed`); srv.close(); process.exit(fail ? 1 : 0);
+})();

@@ -75,8 +75,14 @@ module.exports = (app) => {
       const { output, notes } = splitOut(AI.textOf(r));
       if (!output) return res.status(502).json({ error: 'The AI returned nothing. Please try again.' });
       const title = L.str(req.body.title, 150) || (kind.replace(/_/g, ' ') + ' — ' + new Date().toLocaleDateString('en-IN'));
-      const id = db.prepare('INSERT INTO ai_drafts(tenant_id,user_id,kind,title,instruction,output,notes,files) VALUES (?,?,?,?,?,?,?,?)').run(T(req), req.user.id, kind, title, instruction, output, notes, JSON.stringify(names)).lastInsertRowid;
+      const id = db.prepare('INSERT INTO ai_drafts(tenant_id,user_id,kind,title,instruction,output,notes,files,client_id) VALUES (?,?,?,?,?,?,?,?,?)').run(T(req), req.user.id, kind, title, instruction, output, notes, JSON.stringify(names), (L.int(req.body.client_id) && db.prepare('SELECT id FROM clients WHERE id=? AND tenant_id=?').get(L.int(req.body.client_id), T(req))) ? L.int(req.body.client_id) : null).lastInsertRowid;
       audit(T(req), req.user.id, 'ai_draft', 'ai_draft', id, kind, L.ip(req));
+      // a draft prepared for a client is also filed in that client's Drafts folder (and so in Google Drive)
+      try {
+        const cv = db.prepare('SELECT client_id c FROM ai_drafts WHERE id=?').get(id).c, h = app.locals.fsHelpers;
+        if (cv && h) { h.seed(T(req), cv, req.user.id); const dr = db.prepare("SELECT id FROM fs_nodes WHERE tenant_id=? AND client_id=? AND parent_id IS NULL AND kind='folder' AND deleted_at IS NULL AND lower(name)='drafts'").get(T(req), cv);
+          if (dr) await h.putFile(T(req), { clientId: cv, parent: dr.id, name: title.replace(/[\\/:*?"<>|]/g, '-') + '.txt', buffer: Buffer.from(output, 'utf8'), mime: 'text/plain', uid: req.user.id }); }
+      } catch (e) { console.error('draft filing:', e.message); }
       res.json({ id });
     } catch (e) { res.status(e.status || 500).json({ error: e.status ? e.message : 'Could not prepare the draft.' }); if (!e.status) console.error(e); }
   });

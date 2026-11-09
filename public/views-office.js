@@ -57,21 +57,6 @@ function addClient() {
   });
 }
 
-route(/^\/client\/(\d+)$/, async ([id]) => {
-  const c = await GET('/api/clients/' + id);
-  const showInvite = (p) => show('Portal invitation', `<p>Send this private link to the client. It works once and expires in 7 days.</p><input readonly value="${esc(location.origin + '/' + p)}"><p class="mute">Share by WhatsApp or email. The client then sets their own password.</p>`);
-  view(`<div class="row sp"><h1>${esc(c.name)}</h1><a class="btn ghost sm" href="#/clients">← Clients</a></div>
-    <div class="card"><div class="row sp"><div>${esc(c.phone || '—')} · ${esc(c.email || 'no email')}<div class="mute">${esc(c.address || '')}</div></div>
-    <div class="row"><button class="btn sm ghost" id="edit">Edit</button>${can('admin', 'advocate', 'staff') ? `<button class="btn sm gold" id="inv">${c.login ? 'Re-send portal link' : 'Give portal access'}</button>` : ''}</div></div>
-    ${c.login ? `<p class="mute">Portal login: ${esc(c.login.email)} ${c.login.set_up ? pill('password set', 'ok') : pill('invitation pending', 'warn')}</p>` : ''}</div>
-    <div class="card"><div class="row sp"><h2>Matters</h2>${can('admin', 'advocate', 'staff') ? '<button class="btn sm" id="nm">New matter</button>' : ''}</div>
-    ${c.matters.length ? `<ul class="list">${c.matters.map((m) => `<li><a href="#/matter/${m.id}">${esc(m.title)}</a><span class="mute">${esc(m.file_no)} ${sp(m.status)}</span></li>`).join('')}</ul>` : '<p class="mute">No matters yet.</p>'}</div>
-    ${can('admin', 'advocate', 'accounts') ? `<div class="card"><h2>Account</h2><p>Billed ${inr(c.billed_paise)} · Received ${inr(c.paid_paise)} · <b>Balance ${inr(c.billed_paise - c.paid_paise)}</b></p><a class="btn sm ghost" href="#/billing/reports?client=${c.id}">View ledger</a></div>` : ''}`);
-  $('#edit').onclick = () => ask('Edit client', [{ name: 'name', label: 'Name', value: c.name, required: true }, { name: 'phone', label: 'Phone', value: c.phone }, { name: 'email', label: 'Email', value: c.email }, { name: 'address', label: 'Address', type: 'textarea', value: c.address }, { name: 'notes', label: 'Internal notes', type: 'textarea', value: c.notes }], 'Save', async (v) => { await PUT('/api/clients/' + id, v); go(); });
-  const inv = $('#inv'); if (inv) inv.onclick = () => ask('Portal access', [{ name: 'email', label: 'Client email (login)', type: 'email', value: c.email, required: true }], 'Create link', async (v) => { const r = await POST(`/api/clients/${id}/login`, v); setTimeout(() => showInvite(r.invite_path), 50); });
-  const nm = $('#nm'); if (nm) nm.onclick = () => newMatter(id);
-}, { office: true });
-
 async function newMatter(clientId) {
   const fields = [];
   if (!clientId) fields.push({ name: 'client_id', label: 'Client', type: 'select', options: await clientOpts(), required: true });
@@ -102,7 +87,7 @@ route(/^\/matter\/(\d+)$/, async ([id]) => {
     ${m.hearings.length ? `<div class="tw"><table><tr><th>Date</th><th>Purpose</th><th>Outcome</th><th>Next date</th></tr>${m.hearings.map((h) => `<tr><td>${dt(h.hearing_date)}</td><td>${esc(h.purpose || '')}</td><td>${esc(h.outcome || '')}</td><td><b>${h.next_date ? dt(h.next_date) : '—'}</b></td></tr>`).join('')}</table></div>` : '<p class="mute">No hearings recorded.</p>'}</div>
     <div class="card"><div class="row sp"><h2>Documents</h2><button class="btn sm" id="ud">${cli ? 'Upload a document' : 'Upload'}</button></div>
     ${cli ? '<p class="mute">You can add documents here. For safety, they cannot be changed or removed once uploaded.</p>' : ''}
-    ${m.documents.length ? `<ul class="list">${m.documents.map((d) => `<li><span><a href="/api/documents/${d.id}/download">${esc(d.name)}</a><div class="mute">${esc(d.category || '')} · ${dt(d.created_at)} · ${Math.ceil((d.size || 0) / 1024)} KB</div></span>${edit ? `<label class="chk" style="margin:0"><input type="checkbox" data-vis="${d.id}" ${d.client_visible ? 'checked' : ''}> client sees</label>` : ''}</li>`).join('')}</ul>` : '<p class="mute">No documents.</p>'}</div>
+    ${m.documents.length ? `<ul class="list">${m.documents.map((d) => `<li><span><a href="/api/fs/${d.id}/download">${esc(d.name)}</a><div class="mute">${d.by_client ? 'Uploaded by client · ' : ''}${dt(d.created_at)} · ${Math.ceil((d.size || 0) / 1024)} KB</div></span>${edit ? `<label class="chk" style="margin:0"><input type="checkbox" data-vis="${d.id}" ${d.client_visible ? 'checked' : ''}> client sees</label>` : ''}</li>`).join('')}</ul>` : '<p class="mute">No documents.</p>'}</div>
     ${m.letters.length ? `<div class="card"><h2>Letters</h2><ul class="list">${m.letters.map((l) => `<li><a href="#/letter/${l.id}">${esc(l.subject)}</a><span class="mute">${esc(l.ref_no || 'draft')}</span></li>`).join('')}</ul></div>` : ''}
     ${m.invoices.length ? `<div class="card"><h2>Fees</h2><ul class="list">${m.invoices.map((i) => `<li><a href="#/invoice/${i.id}">${esc(i.inv_no)}</a><span>${inr(i.total_paise)} ${sp(i.status)}</span></li>`).join('')}</ul></div>` : ''}
     ${cli ? '' : `<div class="card"><div class="row sp"><h2>Tasks</h2><button class="btn sm" id="at">Assign task</button></div>${m.tasks.length ? `<ul class="list">${m.tasks.map((t) => `<li><span>${esc(t.title)}<div class="mute">${esc(t.assignee || '')} · due ${dt(t.due_date)}</div></span>${sp(t.status)}</li>`).join('')}</ul>` : '<p class="mute">No tasks.</p>'}</div>
@@ -166,12 +151,12 @@ route(/^\/messages$/, async (_, p) => {
   const cid = p.get('client');
   const thread = async (clientId) => {
     const rows = await GET('/api/messages' + (clientId ? '?client_id=' + clientId : ''));
-    return `<div class="card">${rows.length ? rows.map((m) => `<div class="msg ${m.from_user === ME.id ? 'me' : ''}"><small>${esc(m.from_name)} · ${dtm(m.created_at)}</small>${esc(m.body)}</div>`).join('') : '<p class="mute">No messages yet.</p>'}
+    return `<div class="card${can('admin') ? '' : ' noprint'}">${rows.length ? rows.map((m) => `<div class="msg ${m.from_user === ME.id ? 'me' : ''}"><small>${esc(m.from_name)} · ${dtm(m.created_at)}</small>${esc(m.body)}</div>`).join('') : '<p class="mute">No messages yet.</p>'}
       <form id="mf" class="row" style="margin-top:1rem;flex-wrap:nowrap"><input name="b" placeholder="Write a message…" required><button class="btn">Send</button></form></div>`;
   };
   const wire = (clientId) => { $('#mf').onsubmit = async (e) => { e.preventDefault(); try { await POST('/api/messages', { body: e.target.b.value, client_id: clientId }); go(); } catch (x) { toast(x.message, true); } }; };
   if (isClient()) { view(`<h1>Messages</h1><p class="mute">Write to the office about your case. For anything urgent, please also call.</p>${await thread()}`); wire(); return; }
-  if (cid) { view(`<div class="row sp"><h1>Conversation</h1><a class="btn ghost sm" href="#/messages">← All</a></div>${await thread(cid)}`); wire(cid); return; }
+  if (cid) { view(`<div class="row sp noprint"><h1>Conversation</h1><span class="row">${can('admin') ? `<a class="btn ghost sm" href="#/client/${cid}?tab=chat">Print / Save as PDF</a>` : ''}<a class="btn ghost sm" href="#/messages">← All</a></span></div>${await thread(cid)}`); wire(cid); return; }
   const rows = await GET('/api/messages');
   view(`<h1>Client messages</h1><div class="card">${rows.length ? `<ul class="list">${rows.map((r) => `<li><a href="#/messages?client=${r.client_id}">${esc(r.name)}</a>${r.unread ? pill(r.unread + ' new', 'warn') : ''}</li>`).join('')}</ul>` : '<p class="mute">No messages yet.</p>'}</div>`);
 });
@@ -202,8 +187,8 @@ route(/^\/lead\/(\d+)$/, async ([id]) => {
 route(/^\/appointments$/, async () => {
   const rows = await GET('/api/appointments');
   view(`<h1>Online consultations</h1><div class="card">${rows.length ? `<div class="tw"><table><tr><th>When</th><th>Who</th><th>Type</th><th>Fee</th><th>Status</th><th></th></tr>${rows.map((a) => `<tr><td>${dtm(a.start_at)}</td><td>${esc(a.name)}<div class="mute">${esc(a.phone || '')}</div><div class="mute">${esc((a.issue || '').slice(0, 80))}</div></td><td>${esc(a.type_name)}<div class="mute">${esc(a.advocate)}</div></td><td>${inr(a.fee_paise)}</td><td>${sp(a.status)}</td>
-      <td>${a.status === 'confirmed' ? `<a class="btn sm" href="${esc(a.meet_link)}" target="_blank" rel="noopener">Join</a>` : ''}${a.status === 'awaiting_payment' && can('admin', 'advocate', 'staff', 'accounts') ? `<button class="btn sm gold" data-cf="${a.id}">Confirm payment</button> <span class="mute">${esc(a.pay_ref)}</span>` : ''}${['confirmed', 'awaiting_payment'].includes(a.status) ? ` <button class="btn sm ghost" data-cx="${a.id}">Cancel</button>` : ''}</td></tr>`).join('')}</table></div>` : '<p class="mute">No consultations booked.</p>'}</div>
-    <p class="mute">A booking is confirmed — and the video link released — only after payment is recorded.</p>`);
+      <td>${a.status === 'confirmed' ? (a.meet_link === 'restricted' ? `<span class="mute">Only ${esc(a.advocate)} / Admin</span>` : a.meet_link ? `<a class="btn sm" href="#/meeting/${a.id}">Open meeting</a>` : '<span class="mute">Preparing link…</span>') : ''}${a.status === 'awaiting_payment' && can('admin', 'advocate', 'staff', 'accounts') ? `<button class="btn sm gold" data-cf="${a.id}">Confirm payment</button> <span class="mute">${esc(a.pay_ref)}${a.pay_claim ? ' · client says paid, UTR ' + esc(a.pay_claim) : ''}</span>` : ''}${['confirmed', 'awaiting_payment'].includes(a.status) ? ` <button class="btn sm ghost" data-cx="${a.id}">Cancel</button>` : ''}</td></tr>`).join('')}</table></div>` : '<p class="mute">No consultations booked.</p>'}</div>
+    <p class="mute">A booking is confirmed — and the Google Meet link created and e-mailed to the client and the advocate — only after payment is recorded. The Admin is the host; only the Admin and the advocate booked can open the meeting here.</p>`);
   $$('[data-cf]').forEach((b) => (b.onclick = () => ask('Confirm payment received', [{ name: 'reference', label: 'UPI / bank reference', required: true }, { name: 'mode', label: 'Mode', type: 'select', options: ['upi', 'bank', 'cash', 'card'] }], 'Confirm', async (v) => { await POST(`/api/appointments/${b.dataset.cf}/confirm`, v); go(); })));
   $$('[data-cx]').forEach((b) => (b.onclick = async () => { if (sure('Cancel this consultation? Any refund must be handled separately.')) { await POST(`/api/appointments/${b.dataset.cx}/cancel`); go(); } }));
 }, { office: true });
@@ -240,7 +225,44 @@ route(/^\/settings$/, async () => {
   const [types, av, fees] = await Promise.all([GET('/api/consult-types'), GET('/api/availability'), GET('/api/consult-fees')]);
   const days = ['Sun', 'Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat'];
   const advs = (await team()).filter((u) => ['admin', 'advocate'].includes(u.role));
+  const pa = await GET('/api/portal-access'), wa = await GET('/api/whatsapp'), up = await GET('/api/upi'), rm = await GET('/api/reminders');
   view(`<h1>Settings</h1>
+    <div class="card"><h2>Client portal</h2><div class="row sp"><span><b>${pa.client_portal ? 'Open' : 'CLOSED'}</b><div class="mute">${pa.client_portal ? 'Clients can sign in to see their cases, fees, letters and shared documents.' : 'No client can sign in or see anything. The office is not affected.'}</div></span>
+      <button class="btn ${pa.client_portal ? 'ghost' : 'gold'}" id="cp">${pa.client_portal ? 'Close the client portal for everyone' : 'Open the client portal'}</button></div>
+      <p class="mute" style="margin:.5rem 0 0">You can also block a single client, or switch off document sharing for one client, from that client's page.</p></div>
+    <div class="card"><h2>Automatic payment reminders</h2>
+      <form id="rmf"><label class="chk"><input type="checkbox" name="on" ${rm.on ? 'checked' : ''}> Send reminders automatically for unpaid invoices (daytime, 10 am – 6 pm India time)</label>
+        <div class="row" style="gap:1rem;flex-wrap:wrap"><div><label>First reminder, days after due date</label><input type="number" min="0" name="first" value="${rm.first}" style="max-width:8rem"></div>
+          <div><label>Then repeat every (days)</label><input type="number" min="1" name="every" value="${rm.every}" style="max-width:8rem"></div>
+          <div><label>At most (times per invoice)</label><input type="number" min="1" name="max" value="${rm.max}" style="max-width:8rem"></div></div>
+        <label class="chk"><input type="checkbox" name="wa" ${rm.wa ? 'checked' : ''}> WhatsApp ${rm.wa_ready ? '' : '<span class="mute">(WhatsApp API not set up — skipped)</span>'}</label>
+        <label class="chk"><input type="checkbox" name="email" ${rm.email ? 'checked' : ''}> E-mail ${rm.email_ready ? '' : '<span class="mute">(mailbox not set up — skipped)</span>'}</label>
+        <p class="mute">Each reminder carries a Google Pay / UPI link for the exact pending amount ${rm.link_ready ? '' : '— <b>set your UPI ID below first, otherwise the link only opens the portal</b>'}. Invoice due dates start the count (invoice date if none). A client can be excluded from their own page. ${rm.pending} invoice${rm.pending === 1 ? ' is' : 's are'} due a reminder now.</p>
+        <p><button class="btn">Save</button> <button class="btn ghost" type="button" id="rmr">Send due reminders now</button></p></form>
+      ${rm.log.length ? `<details><summary>Recent reminders</summary><div class="tw"><table><tr><th>When</th><th>Invoice</th><th>Client</th><th>Via</th><th>Result</th></tr>${rm.log.map((l) => `<tr><td>${dtm(l.created_at.replace(' ', 'T') + 'Z')}</td><td>${esc(l.inv_no)}</td><td>${esc(l.client || '')}</td><td>${esc(l.channel)}${l.manual ? ' (manual)' : ''}</td><td>${esc(l.status)}${l.error ? ' — ' + esc(l.error) : ''}</td></tr>`).join('')}</table></div></details>` : ''}</div>
+    <div class="card"><h2>Google Pay / UPI collection</h2>
+      <form id="upf"><label>UPI ID (the one on your Google Pay for Business account)</label><input name="upi_id" value="${esc(up.vpa || '')}" placeholder="kclegal@okhdfcbank" autocomplete="off">
+        <label>Name shown to the payer</label><input name="upi_name" value="${esc(up.name || '')}" placeholder="KC LEGAL">
+        <label>Note on the pay page (optional)</label><input name="upi_note" value="${esc(up.note || '')}">
+        <p><button class="btn">Save</button></p></form>
+      <p>Your shareable payment link (for invoices, WhatsApp, e-mail): <code>${esc(up.pay_url)}</code> <button class="btn sm ghost" id="upc" type="button">Copy</button></p>
+      <p class="mute">Add <code>&amp;amt=5000&amp;note=KC/INV/000101</code> to the end for a fixed amount. Booking payments use this UPI ID automatically, with the exact fee, a Google Pay button and a QR; the client then enters the UTR and you press “Confirm payment” in Appointments after seeing the credit in Google Pay.</p></div>
+    <div class="card"><h2>WhatsApp to clients (Meta WhatsApp Business)</h2>
+      <p>Status: ${wa.configured ? pill('connected', 'ok') : pill('not set up — messages open in WhatsApp for you to send by hand', 'warn')}</p>
+      <form id="waf"><label>Phone number ID</label><input name="phone_id" value="${esc(wa.phone_id || '')}" autocomplete="off" placeholder="from Meta › WhatsApp › API setup">
+        <label>WhatsApp Business Account ID</label><input name="waba" value="${esc(wa.waba || '')}" autocomplete="off">
+        <label>Permanent access token ${wa.has_token ? '(saved — leave blank to keep)' : ''}</label><input name="token" type="text" autocomplete="off" data-lpignore="true" style="-webkit-text-security:disc">
+        <label>App secret ${wa.has_secret ? '(saved — leave blank to keep)' : ''}</label><input name="app_secret" type="text" autocomplete="off" data-lpignore="true" style="-webkit-text-security:disc">
+        <label>Template language code</label><input name="lang" value="${esc(wa.lang || 'en')}" style="max-width:8rem">
+        <label class="chk"><input type="checkbox" name="welcome" ${wa.welcome ? 'checked' : ''}> Send a “Welcome to ${esc('KC LEGAL')}” greeting when a client's WhatsApp number is added for the first time</label>
+        <label class="chk"><input type="checkbox" name="auto" ${wa.auto_booking ? 'checked' : ''}> Send the client a WhatsApp (with the video link) when a consultation is confirmed</label>
+        <p><button class="btn">Save WhatsApp settings</button></p></form>
+      <details><summary>How to set up</summary><ol class="mute">
+        <li>developers.facebook.com › create an app (type Business) › add <b>WhatsApp</b>; link your Meta Business account and add the firm's WhatsApp number (it must not be in use in the ordinary WhatsApp app).</li>
+        <li>Create a <b>System User</b> in Business Settings, give it the WhatsApp account, and generate a <b>permanent token</b> (permissions whatsapp_business_messaging, whatsapp_business_management). Paste the token, the Phone number ID and the account ID above. The app secret is under App settings › Basic.</li>
+        <li>In WhatsApp Manager create and get approved these templates (names exactly as shown): ${wa.templates.map((t) => `<b>${esc(t.name)}</b> — <i>${esc(t.text)}</i>`).join('; ')}.</li>
+        <li>WhatsApp › Configuration › Webhook: callback URL <code>${esc(wa.webhook_url || '')}</code>, verify token <code>${esc(wa.verify || '(save once to generate)')}</code>; subscribe to <b>messages</b>. This brings in delivery ticks and the client's replies (and “STOP” opt-outs).</li>
+        <li>Send only to clients who agreed to receive WhatsApp messages. Business-started messages must use an approved template; free text works only for 24 hours after the client writes to you.</li></ol></details></div>
     <div class="card"><div class="row sp"><h2>Consultation types & default fees</h2><button class="btn sm" id="ct">Add type</button></div><ul class="list">${types.map((t) => `<li><span>${esc(t.name)} <span class="mute">${t.minutes} min</span></span><span class="row">${inr(t.fee_paise)} ${t.active ? '' : pill('off', 'bad')}<button class="btn sm ghost" data-et="${t.id}">Edit</button></span></li>`).join('')}</ul></div>
     <div class="card"><h2>Fee for each advocate</h2><p class="mute">Each advocate can charge a different fee. Leave a box blank to use the default fee shown above. Saved when you leave the box.</p>
     <div class="tw"><table><tr><th>Advocate</th>${types.map((t) => `<th class="n">${esc(t.name)}<br><span class="mute">default ${inr(t.fee_paise)}</span></th>`).join('')}</tr>
@@ -250,6 +272,12 @@ route(/^\/settings$/, async () => {
     <div class="card"><h2>Weekly availability for online consultations</h2><p class="mute">Times are India time. One line per slot: <code>Mon 10:00-13:00</code>. Leave blank for no availability.</p>
     ${advs.map((a) => { const mine = av.filter((x) => x.user_id === a.id).map((x) => `${days[x.weekday]} ${x.start_time}-${x.end_time}`).join('\n'); return `<label>${esc(a.name)}</label><textarea data-av="${a.id}">${esc(mine)}</textarea>`; }).join('')}
     <p><button class="btn" id="sv">Save availability</button></p></div>`);
+  $('#rmf').onsubmit = async (e) => { e.preventDefault(); const f = e.target; try { await PUT('/api/reminders', { on: f.on.checked, first: f.first.value, every: f.every.value, max: f.max.value, wa: f.wa.checked, email: f.email.checked }); toast('Saved.'); go(); } catch (x) { toast(x.message, true); } };
+  $('#rmr').onclick = async () => { try { const r = await POST('/api/reminders/run'); toast(r.invoices ? `${r.messages} message(s) sent for ${r.invoices} invoice(s).` : 'Nothing is due right now.'); go(); } catch (x) { toast(x.message, true); } };
+  $('#upf').onsubmit = async (e) => { e.preventDefault(); const f = e.target; try { await PUT('/api/upi', { upi_id: f.upi_id.value, upi_name: f.upi_name.value, upi_note: f.upi_note.value }); toast('Saved.'); go(); } catch (x) { toast(x.message, true); } };
+  $('#upc').onclick = () => { navigator.clipboard.writeText($('#upc').previousElementSibling.textContent).then(() => toast('Link copied.')); };
+  $('#waf').onsubmit = async (e) => { e.preventDefault(); const f = e.target; try { await PUT('/api/whatsapp', { phone_id: f.phone_id.value, waba: f.waba.value, token: f.token.value, app_secret: f.app_secret.value, lang: f.lang.value, auto_booking: f.auto.checked, welcome: f.welcome.checked }); toast('Saved.'); go(); } catch (x) { toast(x.message, true); } };
+  $('#cp').onclick = async () => { if (pa.client_portal && !sure('Close the client portal for ALL clients? They will be shut out immediately. Your own work is not affected.')) return; await PUT('/api/portal-access', { client_portal: !pa.client_portal }); go(); };
   $$('[data-fee]').forEach((i) => (i.onchange = async () => { try { await PUT('/api/consult-fees', { user_id: +i.dataset.u, consult_type_id: +i.dataset.t, fee: i.value }); toast('Fee saved.'); } catch (e) { toast(e.message, true); } }));
   $('#zi').onclick = async () => { const f = $('#zf').files[0]; if (!f) return toast('Choose the import file first.', true); try { const r = await POST('/api/admin/import-zoho', JSON.parse(await f.text())); toast(`Imported ${r.clients} clients, ${r.invoices} invoices, ${r.payments} receipts (${r.skipped} skipped).`); } catch (e) { toast(e.message, true); } };
   $('#ct').onclick = () => ask('New consultation type', [{ name: 'name', label: 'Name', required: true }, { name: 'minutes', label: 'Minutes', type: 'number', value: 30, required: true }, { name: 'fee', label: 'Fee (₹)', type: 'number', value: 1000, required: true }], 'Add', async (v) => { await POST('/api/consult-types', v); go(); });
@@ -323,3 +351,41 @@ route(/^\/firms$/, async () => {
 route(/^\/account$/, async () => {
   view(`<h1>Account</h1><div class="card"><p><b>${esc(ME.name)}</b><br><span class="mute">${esc(ME.email)} · Super Admin</span></p><p class="mute">Change your password from the sign-in page using “Forgot password”, or ask the server owner.</p></div>`);
 });
+
+
+/* ===== one online consultation: join + record (Admin and the booked advocate only) ===== */
+route(/^\/meeting\/(\d+)$/, async ([id]) => {
+  const m = await GET(`/api/appointments/${id}/meeting`);
+  view(`<div class="row sp"><h1>Online consultation</h1><a class="btn ghost sm" href="#/appointments">← All consultations</a></div>
+    <div class="card"><p><b>${esc(m.name)}</b> · ${esc(m.phone || '')} · ${esc(m.email || '')}<br>${dtm(m.start_at)} to ${dtm(m.end_at)} (India time)<br>${esc(m.type_name)} with <b>${esc(m.advocate)}</b> · host: Admin</p>
+      <p class="mute">${esc(m.issue || '')}</p>
+      <div class="row"><button class="btn gold" id="jn" ${m.status === 'confirmed' && m.meet_link ? '' : 'disabled'}>Join video call</button><span class="mute">${m.meet_link ? 'Only the invited client, the booked advocate and the Admin are admitted.' : 'The link is still being prepared.'}</span></div>
+      ${m.meet_note ? `<p class="mute">${esc(m.meet_note)}</p>` : ''}</div>
+    <div class="card"><h2>Recording</h2>
+      <p class="mute">Tell the client the call is being recorded. Status: <b>${esc(m.rec_status || 'not recorded yet')}</b>. Recordings are kept in Google Drive: KcLegalPortal › ${esc(m.name)} › Recordings.</p>
+      ${m.can_record ? `<p id="rs" class="mute"></p><div class="row"><button class="btn" id="rb">● Start recording</button><button class="btn ghost" id="rx" hidden>■ Stop and save</button></div>
+      <p class="mute">To record from here: join the call in another tab, press Start, choose that <b>Meet tab</b> and tick <b>Share tab audio</b>. Keep this page open until you press Stop. (If Google's own recording is on for your account, it is filed automatically after the call.)</p>` : '<p class="mute">Connect Google Drive (Files → Storage settings) to record.</p>'}
+      <h3>Saved recordings for this client</h3>${m.recordings.length ? `<ul class="list">${m.recordings.map((r) => `<li><a href="/api/fs/${r.id}/download">${esc(r.name)}</a><span class="mute">${fxSize(r.size)} · ${dtm(r.created_at)}</span></li>`).join('')}</ul>` : '<p class="mute">None yet.</p>'}</div>`);
+  $('#jn').onclick = async () => { try { const r = await GET(`/api/appointments/${id}/join`); window.open(r.link, '_blank', 'noopener'); } catch (e) { toast(e.message, true); } };
+  const rb = $('#rb'); if (!rb) return;
+  let mr = null, rid = null, off = 0, chain = Promise.resolve(), streams = [], ac = null;
+  const say = (t) => { $('#rs').textContent = t; };
+  const send = (blob) => { chain = chain.then(async () => { const buf = await blob.arrayBuffer(); for (let k = 0; k < 4; k++) { const r = await fetch(`/api/appointments/${id}/recording/chunk?rid=${rid}&off=${off}`, { method: 'POST', headers: { 'X-Requested-With': 'kcportal', 'Content-Type': 'application/octet-stream' }, body: buf }); if (r.ok) { off += buf.byteLength; return; } if (k === 3) throw new Error('upload'); await new Promise((z) => setTimeout(z, 1500 * (k + 1))); } }).catch((e) => say('A piece could not be sent — keep the page open; the recording may be incomplete.')); return chain; };
+  rb.onclick = async () => {
+    try {
+      const d = await POST(`/api/appointments/${id}/recording/start`); rid = d.rid; off = 0;
+      const scr = await navigator.mediaDevices.getDisplayMedia({ video: { frameRate: 15 }, audio: true }); streams = [scr];
+      ac = new AudioContext(); const dest = ac.createMediaStreamDestination();
+      if (scr.getAudioTracks().length) ac.createMediaStreamSource(new MediaStream(scr.getAudioTracks())).connect(dest);
+      try { const mic = await navigator.mediaDevices.getUserMedia({ audio: true }); streams.push(mic); ac.createMediaStreamSource(mic).connect(dest); } catch (e) {}
+      const out = new MediaStream([...scr.getVideoTracks(), ...dest.stream.getAudioTracks()]);
+      mr = new MediaRecorder(out, { mimeType: MediaRecorder.isTypeSupported('video/webm;codecs=vp8,opus') ? 'video/webm;codecs=vp8,opus' : 'video/webm', videoBitsPerSecond: 700000, audioBitsPerSecond: 64000 });
+      mr.ondataavailable = (e) => { if (e.data && e.data.size) send(e.data); };
+      mr.onstop = async () => { streams.forEach((s) => s.getTracks().forEach((t) => t.stop())); try { ac.close(); } catch (e) {} await chain; say('Saving to Google Drive…'); try { const r = await POST(`/api/appointments/${id}/recording/finish`, { rid }); toast('Recording saved.'); go(); } catch (e) { say(e.message); $('#rx').hidden = false; $('#rx').textContent = 'Save again'; $('#rx').onclick = async () => { try { await POST(`/api/appointments/${id}/recording/finish`, { rid }); toast('Recording saved.'); go(); } catch (x) { say(x.message); } }; } };
+      scr.getVideoTracks()[0].onended = () => { if (mr && mr.state !== 'inactive') mr.stop(); };
+      mr.start(15000); rb.hidden = true; $('#rx').hidden = false; say('● Recording… keep this page open.');
+      window.onbeforeunload = () => (mr && mr.state !== 'inactive' ? 'A recording is in progress.' : undefined);
+    } catch (e) { toast(e.message || 'Recording was not started.', true); }
+  };
+  $('#rx').onclick = () => { if (mr && mr.state !== 'inactive') mr.stop(); $('#rx').hidden = true; };
+}, { roles: ['admin', 'advocate'] });

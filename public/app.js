@@ -8,7 +8,7 @@ const dt = (s) => s ? new Date(s.length === 10 ? s + 'T00:00:00' : s).toLocaleDa
 const dtm = (s) => s ? new Date(s).toLocaleString('en-IN', { dateStyle: 'medium', timeStyle: 'short' }) : '—';
 const today = () => new Date().toISOString().slice(0, 10);
 const pill = (t, k = '') => `<span class="pill ${k}">${esc(t)}</span>`;
-const STATUS_PILL = { paid: 'ok', confirmed: 'ok', sent: '', part_paid: 'warn', draft: 'warn', awaiting_payment: 'warn', cancelled: 'bad', expired: 'bad', open: 'ok', closed: '', matched: 'ok', suggested: 'warn', unmatched: 'warn', ignored: '' };
+const STATUS_PILL = { tagged: 'ok', paid: 'ok', confirmed: 'ok', sent: '', part_paid: 'warn', draft: 'warn', awaiting_payment: 'warn', cancelled: 'bad', expired: 'bad', open: 'ok', closed: '', matched: 'ok', suggested: 'warn', unmatched: 'warn', ignored: '' };
 const sp = (s) => pill(String(s).replace(/_/g, ' '), STATUS_PILL[s] || '');
 
 let ME = null, FIRM = 'KC LEGAL', FIRMQ = '', FEAT = {};
@@ -27,6 +27,7 @@ async function api(method, url, body) {
   let r;
   try { r = await fetch(url, opt); } catch (e) { throw new Error('No connection. Please check your internet and try again.'); }
   let j = null; try { j = await r.json(); } catch (e) {}
+  if (r.status === 403 && ME && ME.role === 'client' && !url.startsWith('/api/login')) { const j403 = await r.clone().json().catch(() => ({})); if (j403.blocked) { ME = null; location.hash = '#/login'; toast(j403.error, true); throw new Error(j403.error); } }
   if (r.status === 401 && !url.startsWith('/api/login') && !url.startsWith('/api/me')) { ME = null; location.hash = '#/login'; throw new Error('Please sign in.'); }
   if (!r.ok) throw new Error((j && j.error) || 'Something went wrong.');
   return j;
@@ -113,12 +114,13 @@ function on(root, ev, sel, fn) { root.addEventListener(ev, (e) => { const t = e.
 
 function navItems() {
   if (ME.role === 'superadmin') return [['#/firms', 'Firms'], ['#/account', 'Account']];
-  if (isClient()) return [['#/', 'Home'], ['#/matters', 'My cases'], ['#/letters', 'Letters'], ['#/messages', 'Messages'], ['#/invoices', 'Fees'], ['#/book', 'Book']];
+  if (isClient()) return [['#/', 'Home'], ['#/matters', 'My cases'], ['#/myfiles', 'My files'], ['#/letters', 'Letters'], ['#/messages', 'Messages'], ['#/invoices', 'Fees'], ['#/book', 'Book']];
   const r = ME.role, n = [['#/', 'Home']];
   if (r !== 'accounts') n.push(['#/clients', 'Clients']);
   if (['admin', 'advocate', 'staff'].includes(r)) n.push(['#/matters', 'Matters']);
   if (r === 'accounts') n.push(['#/clients', 'Clients']);
   n.push(['#/tasks', 'Tasks']);
+  if (['admin', 'advocate', 'staff', 'accounts'].includes(r)) n.push(['#/files', 'Files']);
   if (['admin', 'advocate', 'staff'].includes(r)) n.push(['#/letters', 'Letters'], ['#/dak', 'Inward']);
   if (FEAT.drafting && ['admin', 'advocate', 'staff'].includes(r)) n.push(['#/draft', 'AI Drafting']);
   if (FEAT.email && ['admin', 'advocate', 'staff'].includes(r)) n.push(['#/mail', 'Mail']);
@@ -126,7 +128,7 @@ function navItems() {
   if (r !== 'accounts') n.push(['#/messages', 'Messages']);
   if (['admin', 'advocate', 'staff', 'telecaller'].includes(r)) n.push(['#/leads', 'Leads']);
   if (r !== 'accounts') n.push(['#/appointments', 'Calls']);
-  if (['admin', 'advocate', 'accounts'].includes(r)) n.push(['#/billing', 'Billing']);
+  if (['admin', 'advocate', 'accounts'].includes(r)) n.push(['#/accounts', 'Accounts']);
   if (r !== 'telecaller' && r !== 'accounts') n.push(['#/judgments', 'Judgments']);
   if (r === 'admin') n.push(['#/team', 'Team'], ['#/ai', 'AI Control'], ['#/template', 'Design'], ['#/settings', 'Settings']);
   return n;

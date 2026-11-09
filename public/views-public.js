@@ -47,12 +47,38 @@ route(/^\/pay\/(PAY-[A-F0-9]+)$/, async ([ref]) => {
     let b; try { b = await GET('/api/public/booking/' + ref); } catch (e) { pubShell(`<div class="card"><p class="err">${esc(e.message)}</p></div>`); return; }
     if (!location.hash.includes(ref)) { clearInterval(timer); return; }
     const when = `${dtm(b.start_at)} (India time)`;
-    if (b.status === 'confirmed') { clearInterval(timer); pubShell(`<div class="card"><h2>Your consultation is confirmed ✓</h2><p><b>${esc(b.type_name)}</b> with ${esc(b.advocate)}<br>${when}</p><p><a class="btn gold" href="${esc(b.meet_link)}" target="_blank" rel="noopener">Join video call</a></p><p class="mute">Save this page: <b>${esc(ref)}</b>. Please join a few minutes early from a quiet place with a stable connection.</p></div>`); return; }
+    if (b.status === 'confirmed' && !b.meet_link) { pubShell(`<div class="card"><h2>Your consultation is confirmed ✓</h2><p><b>${esc(b.type_name)}</b> with ${esc(b.advocate)}<br>${when}</p><p class="mute">Your video-call link is being prepared… this page updates by itself. The invitation is also e-mailed to you.</p></div>`); return; }
+    if (b.status === 'confirmed') { clearInterval(timer); pubShell(`<div class="card"><h2>Your consultation is confirmed ✓</h2><p><b>${esc(b.type_name)}</b> with ${esc(b.advocate)}<br>${when}</p><p><a class="btn gold" href="${esc(b.meet_link)}" target="_blank" rel="noopener">Join video call</a></p><p class="mute">An invitation with this link has also been e-mailed to you. Only you and your advocate are admitted to the call. The consultation may be recorded for the firm's records.</p><p class="mute">Save this page: <b>${esc(ref)}</b>. Please join a few minutes early from a quiet place with a stable connection.</p></div>`); return; }
     if (b.status === 'expired' || b.status === 'cancelled') { clearInterval(timer); pubShell(`<div class="card"><h2>This booking is no longer held</h2><p>The 15-minute payment window ended. If you have already paid, please contact the office quoting <b>${esc(ref)}</b>; otherwise <a href="#/book">book again</a>.</p></div>`); return; }
+    const u = $('#utr'); if (u && (u.value || document.activeElement === u)) return;
     pubShell(`<div class="card"><h2>Complete your payment</h2><p><b>${esc(b.type_name)}</b> with ${esc(b.advocate)}<br>${when}</p><p style="font:700 1.8rem Georgia">${inr(b.fee_paise)}</p>
-      <div class="card" style="background:#faf7ee"><b>How to pay</b><p id="pn" class="mute">Loading payment details…</p><p>Use this reference as the payment remark: <b>${esc(ref)}</b></p></div>
+      ${b.upi_link ? `<div class="card" style="background:#faf7ee;text-align:center"><b>Pay with Google Pay or any UPI app</b>
+        <p><a class="btn gold" href="${esc(b.upi_link)}" style="width:100%;display:block">Pay ${inr(b.fee_paise)} with Google Pay / UPI</a></p>
+        <p class="mute">On a computer, scan this QR with your phone:</p><img alt="UPI QR" src="${b.upi_qr}" width="200" height="200">
+        <p class="mute">UPI ID: <b>${esc(b.upi_id)}</b> · remark: <b>${esc(ref)}</b></p></div>
+        ${b.claimed ? '<p class="ok">Thank you — we have your payment reference and are confirming it. This page will update by itself.</p>' : `<form id="pdf" class="card"><b>Paid already?</b><p class="mute">Enter the 12-digit UPI reference (UTR) from Google Pay so the office can confirm quickly.</p><input id="utr" name="utr" inputmode="numeric" maxlength="30" placeholder="UPI reference / UTR"><p class="err" id="pde" hidden></p><button class="btn">I have paid</button></form>`}`
+      : `<div class="card" style="background:#faf7ee"><b>How to pay</b><p id="pn" class="mute">Loading payment details…</p><p>Use this reference as the payment remark: <b>${esc(ref)}</b></p></div>`}
       <p class="mute">This page updates by itself once the payment is confirmed. Your time slot is held for a short while.</p></div>`);
-    GET(pf('/api/public/booking')).then((i) => { const el = $('#pn'); if (el) el.textContent = i.pay_note || 'Online payment is being switched on. Please contact the office on the number on our website to pay by UPI or bank transfer, quoting your reference.'; });
+    const pdf = $('#pdf'); if (pdf) pdf.onsubmit = async (e) => { e.preventDefault(); try { await POST(pf('/api/public/booking/' + ref + '/paid'), { utr: pdf.utr.value }); draw(); } catch (x) { const m = $('#pde'); m.textContent = x.message; m.hidden = false; } };
+    if (!b.upi_link) GET(pf('/api/public/booking')).then((i) => { const el = $('#pn'); if (el) el.textContent = i.pay_note || 'Online payment is being switched on. Please contact the office on the number on our website to pay by UPI or bank transfer, quoting your reference.'; });
   };
   await draw(); timer = setInterval(draw, 10000);
 }, { public: true });
+
+// Standing "Pay the firm" page — share this link anywhere (WhatsApp, e-mail, invoices). Optional ?amt=500&note=Invoice%20101
+route(/^\/pay-us$/, async () => {
+  if (ME) layout();
+  const q = new URLSearchParams(location.hash.split('?')[1] || ''), amt = q.get('amt') || '', note = q.get('note') || '';
+  const qs = new URLSearchParams({ firm: q.get('firm') || '', ...(amt ? { amt } : {}), ...(note ? { note } : {}) }).toString();
+  let i; try { i = await GET('/api/public/upi?' + qs); } catch (e) { pubShell(`<div class="card"><p class="err">${esc(e.message)}</p></div>`); return; }
+  if (!i.enabled) { pubShell(`<div class="card"><h2>Pay ${esc(i.firm)}</h2><p>Online payment is not switched on yet. Please contact the office.</p></div>`); return; }
+  pubShell(`<div class="card" style="text-align:center"><h2>Pay ${esc(i.name)}</h2>
+    <label>Amount (₹)</label><input id="pa" type="number" min="1" value="${esc(amt)}" placeholder="Amount" style="max-width:12rem;text-align:center">
+    <label>For (invoice no. / client name)</label><input id="pn2" value="${esc(note)}" maxlength="60" style="max-width:18rem;text-align:center">
+    <p><a id="pg" class="btn gold" href="${esc(i.link)}">Pay with Google Pay / UPI</a></p>
+    <p class="mute">Or scan with any UPI app:</p><p><img id="pq" alt="UPI QR" width="200" height="200" src="/api/public/upi-qr?${qs}"></p>
+    <p class="mute">UPI ID: <b>${esc(i.vpa)}</b>${i.note ? '<br>' + esc(i.note) : ''}</p>
+    <p class="mute">Payments are credited directly to ${esc(i.name)}. Please keep the payment receipt; the office will issue its own receipt.</p></div>`);
+  const f = async () => { const p = new URLSearchParams({ firm: q.get('firm') || '', amt: $('#pa').value, note: $('#pn2').value }).toString(); const r = await GET('/api/public/upi?' + p); $('#pg').href = r.link; $('#pq').src = '/api/public/upi-qr?' + p; };
+  $('#pa').oninput = f; $('#pn2').oninput = f;
+});

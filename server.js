@@ -14,10 +14,13 @@ app.use(helmet({
   contentSecurityPolicy: { directives: { defaultSrc: ["'self'"], scriptSrc: ["'self'"], styleSrc: ["'self'", "'unsafe-inline'"],
     imgSrc: ["'self'", 'data:'], connectSrc: ["'self'"], frameAncestors: ["'none'"], formAction: ["'self'"] } },
 }));
-app.use(express.json({ limit: '3mb' }));
+app.use(express.json({ limit: '3mb', verify: (req, _res, buf) => { if (req.url.startsWith('/api/whatsapp/webhook/')) req.rawBody = buf; } }));
 app.use(cookieParser());
 app.use(L.loadUser);
 app.use(L.csrfGuard);
+app.use(require('./routes/portalctl').mw);
+// after a client / lead / matter is saved: push to Google Contacts, and greet a client whose WhatsApp number was just added
+app.use((req, res, next) => { if (['POST', 'PUT', 'PATCH'].includes(req.method) && /^\/api\/(clients|leads|matters)(\/|$)/.test(req.path)) res.on('finish', () => { if (res.statusCode < 300 && req.user) { const t = req.user.tenant_id; try { require('./routes/contacts').touch(t); require('./routes/whatsapp').welcomePending(t).catch((e) => console.error('welcome', e.message)); } catch (e) { console.error(e.message); } } }); next(); });
 
 const limiter = rateLimit({ windowMs: 15 * 60 * 1000, limit: 40, standardHeaders: true, legacyHeaders: false,
   message: { error: 'Too many attempts. Please wait a few minutes.' } });
@@ -87,6 +90,17 @@ require('./routes/aiadmin')(app);
 require('./routes/aidraft')(app);
 require('./routes/aichat')(app);
 require('./routes/aimail')(app);
+require('./routes/clientbooks')(app);
+require('./routes/portalctl')(app);
+require('./routes/meet')(app);
+require('./routes/whatsapp')(app);
+require('./routes/upi')(app);
+require('./routes/payees')(app);
+require('./routes/bankstmt')(app);
+require('./routes/reminders')(app);
+require('./routes/contacts')(app);
+require('./routes/drive')(app);
+require('./routes/files')(app);
 
 app.get('/chat.js', (req, res, next) => { res.set('Cross-Origin-Resource-Policy', 'cross-origin'); res.set('Cache-Control', 'public, max-age=300'); next(); });
 app.use('/api', (req, res) => res.status(404).json({ error: 'Not found.' }));
@@ -103,5 +117,10 @@ if (require.main === module) {
   const port = process.env.PORT || 3000;
   app.listen(port, () => console.log('KC LEGAL portal listening on', port));
   require('./routes/aimail').startWorker();
+  require('./routes/drive').startWorker();
+  require('./routes/meet').startWorker();
+  require('./routes/payees').startWorker();
+  require('./routes/reminders').startWorker();
+  require('./routes/contacts').startWorker();
 }
 module.exports = app;
