@@ -300,3 +300,24 @@ if (!hasCol('clients', 'wa_optout')) db.exec('ALTER TABLE clients ADD COLUMN wa_
 if (!hasCol('documents', 'fs_id')) db.exec('ALTER TABLE documents ADD COLUMN fs_id INTEGER');
 
 module.exports = { db, nextNumber, audit, DATA_DIR };
+
+// ---- v2.3: client reference (who referred the client) and the In-Out register ----
+if (!hasCol('clients', 'reference')) db.exec('ALTER TABLE clients ADD COLUMN reference TEXT');
+db.exec(`CREATE TABLE IF NOT EXISTS register (
+  id INTEGER PRIMARY KEY, tenant_id INTEGER NOT NULL, kind TEXT NOT NULL CHECK(kind IN ('in','out')), no TEXT NOT NULL,
+  entry_date TEXT, entry_time TEXT, party TEXT, their_ref TEXT, subject TEXT, enclosures TEXT, dept TEXT, action TEXT,
+  signature TEXT, remarks TEXT, reply_to TEXT, mode TEXT, tracking TEXT, client_id INTEGER, matter_id INTEGER,
+  created_by INTEGER, created_at TEXT DEFAULT CURRENT_TIMESTAMP, updated_at TEXT DEFAULT CURRENT_TIMESTAMP,
+  UNIQUE(tenant_id, kind, no));
+CREATE INDEX IF NOT EXISTS idx_reg_client ON register(tenant_id, client_id);
+CREATE INDEX IF NOT EXISTS idx_reg_kind ON register(tenant_id, kind, entry_date);`);
+// the old inward book (dak) moves into the register once
+if (!db.prepare("SELECT 1 FROM firm_settings WHERE key='reg_dak_moved'").get()) {
+  for (const d of db.prepare('SELECT * FROM dak ORDER BY id').all()) {
+    const m = d.matter_id ? db.prepare('SELECT client_id FROM matters WHERE id=?').get(d.matter_id) : null;
+    db.prepare("INSERT OR IGNORE INTO register(tenant_id,kind,no,entry_date,party,subject,matter_id,client_id,action,created_at) VALUES (?,?,?,?,?,?,?,?,?,?)")
+      .run(d.tenant_id, 'in', d.ref_no || ('IN-' + d.id), d.received_on, d.from_name, d.subject, d.matter_id, m ? m.client_id : null, d.status === 'actioned' ? 'Actioned' : 'Open', d.created_at);
+  }
+  db.prepare("INSERT OR REPLACE INTO firm_settings(tenant_id,key,value) SELECT id,'reg_dak_moved','1' FROM tenants").run();
+  db.prepare("INSERT OR IGNORE INTO firm_settings(tenant_id,key,value) VALUES (0,'reg_dak_moved','1')").run();
+}

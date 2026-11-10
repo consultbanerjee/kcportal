@@ -12,6 +12,7 @@ a{color:var(--navy2)}
 .brand small{display:block;color:#aeb7cc;font:.72rem system-ui;letter-spacing:.08em}
 .side a{display:block;color:#dfe5f3;text-decoration:none;padding:.55rem .8rem;border-radius:8px;margin:2px 0}
 .side a.on,.side a:hover{background:var(--navy2);color:#fff}
+.side .ngrp{font-size:.7rem;letter-spacing:.12em;text-transform:uppercase;color:#f2c46d;padding:.8rem .8rem .2rem}.side a.sub{padding-left:1.3rem}
 .side .who{margin-top:1rem;padding:.8rem;border-top:1px solid #33456f;font-size:.85rem;color:#aeb7cc}
 .main{flex:1;min-width:0;padding:1.2rem clamp(.8rem,3vw,2rem) 5rem;max-width:1100px}
 .top{display:none}

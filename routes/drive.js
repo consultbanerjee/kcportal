@@ -82,13 +82,31 @@ function clientFolderName(t, clientId) {
   const dup = db.prepare('SELECT 1 FROM clients WHERE tenant_id=? AND id<>? AND id<? AND lower(trim(name))=lower(?)').get(t, clientId, clientId, base);
   return dup ? `${base} (${clientId})` : base;
 }
+// KcLegalPortal / <Reference> / <Client>. A client with no reference sits directly under KcLegalPortal.
+const refOf = (t, clientId) => { const c = db.prepare('SELECT reference FROM clients WHERE id=? AND tenant_id=?').get(clientId, t); return ((c && c.reference) || '').trim(); };
+async function refFolder(t, name, root) { return sysFolder(t, 'ref:' + name.toLowerCase(), name, root); }
 async function scopeRoot(t, clientId) {
   const root = await sysFolder(t, 'root', ROOT_NAME);
   if (!clientId) return sysFolder(t, 'firm', 'Firm Files', root);
   const had = db.prepare('SELECT 1 FROM drive_folders WHERE tenant_id=? AND key=?').get(t, 'client:' + clientId);
-  const id = await sysFolder(t, 'client:' + clientId, clientFolderName(t, clientId), root);
-  if (!had) db.prepare('INSERT OR REPLACE INTO drive_folders(tenant_id,key,drive_id) VALUES (?,?,?)').run(t, 'cname:' + clientId, clientFolderName(t, clientId));
+  const ref = refOf(t, clientId), parent = ref ? await refFolder(t, ref, root) : root;
+  const id = await sysFolder(t, 'client:' + clientId, clientFolderName(t, clientId), parent);
+  if (!had) { db.prepare('INSERT OR REPLACE INTO drive_folders(tenant_id,key,drive_id) VALUES (?,?,?)').run(t, 'cname:' + clientId, clientFolderName(t, clientId)); db.prepare('INSERT OR REPLACE INTO drive_folders(tenant_id,key,drive_id) VALUES (?,?,?)').run(t, 'cparent:' + clientId, parent); }
   return id;
+}
+// A client given (or moved to) another Reference is moved to that Reference's folder in Drive straight away, with everything inside it.
+async function syncClientRefs(t) {
+  const root = await sysFolder(t, 'root', ROOT_NAME);
+  for (const r of db.prepare("SELECT key,drive_id FROM drive_folders WHERE tenant_id=? AND key LIKE 'client:%'").all(t)) {
+    const cid = +r.key.split(':')[1], ref = refOf(t, cid);
+    const want = ref ? await refFolder(t, ref, root) : root;
+    const cur = (db.prepare('SELECT drive_id FROM drive_folders WHERE tenant_id=? AND key=?').get(t, 'cparent:' + cid) || { drive_id: root }).drive_id;
+    if (cur === want) continue;
+    try {
+      await patch(t, r.drive_id, {}, '&addParents=' + encodeURIComponent(want) + '&removeParents=' + encodeURIComponent(cur));
+      db.prepare('INSERT OR REPLACE INTO drive_folders(tenant_id,key,drive_id) VALUES (?,?,?)').run(t, 'cparent:' + cid, want);
+    } catch (e) { /* retried next round */ }
+  }
 }
 // A client renamed in the portal is renamed in Drive too.
 async function syncClientNames(t) {
@@ -163,9 +181,9 @@ const done = (n) => db.prepare('UPDATE fs_nodes SET dirty=0, sync_error=NULL, sy
 const FIELDS = 'id,name,mimeType,parents,trashed,md5Checksum,size';
 const BADN = /[\\/:*?"<>|\u0000-\u001f]/;
 const folderKeys = (t) => {
-  const m = { root: null, firm: null, clients: new Map() };
-  for (const r of db.prepare("SELECT key,drive_id FROM drive_folders WHERE tenant_id=? AND (key IN ('root','firm') OR key LIKE 'client:%')").all(t)) {
-    if (r.key === 'root') m.root = r.drive_id; else if (r.key === 'firm') m.firm = r.drive_id; else m.clients.set(r.drive_id, +r.key.split(':')[1]);
+  const m = { root: null, firm: null, clients: new Map(), refs: new Map() };
+  for (const r of db.prepare("SELECT key,drive_id FROM drive_folders WHERE tenant_id=? AND (key IN ('root','firm') OR key LIKE 'client:%' OR key LIKE 'ref:%')").all(t)) {
+    if (r.key === 'root') m.root = r.drive_id; else if (r.key === 'firm') m.firm = r.drive_id; else if (r.key.startsWith('ref:')) m.refs.set(r.drive_id, r.key.slice(4)); else m.clients.set(r.drive_id, +r.key.split(':')[1]);
   }
   return m;
 };
@@ -181,7 +199,7 @@ const uniq = (t, clientId, parent, name, exceptId) => {
 };
 // Where does a Drive folder id sit in the portal? -> { client_id, parent } or null (outside the portal's tree)
 async function locate(t, driveParent, keys, depth = 0) {
-  if (!driveParent || driveParent === keys.root || depth > 12) return null;
+  if (!driveParent || driveParent === keys.root || keys.refs.has(driveParent) || depth > 12) return null;
   if (driveParent === keys.firm) return { client_id: null, parent: null };
   if (keys.clients.has(driveParent)) return { client_id: keys.clients.get(driveParent), parent: null };
   const n = byDrive(t, driveParent);
@@ -203,12 +221,22 @@ async function ingest(t, f, keys, depth = 0) {
   if (f.removed || f.trashed) { if (node && !node.deleted_at) trashLocal(node); return; }
   const isDir = f.mimeType === 'application/vnd.google-apps.folder', parentDrive = (f.parents || [])[0];
   if (!keys.root) return;
-  // direct children of KcLegalPortal: "Firm Files" and one folder per client (matched by name)
-  if (parentDrive === keys.root) {
-    if (!isDir || f.id === keys.firm || keys.clients.has(f.id)) return;
-    if (f.name.toLowerCase() === 'firm files' && !keys.firm) { db.prepare('INSERT OR REPLACE INTO drive_folders(tenant_id,key,drive_id) VALUES (?,?,?)').run(t, 'firm', f.id); keys.firm = f.id; return; }
+  // direct children of KcLegalPortal: "Firm Files", Reference folders, and clients without a reference
+  // (clients with a reference sit one level down, inside their Reference folder)
+  const inRef = keys.refs.has(parentDrive);
+  if (parentDrive === keys.root || inRef) {
+    if (!isDir || f.id === keys.firm || keys.refs.has(f.id)) return;
+    const put = (k, v) => db.prepare('INSERT OR REPLACE INTO drive_folders(tenant_id,key,drive_id) VALUES (?,?,?)').run(t, k, v);
+    if (keys.clients.has(f.id)) {
+      // a client folder dragged between Reference folders in Drive changes the client's Reference here
+      const cid = keys.clients.get(f.id), curP = (db.prepare('SELECT drive_id FROM drive_folders WHERE tenant_id=? AND key=?').get(t, 'cparent:' + cid) || { drive_id: keys.root }).drive_id;
+      if (curP !== parentDrive) { const rk = inRef ? keys.refs.get(parentDrive) : '', nm = inRef ? ((db.prepare('SELECT reference r FROM clients WHERE tenant_id=? AND lower(trim(reference))=? LIMIT 1').get(t, rk) || {}).r || rk) : ''; db.prepare('UPDATE clients SET reference=? WHERE id=? AND tenant_id=?').run(nm, cid, t); put('cparent:' + cid, parentDrive); }
+      return;
+    }
+    if (f.name.toLowerCase() === 'firm files' && !keys.firm && !inRef) { put('firm', f.id); keys.firm = f.id; return; }
     const cl = db.prepare('SELECT id FROM clients WHERE tenant_id=? AND lower(trim(name))=lower(?)').all(t, f.name.trim().toLowerCase()).find((c) => ![...keys.clients.values()].includes(c.id));
-    if (cl) { db.prepare('INSERT OR REPLACE INTO drive_folders(tenant_id,key,drive_id) VALUES (?,?,?)').run(t, 'client:' + cl.id, f.id); db.prepare('INSERT OR REPLACE INTO drive_folders(tenant_id,key,drive_id) VALUES (?,?,?)').run(t, 'cname:' + cl.id, f.name.trim()); keys.clients.set(f.id, cl.id); }
+    if (cl) { put('client:' + cl.id, f.id); put('cname:' + cl.id, f.name.trim()); put('cparent:' + cl.id, parentDrive); keys.clients.set(f.id, cl.id); }
+    else if (!inRef && db.prepare("SELECT 1 FROM clients WHERE tenant_id=? AND lower(trim(reference))=lower(?)").get(t, f.name.trim())) { put('ref:' + f.name.trim().toLowerCase(), f.id); keys.refs.set(f.id, f.name.trim().toLowerCase()); }
     return;
   }
   const loc = await locate(t, parentDrive, keys, depth);
@@ -250,7 +278,7 @@ async function scan(t, keys) {
     let page = '';
     do {
       const j = await call(t, 'GET', `${API}/files?` + new URLSearchParams({ q: `'${q(dir)}' in parents and trashed=false`, fields: `nextPageToken,files(${FIELDS})`, pageSize: '200', ...(page ? { pageToken: page } : {}) }).toString());
-      for (const f of j.files || []) { await ingest(t, f, keys); if (f.mimeType === 'application/vnd.google-apps.folder' && (byDrive(t, f.id) || keys.clients.has(f.id) || f.id === keys.firm)) todo.push(f.id); }
+      for (const f of j.files || []) { await ingest(t, f, keys); if (f.mimeType === 'application/vnd.google-apps.folder' && (byDrive(t, f.id) || keys.clients.has(f.id) || keys.refs.has(f.id) || f.id === keys.firm)) todo.push(f.id); }
       page = j.nextPageToken || '';
     } while (page);
   }
@@ -355,7 +383,7 @@ async function syncTenant(t, limit = 40) {
       try { await reconcile(t, db.prepare('SELECT * FROM fs_nodes WHERE id=?').get(n.id)); ok++; }
       catch (e) { bad++; db.prepare('UPDATE fs_nodes SET sync_error=?, sync_tries=sync_tries+1 WHERE id=?').run(String(e.message).slice(0, 300), n.id); }
     }
-    try { await syncClientNames(t); ok += await pull(t); AI.setS(t, 'drive_pull_error', ''); } catch (e) { bad++; AI.setS(t, 'drive_pull_error', String(e.message).slice(0, 200)); console.error('drive pull:', e.message); }
+    try { await syncClientRefs(t); await syncClientNames(t); ok += await pull(t); AI.setS(t, 'drive_pull_error', ''); } catch (e) { bad++; AI.setS(t, 'drive_pull_error', String(e.message).slice(0, 200)); console.error('drive pull:', e.message); }
   } catch (e) { bad++; console.error('drive sync:', e.message); }
   finally { running.delete(t); }
   return { done: ok, failed: bad };
@@ -366,12 +394,19 @@ function pending(t) {
     pull_error: AI.getS(t, 'drive_pull_error') || null,
     last_error: (db.prepare("SELECT sync_error e FROM fs_nodes WHERE tenant_id=? AND sync_error IS NOT NULL ORDER BY id DESC LIMIT 1").get(t) || {}).e || null };
 }
+// push a change to Drive almost at once (waits a moment so a burst of edits goes together)
+const kicks = new Map();
+function kick(t, ms = 1200) {
+  if (!connected(t) || kicks.has(t)) return;
+  kicks.set(t, setTimeout(() => { kicks.delete(t); if (running.has(t)) return kick(t, 2000); syncTenant(t).catch(() => {}); }, ms));
+  if (kicks.get(t).unref) kicks.get(t).unref();
+}
 let timer = null;
 function startWorker() {
   if (timer) return;
   timer = setInterval(async () => {
     for (const f of db.prepare("SELECT id FROM tenants WHERE kind='firm' AND active=1").all()) { try { await syncTenant(f.id); } catch (e) {} }
-  }, 20000);
+  }, 10000);
   timer.unref();
 }
 
@@ -436,4 +471,4 @@ module.exports = (app) => {
     res.json(status(req));
   });
 };
-Object.assign(module.exports, { canContacts, ensureDriveFolder: async (t, nodeId) => { const n = db.prepare('SELECT * FROM fs_nodes WHERE id=?').get(nodeId); if (!n.drive_id) await reconcile(t, n); return db.prepare('SELECT drive_id FROM fs_nodes WHERE id=?').get(nodeId).drive_id; }, pushFile, call, canMeet, accessToken, clearLook: () => lastLook.clear(), refreshFolder, pushBuffer, nativeExt, isNative, setTransport, connected, configured, syncTenant, download, startWorker, pending, cfg });
+Object.assign(module.exports, { kick, canContacts, ensureDriveFolder: async (t, nodeId) => { const n = db.prepare('SELECT * FROM fs_nodes WHERE id=?').get(nodeId); if (!n.drive_id) await reconcile(t, n); return db.prepare('SELECT drive_id FROM fs_nodes WHERE id=?').get(nodeId).drive_id; }, pushFile, call, canMeet, accessToken, clearLook: () => lastLook.clear(), refreshFolder, pushBuffer, nativeExt, isNative, setTransport, connected, configured, syncTenant, download, startWorker, pending, cfg });

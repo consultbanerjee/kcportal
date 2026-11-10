@@ -9,23 +9,27 @@ const upload = multer({ storage: multer.memoryStorage(), limits: { fileSize: 25 
 const isClient = (u) => u.role === 'client';
 const pad = (n, w = 4) => String(n).padStart(w, '0');
 
+// "Reference" = the person/source through whom the client came; it becomes a folder name in Drive, so keep it plain
+const refName = (v) => L.str(v, 100).replace(/[\/\\]/g, '-').replace(/\s+/g, ' ').trim();
+
 module.exports = (app) => {
   const T = (req) => req.user.tenant_id;
+  app.get('/api/references', L.office, (req, res) => res.json(db.prepare("SELECT reference AS name, COUNT(*) AS clients FROM clients WHERE tenant_id=? AND reference IS NOT NULL AND reference<>'' GROUP BY lower(reference) ORDER BY reference").all(T(req))));
 
   // ---------- Clients ----------
   app.get('/api/clients', L.office, (req, res) => {
     const q = '%' + L.str(req.query.q, 80) + '%';
     res.json(db.prepare(`SELECT c.*, (SELECT COUNT(*) FROM matters m WHERE m.client_id=c.id) AS matters,
       (SELECT COUNT(*) FROM users u WHERE u.client_id=c.id AND u.pass_hash IS NOT NULL) AS has_login
-      FROM clients c WHERE c.tenant_id=? AND (c.name LIKE ? OR c.phone LIKE ? OR c.email LIKE ?) ORDER BY c.name LIMIT 300`)
-      .all(T(req), q, q, q));
+      FROM clients c WHERE c.tenant_id=? AND (c.name LIKE ? OR c.phone LIKE ? OR c.email LIKE ? OR c.reference LIKE ?) ORDER BY c.name LIMIT 300`)
+      .all(T(req), q, q, q, q));
   });
 
   app.post('/api/clients', L.need('admin', 'advocate', 'staff', 'telecaller'), (req, res) => {
     const name = L.str(req.body.name, 150);
     if (!L.must(res, name, 'Client name is required.')) return;
-    const r = db.prepare('INSERT INTO clients(tenant_id,name,email,phone,address,notes) VALUES (?,?,?,?,?,?)')
-      .run(T(req), name, L.str(req.body.email, 200).toLowerCase(), L.str(req.body.phone, 30), L.str(req.body.address, 400), L.str(req.body.notes, 1000));
+    const r = db.prepare('INSERT INTO clients(tenant_id,name,email,phone,address,notes,reference) VALUES (?,?,?,?,?,?,?)')
+      .run(T(req), name, L.str(req.body.email, 200).toLowerCase(), L.str(req.body.phone, 30), L.str(req.body.address, 400), L.str(req.body.notes, 1000), refName(req.body.reference));
     audit(T(req), req.user.id, 'client_created', 'client', r.lastInsertRowid, name, L.ip(req));
     res.json({ id: r.lastInsertRowid });
   });
@@ -44,9 +48,9 @@ module.exports = (app) => {
   app.put('/api/clients/:id', L.need('admin', 'advocate', 'staff'), (req, res) => {
     const c = db.prepare('SELECT * FROM clients WHERE id=? AND tenant_id=?').get(req.params.id, T(req));
     if (!c) return res.status(404).json({ error: 'Not found.' });
-    db.prepare('UPDATE clients SET name=?,email=?,phone=?,address=?,notes=? WHERE id=?').run(
+    db.prepare('UPDATE clients SET name=?,email=?,phone=?,address=?,notes=?,reference=? WHERE id=?').run(
       L.str(req.body.name || c.name, 150), L.str(req.body.email ?? c.email, 200).toLowerCase(), L.str(req.body.phone ?? c.phone, 30),
-      L.str(req.body.address ?? c.address, 400), L.str(req.body.notes ?? c.notes, 1000), c.id);
+      L.str(req.body.address ?? c.address, 400), L.str(req.body.notes ?? c.notes, 1000), req.body.reference === undefined ? c.reference : refName(req.body.reference), c.id);
     res.json({ ok: true });
   });
 
@@ -196,6 +200,7 @@ module.exports = (app) => {
     if (view === 'mine') { where += ' AND t.assigned_to=?'; p.push(req.user.id); }
     else if (view === 'assigned') { where += ' AND t.assigned_by=?'; p.push(req.user.id); }
     else if (view === 'overdue') where += " AND t.status<>'done' AND t.due_date<date('now')";
+    if (L.int(req.query.client_id)) { where += ' AND m.client_id=?'; p.push(L.int(req.query.client_id)); }
     res.json(db.prepare(`SELECT t.*, a.name AS assignee, b.name AS assigner, m.file_no FROM tasks t
       LEFT JOIN users a ON a.id=t.assigned_to LEFT JOIN users b ON b.id=t.assigned_by LEFT JOIN matters m ON m.id=t.matter_id
       WHERE ${where} ORDER BY CASE t.status WHEN 'done' THEN 1 ELSE 0 END, t.due_date IS NULL, t.due_date LIMIT 400`).all(...p));
@@ -237,8 +242,9 @@ module.exports = (app) => {
       return res.json(db.prepare(`SELECT id,ref_no,subject,sent_at,read_at,matter_id FROM letters
         WHERE tenant_id=? AND client_id=? AND client_visible=1 AND status='sent' ORDER BY id DESC`).all(T(req), req.user.client_id));
     }
+    const cid = L.int(req.query.client_id);
     res.json(db.prepare(`SELECT l.id,l.ref_no,l.to_name,l.subject,l.status,l.sent_at,l.read_at,l.created_at,m.file_no
-      FROM letters l LEFT JOIN matters m ON m.id=l.matter_id WHERE l.tenant_id=? ORDER BY l.id DESC LIMIT 300`).all(T(req)));
+      FROM letters l LEFT JOIN matters m ON m.id=l.matter_id WHERE l.tenant_id=? ${cid ? 'AND l.client_id=?' : ''} ORDER BY l.id DESC LIMIT 300`).all(...[T(req), ...(cid ? [cid] : [])]));
   });
 
   app.get('/api/letters/:id', L.requireLogin, (req, res) => {

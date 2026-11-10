@@ -2,6 +2,7 @@
 let TEAM = null;
 async function team() { if (!TEAM) TEAM = (await GET('/api/users')).filter((u) => u.active); return TEAM; }
 const teamOpts = async (blank) => [...(blank ? [['', blank]] : []), ...(await team()).map((u) => [u.id, u.name + ' (' + u.role + ')'])];
+const refList = async () => { try { return (await GET('/api/references')).map((r) => r.name); } catch (e) { return []; } };
 const clientOpts = async () => (await GET('/api/clients')).map((c) => [c.id, c.name + (c.phone ? ' · ' + c.phone : '')]);
 const matterOpts = async (blank) => [['', blank || '— none —'], ...(await GET('/api/matters')).map((m) => [m.id, m.file_no + ' · ' + m.title])];
 const searchBar = (ph, val) => `<div class="row noprint" style="margin-bottom:.8rem"><input id="q" placeholder="${ph}" value="${esc(val || '')}" style="flex:1;min-width:180px"></div>`;
@@ -22,7 +23,7 @@ route(/^\/$/, async () => {
   }
   view(`<div class="row sp"><h1>Good day, ${esc(ME.name.split(' ')[0])}</h1>${can('admin', 'advocate', 'staff', 'telecaller') ? '<button class="btn gold" id="qc">+ Add client</button>' : ''}</div>
     <div class="grid">
-    <a class="stat" href="#/matters"><b>${d.open_matters}</b><span>Open matters</span></a>
+    <a class="stat" href="#/matters"><b>${d.open_matters}</b><span>Open cases</span></a>
     <a class="stat" href="#/tasks"><b>${d.my_tasks}</b><span>My tasks</span></a>
     <a class="stat ${d.overdue_tasks ? 'alert' : ''}" href="#/tasks?view=overdue"><b>${d.overdue_tasks}</b><span>Overdue tasks</span></a>
     <a class="stat" href="#/leads"><b>${d.new_leads}</b><span>New leads</span></a>
@@ -37,18 +38,18 @@ route(/^\/$/, async () => {
 route(/^\/clients$/, async () => {
   const draw = async (q) => {
     const rows = await GET('/api/clients?' + qs({ q }));
-    $('#res').innerHTML = rows.length ? `<div class="tw"><table><tr><th>Name</th><th>Phone</th><th>Matters</th><th>Portal login</th><th>Portal access</th></tr>${rows.map((c) => `<tr><td><a href="#/client/${c.id}">${esc(c.name)}</a></td><td>${esc(c.phone)}</td><td>${c.matters}</td><td>${c.has_login ? pill('active', 'ok') : '—'}</td><td><label class="chk" style="margin:0;white-space:nowrap"><input type="checkbox" class="acc" data-id="${c.id}" ${c.portal_blocked ? '' : 'checked'} ${['admin', 'advocate'].includes(ME.role) ? '' : 'disabled'}> <span class="accl">${c.portal_blocked ? 'Blocked' : 'Allowed'}</span></label></td></tr>`).join('')}</table></div>` : '<p class="mute">No clients found.</p>';
+    $('#res').innerHTML = rows.length ? `<div class="tw"><table><tr><th>Name</th><th>Reference</th><th>Phone</th><th>Cases</th><th>Portal login</th><th>Portal access</th></tr>${rows.map((c) => `<tr><td><a href="#/client/${c.id}">${esc(c.name)}</a></td><td>${esc(c.reference || '—')}</td><td>${esc(c.phone)}</td><td>${c.matters}</td><td>${c.has_login ? pill('active', 'ok') : '—'}</td><td><label class="chk" style="margin:0;white-space:nowrap"><input type="checkbox" class="acc" data-id="${c.id}" ${c.portal_blocked ? '' : 'checked'} ${['admin', 'advocate'].includes(ME.role) ? '' : 'disabled'}> <span class="accl">${c.portal_blocked ? 'Blocked' : 'Allowed'}</span></label></td></tr>`).join('')}</table></div>` : '<p class="mute">No clients found.</p>';
     document.querySelectorAll('#res .acc').forEach((el) => { el.onchange = async () => { const on = el.checked; try { await PUT(`/api/clients/${el.dataset.id}/access`, { portal_blocked: !on }); el.parentNode.querySelector('.accl').textContent = on ? 'Allowed' : 'Blocked'; toast(on ? 'Portal access allowed.' : 'Portal access blocked.'); } catch (x) { el.checked = !on; toast(x.message, true); } }; });
   };
-  view(`<div class="row sp"><h1>Clients</h1>${can('admin', 'advocate', 'staff', 'telecaller') ? '<button class="btn" id="add">Add client</button>' : ''}</div>${searchBar('Search name, phone or email')}<div class="card" id="res"></div>`);
+  view(`<div class="row sp"><h1>Clients</h1>${can('admin', 'advocate', 'staff', 'telecaller') ? '<button class="btn" id="add">Add client</button>' : ''}</div>${searchBar('Search name, phone, email or reference')}<div class="card" id="res"></div>`);
   liveSearch(draw); draw('');
   const add = $('#add'); if (add) add.onclick = () => addClient();
 }, { office: true });
 
 /* add a client; optionally create the portal login straight away */
-function addClient() {
-  const canLogin = can('admin', 'advocate', 'staff');
-  return ask('New client', [{ name: 'name', label: 'Full name', required: true }, { name: 'phone', label: 'Phone', type: 'tel' }, { name: 'email', label: 'Email', type: 'email', hint: 'Needed if you give the client portal access.' }, { name: 'address', label: 'Address', type: 'textarea' },
+async function addClient() {
+  const canLogin = can('admin', 'advocate', 'staff'), refs = await refList();
+  return ask('New client', [{ name: 'name', label: 'Full name', required: true }, { name: 'reference', label: 'Reference (through whom the client came)', list: refs, hint: 'Optional. Pick an existing name or type a new one. The client\'s Drive folder is kept under this name.' }, { name: 'phone', label: 'Phone', type: 'tel' }, { name: 'email', label: 'Email', type: 'email', hint: 'Needed if you give the client portal access.' }, { name: 'address', label: 'Address', type: 'textarea' },
     ...(canLogin ? [{ name: 'portal', label: 'Give portal access now (creates a private invitation link)', type: 'checkbox' }] : [])], 'Save', async (v) => {
     if (v.portal && !/^\S+@\S+\.\S+$/.test(v.email)) throw new Error('Enter the client\'s email to give portal access.');
     const r = await POST('/api/clients', v); let link = null;
@@ -61,18 +62,18 @@ function addClient() {
 async function newMatter(clientId) {
   const fields = [];
   if (!clientId) fields.push({ name: 'client_id', label: 'Client', type: 'select', options: await clientOpts(), required: true });
-  fields.push({ name: 'title', label: 'Matter title', required: true, ph: 'e.g. Ramesh Sharma v. State Bank of India' }, { name: 'forum', label: 'Court / forum' }, { name: 'case_no', label: 'Case number' },
+  fields.push({ name: 'title', label: 'Case title', required: true, ph: 'e.g. Ramesh Sharma v. State Bank of India' }, { name: 'forum', label: 'Court / forum' }, { name: 'case_no', label: 'Case number' },
     { name: 'opposite_party', label: 'Opposite party' }, { name: 'stage', label: 'Stage' }, { name: 'assigned_to', label: 'Handled by', type: 'select', options: await teamOpts('— unassigned —') });
-  ask('New matter', fields, 'Create', async (v) => { const r = await POST('/api/matters', { ...v, client_id: clientId || v.client_id }); location.hash = '#/matter/' + r.id; });
+  ask('New case', fields, 'Create', async (v) => { const r = await POST('/api/matters', { ...v, client_id: clientId || v.client_id }); location.hash = '#/matter/' + r.id; });
 }
 
 /* ===== matters ===== */
 route(/^\/matters$/, async () => {
   const draw = async (q) => {
     const rows = await GET('/api/matters?' + qs({ q }));
-    $('#res').innerHTML = rows.length ? `<div class="tw"><table><tr><th>File</th><th>Matter</th>${isClient() ? '' : '<th>Client</th>'}<th>Forum</th><th>Next date</th><th></th></tr>${rows.map((m) => `<tr><td>${esc(m.file_no)}</td><td><a href="#/matter/${m.id}">${esc(m.title)}</a></td>${isClient() ? '' : `<td>${esc(m.client_name)}</td>`}<td>${esc(m.forum || '')}</td><td>${m.next_date ? dt(m.next_date) : '—'}</td><td>${sp(m.status)}</td></tr>`).join('')}</table></div>` : '<p class="mute">No cases found.</p>';
+    $('#res').innerHTML = rows.length ? `<div class="tw"><table><tr><th>File</th><th>Case</th>${isClient() ? '' : '<th>Client</th>'}<th>Forum</th><th>Next date</th><th></th></tr>${rows.map((m) => `<tr><td>${esc(m.file_no)}</td><td><a href="#/matter/${m.id}">${esc(m.title)}</a></td>${isClient() ? '' : `<td>${esc(m.client_name)}</td>`}<td>${esc(m.forum || '')}</td><td>${m.next_date ? dt(m.next_date) : '—'}</td><td>${sp(m.status)}</td></tr>`).join('')}</table></div>` : '<p class="mute">No cases found.</p>';
   };
-  view(`<div class="row sp"><h1>${isClient() ? 'My cases' : 'Matters'}</h1>${can('admin', 'advocate', 'staff') ? '<button class="btn" id="add">New matter</button>' : ''}</div>${searchBar('Search title, file number or client')}<div class="card" id="res"></div>`);
+  view(`<div class="row sp"><h1>${isClient() ? 'My cases' : 'Cases'}</h1>${can('admin', 'advocate', 'staff') ? '<button class="btn" id="add">New case</button>' : ''}</div>${searchBar('Search title, file number or client')}<div class="card" id="res"></div>`);
   liveSearch(draw); draw('');
   const add = $('#add'); if (add) add.onclick = () => newMatter();
 });
@@ -80,7 +81,7 @@ route(/^\/matters$/, async () => {
 route(/^\/matter\/(\d+)$/, async ([id]) => {
   const m = await GET('/api/matters/' + id), cli = isClient(), edit = can('admin', 'advocate', 'staff');
   view(`<div class="row sp"><div><h1 style="margin-bottom:0">${esc(m.title)}</h1><div class="mute">${esc(m.file_no)} · ${esc(m.client_name)} · ${sp(m.status)}</div></div>
-    <a class="btn ghost sm" href="#/matters">← ${cli ? 'My cases' : 'Matters'}</a></div>
+    <a class="btn ghost sm" href="#/matters">← ${cli ? 'My cases' : 'Cases'}</a></div>
     <div class="card"><div class="row sp"><h2>Case details</h2>${edit ? '<button class="btn sm ghost" id="em">Edit</button>' : ''}</div>
     <p><b>Forum:</b> ${esc(m.forum || '—')}<br><b>Case no.:</b> ${esc(m.case_no || '—')}<br><b>Stage:</b> ${esc(m.stage || '—')}${cli ? '' : `<br><b>Opposite party:</b> ${esc(m.opposite_party || '—')}`}</p>
     ${cli ? (m.client_visible_note ? `<p><b>Update from the office:</b><br>${esc(m.client_visible_note)}</p>` : '') : (m.summary ? `<p><b>Internal summary:</b><br>${esc(m.summary)}</p>` : '')}</div>
@@ -94,7 +95,7 @@ route(/^\/matter\/(\d+)$/, async ([id]) => {
     ${cli ? '' : `<div class="card"><div class="row sp"><h2>Tasks</h2><button class="btn sm" id="at">Assign task</button></div>${m.tasks.length ? `<ul class="list">${m.tasks.map((t) => `<li><span>${esc(t.title)}<div class="mute">${esc(t.assignee || '')} · due ${dt(t.due_date)}</div></span>${sp(t.status)}</li>`).join('')}</ul>` : '<p class="mute">No tasks.</p>'}</div>
     <div class="card"><div class="row sp"><h2>File notings</h2><button class="btn sm" id="an">Add noting</button></div>${m.notings.length ? `<ul class="list">${m.notings.map((n) => `<li><span>${esc(n.note)}<div class="mute">${esc(n.user_name || '')} · ${dtm(n.created_at)}</div></span></li>`).join('')}</ul>` : '<p class="mute">No notings.</p>'}</div>`}`);
   const upd = () => go();
-  const em = $('#em'); if (em) em.onclick = () => ask('Edit matter', [{ name: 'title', label: 'Title', value: m.title, required: true }, { name: 'forum', label: 'Forum', value: m.forum }, { name: 'case_no', label: 'Case number', value: m.case_no }, { name: 'opposite_party', label: 'Opposite party', value: m.opposite_party }, { name: 'stage', label: 'Stage', value: m.stage }, { name: 'status', label: 'Status', type: 'select', value: m.status, options: ['open', 'on_hold', 'closed'] }, { name: 'summary', label: 'Internal summary', type: 'textarea', value: m.summary }, { name: 'client_visible_note', label: 'Update the client can see', type: 'textarea', value: m.client_visible_note }], 'Save', async (v) => { await PUT('/api/matters/' + id, v); upd(); });
+  const em = $('#em'); if (em) em.onclick = () => ask('Edit case', [{ name: 'title', label: 'Title', value: m.title, required: true }, { name: 'forum', label: 'Forum', value: m.forum }, { name: 'case_no', label: 'Case number', value: m.case_no }, { name: 'opposite_party', label: 'Opposite party', value: m.opposite_party }, { name: 'stage', label: 'Stage', value: m.stage }, { name: 'status', label: 'Status', type: 'select', value: m.status, options: ['open', 'on_hold', 'closed'] }, { name: 'summary', label: 'Internal summary', type: 'textarea', value: m.summary }, { name: 'client_visible_note', label: 'Update the client can see', type: 'textarea', value: m.client_visible_note }], 'Save', async (v) => { await PUT('/api/matters/' + id, v); upd(); });
   const ah = $('#ah'); if (ah) ah.onclick = () => ask('Record hearing', [{ name: 'hearing_date', label: 'Hearing date', type: 'date', value: today(), required: true }, { name: 'purpose', label: 'Purpose' }, { name: 'outcome', label: 'Outcome / order' }, { name: 'next_date', label: 'Next date', type: 'date' }], 'Save', async (v) => { await POST(`/api/matters/${id}/hearings`, v); upd(); });
   $('#ud').onclick = () => ask('Upload document', [{ name: 'file', label: 'File', type: 'file', required: true, hint: 'PDF, Word, Excel, JPG/PNG, ZIP — up to 25 MB.' }, ...(cli ? [] : [{ name: 'category', label: 'Category', ph: 'Pleading, Order, Notice…' }, { name: 'client_visible', label: 'Client can see this', type: 'checkbox' }])], 'Upload', async (v) => {
     const fd = new FormData(); fd.append('matter_id', id); fd.append('file', v.file); if (!cli) { fd.append('category', v.category || ''); fd.append('client_visible', v.client_visible ? '1' : '0'); } await POST('/api/documents', fd); toast('Uploaded.'); upd(); });
@@ -125,7 +126,7 @@ route(/^\/letters$/, async () => {
   const rows = await GET('/api/letters');
   view(`<div class="row sp"><h1>Letters</h1>${can('admin', 'advocate', 'staff') ? '<button class="btn" id="add">Draft letter</button>' : ''}</div>
     <div class="card">${rows.length ? `<ul class="list">${rows.map((l) => `<li><span><a href="#/letter/${l.id}">${esc(l.subject)}</a><div class="mute">${isClient() ? dt(l.sent_at) : 'To ' + esc(l.to_name) + (l.file_no ? ' · ' + esc(l.file_no) : '')}</div></span><span>${isClient() ? (l.read_at ? '' : pill('new', 'warn')) : `${esc(l.ref_no || '')} ${sp(l.status)} ${l.read_at ? pill('read', 'ok') : ''}`}</span></li>`).join('')}</ul>` : '<p class="mute">No letters.</p>'}</div>`);
-  const add = $('#add'); if (add) add.onclick = async () => ask('Draft letter', [{ name: 'to_name', label: 'To', required: true }, { name: 'subject', label: 'Subject', required: true }, { name: 'matter_id', label: 'Matter', type: 'select', options: await matterOpts() }, { name: 'body', label: 'Letter', type: 'textarea', required: true }, { name: 'client_visible', label: 'Make visible to the client when sent', type: 'checkbox' }], 'Save draft', async (v) => { const r = await POST('/api/letters', v); location.hash = '#/letter/' + r.id; }, true);
+  const add = $('#add'); if (add) add.onclick = async () => ask('Draft letter', [{ name: 'to_name', label: 'To', required: true }, { name: 'subject', label: 'Subject', required: true }, { name: 'matter_id', label: 'Case', type: 'select', options: await matterOpts() }, { name: 'body', label: 'Letter', type: 'textarea', required: true }, { name: 'client_visible', label: 'Make visible to the client when sent', type: 'checkbox' }], 'Save draft', async (v) => { const r = await POST('/api/letters', v); location.hash = '#/letter/' + r.id; }, true);
 });
 route(/^\/letter\/(\d+)$/, async ([id]) => {
   const [l, T] = await Promise.all([GET('/api/letters/' + id), getTpl()]);
@@ -138,14 +139,76 @@ route(/^\/letter\/(\d+)$/, async ([id]) => {
   const e = $('#ed'); if (e) e.onclick = () => ask('Edit draft', [{ name: 'to_name', label: 'To', value: l.to_name, required: true }, { name: 'subject', label: 'Subject', value: l.subject, required: true }, { name: 'body', label: 'Letter', type: 'textarea', value: l.body, required: true }, { name: 'client_visible', label: 'Visible to client when sent', type: 'checkbox', value: l.client_visible }], 'Save', async (v) => { await PUT('/api/letters/' + id, v); go(); }, true);
 });
 
-/* ===== inward register ===== */
-route(/^\/dak$/, async () => {
-  const rows = await GET('/api/dak');
-  view(`<div class="row sp"><h1>Inward register</h1><button class="btn" id="add">Log inward</button></div>
-    <div class="card">${rows.length ? `<div class="tw"><table><tr><th>No.</th><th>Date</th><th>From</th><th>Subject</th><th>Action by</th><th></th></tr>${rows.map((d) => `<tr><td>${esc(d.ref_no)}</td><td>${dt(d.received_on)}</td><td>${esc(d.from_name)}</td><td>${esc(d.subject)}${d.file_no ? `<div class="mute">${esc(d.file_no)}</div>` : ''}</td><td>${esc(d.assignee || '—')}</td><td>${d.status === 'open' ? `<button class="btn sm ghost" data-done="${d.id}">Mark actioned</button>` : pill('actioned', 'ok')}</td></tr>`).join('')}</table></div>` : '<p class="mute">Nothing logged.</p>'}</div>`);
-  $('#add').onclick = async () => ask('Log inward correspondence', [{ name: 'from_name', label: 'Received from', required: true }, { name: 'subject', label: 'Subject', required: true }, { name: 'received_on', label: 'Date received', type: 'date', value: today() }, { name: 'matter_id', label: 'Matter', type: 'select', options: await matterOpts() }, { name: 'assigned_to', label: 'For action by', type: 'select', options: await teamOpts('— nobody —') }], 'Log', async (v) => { const r = await POST('/api/dak', v); toast('Entered as ' + r.ref_no); go(); });
-  $$('[data-done]').forEach((b) => (b.onclick = async () => { await PATCH('/api/dak/' + b.dataset.done, { status: 'actioned' }); go(); }));
+/* ===== In-Out Register (inward and outward letters / communications) ===== */
+const MODES = ['', 'Registered Post', 'Speed Post', 'Courier', 'Email', 'Hand delivery', 'WhatsApp', 'Other'];
+// one entry form for inward or outward; row = existing entry (edit), clientId = fixed client (when opened from a client page)
+async function regForm(kind, row, clientId, after) {
+  const inn = kind === 'in', r = row || {}, cl = await clientOpts();
+  let matters = [['', '— none —']];
+  try { const cid = clientId || r.client_id; matters = cid ? [['', '— none —'], ...(await GET('/api/clients/' + cid)).matters.map((m) => [m.id, m.file_no + ' · ' + m.title])] : await matterOpts(); } catch (e) {}
+  const f = [
+    { name: 'no', label: inn ? 'Inward No.' : 'Outward No.', value: r.no || '', ph: 'Leave blank for the next number', hint: r.id ? '' : 'Leave blank to number automatically. You may type your own number.' },
+    { name: 'entry_date', label: inn ? 'Date received' : 'Date sent', type: 'date', value: r.entry_date || today(), hint: 'Any date, including a past date.' },
+    { name: 'entry_time', label: 'Time', type: 'time', value: r.entry_time || '' },
+    { name: 'party', label: inn ? 'Sender\'s name & organisation' : 'Receiver\'s name & organisation / address', value: r.party || '' },
+    ...(inn ? [{ name: 'their_ref', label: 'Sender\'s reference / letter no. & date', value: r.their_ref || '' }] : []),
+    { name: 'subject', label: inn ? 'Subject / description of contents' : 'Subject / description', type: 'textarea', value: r.subject || '' },
+    ...(inn ? [{ name: 'enclosures', label: 'Enclosures / attachments', value: r.enclosures || '' }] : []),
+    { name: 'dept', label: inn ? 'Recipient / department' : 'Sender\'s department / name', value: r.dept || '' },
+    ...(inn ? [{ name: 'action', label: 'Action required / status', value: r.action || '', list: ['Reply', 'For information', 'File', 'Open', 'Actioned'] }]
+      : [{ name: 'reply_to', label: 'Reference / reply to (Inward No.)', value: r.reply_to || '' }, { name: 'mode', label: 'Mode of dispatch', type: 'select', options: MODES.map((m) => [m, m || '— select —']), value: r.mode || '' }, { name: 'tracking', label: 'Tracking / postal receipt no.', value: r.tracking || '' }]),
+    { name: 'signature', label: inn ? 'Receiver\'s signature (name)' : 'Dispatch clerk\'s signature (name)', value: r.signature || '' },
+    { name: 'remarks', label: 'Remarks', type: 'textarea', value: r.remarks || '' },
+    ...(clientId ? [] : [{ name: 'client_id', label: 'Client (on whose behalf)', type: 'select', options: [['', '— none —'], ...cl], value: r.client_id || '' }]),
+    { name: 'matter_id', label: 'Case', type: 'select', options: matters, value: r.matter_id || '' },
+  ];
+  return ask((r.id ? 'Edit ' : 'New ') + (inn ? 'inward' : 'outward') + ' entry', f, r.id ? 'Save' : 'Enter', async (v) => {
+    const body = { ...v, client_id: clientId || v.client_id || null, matter_id: v.matter_id || null, kind };
+    if (r.id) { if (!body.no) throw new Error('The number cannot be empty.'); await PATCH('/api/register/' + r.id, body); toast('Saved.'); }
+    else { const x = await POST('/api/register', body); toast('Entered as ' + x.no); }
+    if (after) after(); else go();
+  }, true);
+}
+async function regNumbering() {
+  const f = await GET('/api/register/format');
+  const one = (kind, name) => ask('Numbering of ' + name + ' numbers', [
+    { name: 'fmt', label: 'Pattern', value: f[kind].fmt, hint: 'Use {P} firm prefix, {YYYY} year, {YY} short year, {N:4} running number with 4 digits. Example: {P}/' + (kind === 'in' ? 'IN' : 'OUT') + '/{YYYY}/{N:4}. Now it gives ' + f[kind].example + '.' },
+    { name: 'next', label: 'Next number to use', type: 'number', value: f[kind].next, hint: 'Changes only the numbers given automatically from now on. Existing entries keep their numbers.' }], 'Save', async (v) => { const r = await PUT('/api/register/format', { kind, fmt: v.fmt, next: +v.next }); toast('Next number will look like ' + r.example); go(); });
+  return ask('Restructure numbering', [{ name: 'k', label: 'Which numbers?', type: 'select', options: [['in', 'Inward numbers'], ['out', 'Outward numbers']] }], 'Next', async (v) => { setTimeout(() => one(v.k, v.k === 'in' ? 'inward' : 'outward'), 50); });
+}
+// the table, used on the register page and inside a client page
+function regTable(rows, showClient) {
+  const csvBtn = rows.length ? '<button class="btn sm ghost noprint" id="rcsv">Export CSV</button>' : '';
+  const head = `<tr><th>No.</th><th>Date</th><th>From / To</th><th>Subject</th>${showClient ? '<th>Client</th>' : ''}<th>Details</th><th class="noprint"></th></tr>`;
+  const body = rows.map((x) => `<tr><td><b>${esc(x.no)}</b><div class="mute">${x.kind === 'in' ? 'Inward' : 'Outward'}</div></td><td>${dt(x.entry_date)}${x.entry_time ? '<div class="mute">' + esc(x.entry_time) + '</div>' : ''}</td><td>${esc(x.party || '—')}${x.dept ? '<div class="mute">' + esc(x.dept) + '</div>' : ''}</td>
+    <td>${esc(x.subject || '—')}${x.file_no ? `<div class="mute">${esc(x.file_no)}</div>` : ''}${x.enclosures ? `<div class="mute">Encl: ${esc(x.enclosures)}</div>` : ''}</td>${showClient ? `<td>${x.client_id ? `<a href="#/client/${x.client_id}?tab=register">${esc(x.client_name)}</a>` : '—'}</td>` : ''}
+    <td class="mute">${[x.their_ref && 'Ref: ' + x.their_ref, x.action, x.reply_to && 'Reply to ' + x.reply_to, x.mode, x.tracking && 'Track: ' + x.tracking, x.signature && 'Sign: ' + x.signature, x.remarks].filter(Boolean).map(esc).join(' · ') || '—'}</td>
+    <td class="noprint" style="white-space:nowrap"><button class="btn sm ghost" data-re="${x.id}">Edit</button>${can('admin', 'advocate') ? ` <button class="btn sm ghost" data-rd="${x.id}">Delete</button>` : ''}</td></tr>`).join('');
+  return { html: rows.length ? `<div class="row end" style="margin-bottom:.5rem">${csvBtn}</div><div class="tw"><table>${head}${body}</table></div>` : '<p class="mute">Nothing recorded.</p>', rows };
+}
+function regWire(root, rows, after) {
+  $$('[data-re]', root).forEach((b) => (b.onclick = () => { const x = rows.find((r) => r.id === +b.dataset.re); regForm(x.kind, x, null, after); }));
+  $$('[data-rd]', root).forEach((b) => (b.onclick = async () => { const x = rows.find((r) => r.id === +b.dataset.rd); if (!sure('Delete entry ' + x.no + '? This cannot be undone.')) return; try { await DEL('/api/register/' + x.id); toast('Deleted.'); after ? after() : go(); } catch (e) { toast(e.message, true); } }));
+  const c = $('#rcsv', root); if (c) c.onclick = () => {
+    const cols = ['kind', 'no', 'entry_date', 'entry_time', 'party', 'their_ref', 'subject', 'enclosures', 'dept', 'action', 'reply_to', 'mode', 'tracking', 'signature', 'remarks', 'client_name', 'file_no'];
+    const q = (v) => '"' + String(v == null ? '' : v).replace(/"/g, '""') + '"';
+    const a = document.createElement('a'); a.href = URL.createObjectURL(new Blob(['﻿' + [cols.join(','), ...rows.map((r) => cols.map((k) => q(r[k])).join(','))].join('\n')], { type: 'text/csv' })); a.download = 'in-out-register.csv'; a.click();
+  };
+}
+route(/^\/register$/, async (_, p) => {
+  const kind = p.get('kind') || '', q = p.get('q') || '', from = p.get('from') || '', to = p.get('to') || '';
+  const rows = await GET('/api/register?' + qs({ kind, q, from, to }));
+  const t = regTable(rows, true);
+  view(`<div class="row sp"><h1>In-Out Register</h1><span class="row"><button class="btn" id="ai">+ Inward</button><button class="btn" id="ao">+ Outward</button>${can('admin', 'advocate') ? '<button class="btn ghost" id="nb">Numbering</button>' : ''}</span></div>
+    <div class="tabs">${[['', 'All'], ['in', 'Inward'], ['out', 'Outward']].map(([k, l]) => `<a href="#/register${k ? '?kind=' + k : ''}" class="${kind === k ? 'on' : ''}">${l}</a>`).join('')}</div>
+    <form class="row noprint" id="rf" style="margin:.6rem 0;gap:.5rem;flex-wrap:wrap"><input name="q" value="${esc(q)}" placeholder="Search number, party, subject, client" style="flex:1;min-width:200px"><input type="date" name="from" value="${esc(from)}" title="From date" style="width:auto"><input type="date" name="to" value="${esc(to)}" title="To date" style="width:auto"><button class="btn ghost">Filter</button></form>
+    <div class="card" id="rt">${t.html}</div><p class="mute">Entries can be made for any date. Only the number is compulsory.</p>`);
+  $('#rf').onsubmit = (e) => { e.preventDefault(); const f = e.target; location.hash = '#/register?' + qs({ kind, q: f.q.value, from: f.from.value, to: f.to.value }); };
+  $('#ai').onclick = () => regForm('in'); $('#ao').onclick = () => regForm('out');
+  const nb = $('#nb'); if (nb) nb.onclick = regNumbering;
+  regWire($('#rt'), rows);
 }, { roles: ['admin', 'advocate', 'staff'] });
+route(/^\/dak$/, async () => { location.hash = '#/register?kind=in'; }, { roles: ['admin', 'advocate', 'staff'] });
 
 /* ===== messages ===== */
 route(/^\/messages$/, async (_, p) => {

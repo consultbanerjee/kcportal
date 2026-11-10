@@ -42,7 +42,7 @@ function fieldHtml(f) {
   let inp;
   if (f.type === 'textarea') inp = `<textarea id="${id}" name="${f.name}"${req} placeholder="${esc(f.ph || '')}">${esc(v)}</textarea>`;
   else if (f.type === 'select') inp = `<select id="${id}" name="${f.name}"${req}>${(f.options || []).map((o) => { const [val, lab] = Array.isArray(o) ? o : [o, o]; return `<option value="${esc(val)}" ${String(val) === String(v) ? 'selected' : ''}>${esc(lab)}</option>`; }).join('')}</select>`;
-  else inp = `<input id="${id}" name="${f.name}" type="${f.type || 'text'}" value="${esc(v)}"${req} ${f.step ? `step="${f.step}"` : ''} ${f.accept ? `accept="${f.accept}"` : ''} placeholder="${esc(f.ph || '')}" ${f.type === 'password' ? 'autocomplete="new-password"' : ''}>`;
+  else inp = `<input id="${id}" name="${f.name}" type="${f.type || 'text'}" value="${esc(v)}"${req} ${f.step ? `step="${f.step}"` : ''} ${f.accept ? `accept="${f.accept}"` : ''} placeholder="${esc(f.ph || '')}" ${f.type === 'password' ? 'autocomplete="new-password"' : ''} ${f.list ? `list="dl_${f.name}"` : ''}>${f.list ? `<datalist id="dl_${f.name}">${f.list.map((x) => `<option value="${esc(x)}">`).join('')}</datalist>` : ''}`;
   return `<label for="${id}">${esc(f.label)}${f.required ? ' *' : ''}</label>${inp}${f.hint ? `<div class="mute">${esc(f.hint)}</div>` : ''}`;
 }
 function ask(title, fields, okLabel, fn, wide) {
@@ -112,36 +112,46 @@ const route = (re, fn, opts = {}) => routes.push({ re, fn, ...opts });
 const view = (html) => { const v = $('#view'); if (v) { v.innerHTML = html; window.scrollTo(0, 0); } return v; };
 function on(root, ev, sel, fn) { root.addEventListener(ev, (e) => { const t = e.target.closest(sel); if (t && root.contains(t)) fn(e, t); }); }
 
+// Each item is [href, label, group]. Items with a group are shown under that group's heading in the left panel.
 function navItems() {
   if (ME.role === 'superadmin') return [['#/firms', 'Firms'], ['#/account', 'Account']];
   if (isClient()) return [['#/', 'Home'], ['#/matters', 'My cases'], ['#/myfiles', 'My files'], ['#/letters', 'Letters'], ['#/messages', 'Messages'], ['#/invoices', 'Fees'], ['#/book', 'Book']];
-  const r = ME.role, n = [['#/', 'Home']];
-  if (r !== 'accounts') n.push(['#/clients', 'Clients']);
-  if (['admin', 'advocate', 'staff'].includes(r)) n.push(['#/matters', 'Matters']);
-  if (r === 'accounts') n.push(['#/clients', 'Clients']);
-  n.push(['#/tasks', 'Tasks']);
-  if (['admin', 'advocate', 'staff', 'accounts'].includes(r)) n.push(['#/files', 'Files']);
-  if (['admin', 'advocate', 'staff'].includes(r)) n.push(['#/letters', 'Letters'], ['#/dak', 'Inward']);
-  if (FEAT.drafting && ['admin', 'advocate', 'staff'].includes(r)) n.push(['#/draft', 'AI Drafting']);
-  if (FEAT.email && ['admin', 'advocate', 'staff'].includes(r)) n.push(['#/mail', 'Mail']);
-  if (FEAT.chat && ['admin', 'advocate', 'staff', 'telecaller'].includes(r)) n.push(['#/chats', 'Chats']);
-  if (r !== 'accounts') n.push(['#/messages', 'Messages']);
+  const r = ME.role, LG = 'Litigation', n = [['#/', 'Home']], pro = ['admin', 'advocate', 'staff'].includes(r);
+  n.push(['#/clients', 'Clients', LG]);
+  if (pro) n.push(['#/matters', 'Cases', LG]);
+  n.push(['#/tasks', 'Tasks', LG]);
+  if (pro || r === 'accounts') n.push(['#/files', 'Files', LG]);
+  if (pro) n.push(['#/letters', 'Letters', LG], ['#/register', 'In-Out Register', LG]);
+  if (FEAT.drafting && pro) n.push(['#/draft', 'AI Drafting', LG]);
+  if (r !== 'accounts') n.push(['#/messages', 'Messages', LG]);
+  if (FEAT.email && pro) n.push(['#/mail', 'Mail']);
+  if (FEAT.chat && [...['admin', 'advocate', 'staff'], 'telecaller'].includes(r)) n.push(['#/chats', 'Chats']);
   if (['admin', 'advocate', 'staff', 'telecaller'].includes(r)) n.push(['#/leads', 'Leads']);
   if (r !== 'accounts') n.push(['#/appointments', 'Calls']);
   if (['admin', 'advocate', 'accounts'].includes(r)) n.push(['#/accounts', 'Accounts']);
   if (r !== 'telecaller' && r !== 'accounts') n.push(['#/judgments', 'Judgments']);
-  if (r === 'admin') n.push(['#/team', 'Team'], ['#/ai', 'AI Control'], ['#/template', 'Design'], ['#/settings', 'Settings']);
+  if (r === 'admin') n.push(['#/ai', 'AI Control', 'Settings'], ['#/template', 'Design', 'Settings'], ['#/team', 'Team', 'Settings'], ['#/settings', 'Firm settings', 'Settings']);
   return n;
+}
+function navHtml(items, active) {
+  let out = '', last = null;
+  for (const [h, l, g] of items) {
+    if (g && g !== last) out += `<div class="ngrp">${esc(g)}</div>`;
+    if (!g && last) out += '<div class="ngrp" style="padding:0;height:6px"></div>';
+    last = g || null;
+    out += `<a href="${h}" class="${active(h)}${g ? ' sub' : ''}">${l}</a>`;
+  }
+  return out;
 }
 function layout() {
   const items = navItems(), cur = location.hash.split('?')[0] || '#/';
   const active = (h) => (h === '#/' ? cur === '#/' || cur === '' : cur.startsWith(h) || cur.startsWith(h.replace(/s$/, ''))) ? 'on' : '';
   $('#app').innerHTML = `<div class="shell"><nav class="side"><div class="brand">${esc(FIRM)}<small>${ME.role === 'superadmin' ? 'SUPER ADMIN' : isClient() ? 'CLIENT PORTAL' : 'OFFICE PORTAL'}</small></div>
-    ${items.map(([h, l]) => `<a href="${h}" class="${active(h)}">${l}</a>`).join('')}
+    ${navHtml(items, active)}
     <div class="who">${esc(ME.name)}<br><a href="#/account" style="padding:0;display:inline">Account</a> · <a href="#/logout" style="padding:0;display:inline">Sign out</a></div></nav>
     <div style="flex:1;min-width:0"><div class="top"><b>${esc(FIRM)}</b><span><a href="#/account">${esc(ME.name.split(' ')[0])}</a> · <a href="#/logout">Sign out</a></span></div>
     <main class="main" id="view"></main></div>
-    <nav class="bottom">${items.slice(0, isClient() ? 6 : 12).map(([h, l]) => `<a href="${h}" class="${active(h)}">${l}</a>`).join('')}</nav></div>`;
+    <nav class="bottom">${items.slice(0, isClient() ? 6 : 14).map(([h, l]) => `<a href="${h}" class="${active(h)}">${l}</a>`).join('')}</nav></div>`;
 }
 
 let navToken = 0;

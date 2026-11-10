@@ -20,6 +20,8 @@ app.use(L.loadUser);
 app.use(L.csrfGuard);
 app.use(require('./routes/portalctl').mw);
 // after a client / lead / matter is saved: push to Google Contacts, and greet a client whose WhatsApp number was just added
+// any change to documents or to a client (new reference, rename, upload, move, delete) goes to Google Drive within a moment
+app.use((req, res, next) => { if (['POST', 'PUT', 'PATCH', 'DELETE'].includes(req.method) && /^\/api\/(fs|clients|matters|documents|letters|register|upload|drafts)(\/|$)/.test(req.path)) res.on('finish', () => { if (res.statusCode < 300 && req.user) { try { require('./routes/drive').kick(req.user.tenant_id); } catch (e) {} } }); next(); });
 app.use((req, res, next) => { if (['POST', 'PUT', 'PATCH'].includes(req.method) && /^\/api\/(clients|leads|matters)(\/|$)/.test(req.path)) res.on('finish', () => { if (res.statusCode < 300 && req.user) { const t = req.user.tenant_id; try { require('./routes/contacts').touch(t); require('./routes/whatsapp').welcomePending(t).catch((e) => console.error('welcome', e.message)); } catch (e) { console.error(e.message); } } }); next(); });
 
 const limiter = rateLimit({ windowMs: 15 * 60 * 1000, limit: 40, standardHeaders: true, legacyHeaders: false,
@@ -101,6 +103,7 @@ require('./routes/reminders')(app);
 require('./routes/contacts')(app);
 require('./routes/drive')(app);
 require('./routes/files')(app);
+require('./routes/register')(app);
 
 app.get('/chat.js', (req, res, next) => { res.set('Cross-Origin-Resource-Policy', 'cross-origin'); res.set('Cache-Control', 'public, max-age=300'); next(); });
 app.use('/api', (req, res) => res.status(404).json({ error: 'Not found.' }));

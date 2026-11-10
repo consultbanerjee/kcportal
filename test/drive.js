@@ -117,5 +117,21 @@ function client() { let cookie = ''; return async (method, url, body) => { const
   // Google Doc made by hand downloads as .docx
   const gd = mk('Notes', [jd.id], 'application/vnd.google-apps.document'); await sync();
   ok(Drive.nativeExt('application/vnd.google-apps.document') === '.docx' && named((await list(jp)).items, 'Notes'), 'Google Doc listed');
+  // ---- v2.3: Reference folders (KcLegalPortal / Reference / Client) ----
+  await admin('PUT', '/api/clients/' + cid, { reference: 'Dr. Sen' }); await sync();
+  const refF = find(root.id, 'Dr. Sen'); ok(!!refF, 'Reference folder created under KcLegalPortal');
+  ok(F.get(cf.id).parents.includes(refF.id) && !F.get(cf.id).parents.includes(root.id), 'existing client folder moved into its Reference folder');
+  ok(find(cf.id, 'Uploaded'), 'client sub-folders travel with the client folder');
+  r = await admin('POST', '/api/clients', { name: 'Anita Roy', reference: 'Dr. Sen' }); const cid2 = r.j.id; await admin('GET', `/api/fs/list?client_id=${cid2}`); await sync();
+  const cf2 = find(refF.id, 'Anita Roy'); ok(!!cf2, 'new client with a Reference is created directly inside that Reference folder');
+  await admin('PUT', '/api/clients/' + cid2, { reference: 'Mr. Bose' }); await sync();
+  const refB = find(root.id, 'Mr. Bose'); ok(refB && F.get(cf2.id).parents.includes(refB.id), 'moving a client to another Reference moves its folder at once');
+  await admin('PUT', '/api/clients/' + cid2, { reference: '' }); await sync(); ok(F.get(cf2.id).parents.includes(root.id), 'clearing the Reference returns the folder to KcLegalPortal');
+  F.get(cf2.id).parents = [refF.id]; LOG.push(cf2.id); await sync();
+  ok(db.prepare('SELECT reference r FROM clients WHERE id=?').get(cid2).r === 'Dr. Sen', 'dragging a client folder between Reference folders in Drive updates the client Reference');
+  r = await admin('GET', '/api/references'); ok(r.j.some((x) => x.name === 'Dr. Sen' && x.clients === 2), 'reference list with counts');
+  // immediate push after a document change (debounced kick)
+  const before = LOG.length; await admin('PUT', '/api/clients/' + cid, { reference: 'Mr. Bose' }); await new Promise((z) => setTimeout(z, 2600));
+  ok(F.get(cf.id).parents.includes(refB.id), 'a change made in the portal reaches Drive by itself within seconds (no manual sync)');
   console.log(`${pass} passed, ${fail} failed`); srv.close(); process.exit(fail ? 1 : 0);
 })().catch((e) => { console.error(e); process.exit(1); });
