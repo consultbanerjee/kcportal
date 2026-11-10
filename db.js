@@ -331,3 +331,5 @@ db.exec(`CREATE TABLE IF NOT EXISTS tickets (
   existing_client TEXT, staff_note TEXT, assigned_to INTEGER,
   created_at TEXT DEFAULT CURRENT_TIMESTAMP, updated_at TEXT DEFAULT CURRENT_TIMESTAMP, closed_at TEXT);
 CREATE INDEX IF NOT EXISTS idx_tk_tenant ON tickets(tenant_id, status, created_at);`);
+
+if (!hasCol('invoices', 'subject')) db.exec('ALTER TABLE invoices ADD COLUMN subject TEXT');

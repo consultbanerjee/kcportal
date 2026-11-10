@@ -363,19 +363,18 @@ route(/^\/template$/, async () => {
   let T = await getTpl(true);
   const F = (k, label, o = {}) => `<label>${label}</label>${o.area ? `<textarea name="${k}" rows="3">` : `<input name="${k}" type="${o.type || 'text'}" ${o.type === 'number' ? 'min="0" max="120"' : ''} value="`}${o.area ? esc(T.settings[k] || '') + '</textarea>' : esc(T.settings[k] ?? '') + '">'}`;
   const sample = () => {
-    const S = T.settings;
-    return sheetFor(T, `<div class="dochead"><h1>${esc(S.invoice_title)}</h1><div class="meta"><div><span>Invoice no.</span><b>INV/0001/2026</b></div><div><span>Date</span><b>${dt(new Date().toISOString().slice(0, 10))}</b></div></div></div>
-      <div class="billto"><span>BILL TO</span><b>Sample Client</b><div>Kolkata</div></div>
-      <table class="itab"><tr><th>#</th><th>Description</th><th class="n">Amount</th></tr><tr><td>1</td><td>Professional fees</td><td class="n">${inr(1500000)}</td></tr></table>
-      <table class="ttab"><tr class="due"><td>Amount due</td><td class="n">${inr(1500000)}</td></tr></table>
-      <p class="words"><span>In words:</span> ${inWords(1500000)}</p>
-      ${S.payment_details ? `<div class="paybox"><b>Payment details</b><div>${esc(S.payment_details).replace(/\n/g, '<br>')}</div></div>` : ''}
-      ${S.invoice_footer ? `<p class="inote">${esc(S.invoice_footer)}</p>` : ''}${signBlock(S)}`);
+    const S = T.settings, d = new Date().toISOString().slice(0, 10);
+    const inv = { inv_no: 'INV/0001', inv_date: d, due_date: d, status: 'sent', client_name: 'Sample Client Pvt. Ltd.', client_address: '12 Park Street\nKolkata 700016', subject: 'Professional fees for legal services',
+      items: [{ description: 'Legal consultation\nAdvice, drafting and appearance as required.', qty: 1, rate_paise: 1500000 }, { description: 'Documentation charges', qty: 2, rate_paise: 250000 }], total_paise: 2000000, paid_paise: 0, payments: [], notes: '' };
+    return sheetFor(T, invoiceSheet(inv, S, T));
   };
   view(`<h1>Document design</h1><p class="mute">This letter pad is used for every invoice, receipt and letter your firm prints.</p>
     <div class="tplgrid"><div class="card"><form id="tf">
       <h3>Letterhead image</h3><p class="mute">Upload a full-page A4 JPG or PNG (max 4 MB) with your logo, header and footer. Or leave it empty and a text header is printed.</p>
-      <div class="row"><input type="file" id="lhf" accept="image/jpeg,image/png"><button type="button" class="btn sm ghost" id="lhd" ${T.has_letterhead ? '' : 'hidden'}>Remove image</button></div>
+      <div class="row"><input type="file" id="lhf" accept="image/jpeg,image/png"><button type="button" class="btn sm ghost" id="lhd" style="${T.has_letterhead ? '' : 'display:none'}">Remove image</button><button type="button" class="btn sm" id="lhm" style="${T.has_letterhead ? '' : 'display:none'}">Match colours &amp; margins to letterhead</button></div>
+      <p class="mute">After you upload, the portal reads your letterhead and sets the colours and the header/footer space so the invoice matches it.</p>
+      <h3>Signature</h3><p class="mute">Upload a picture of the authorised signatory's signature (PNG with transparent background is best, max 1 MB). It prints above "Authorised Signatory".</p>
+      <div class="row"><input type="file" id="sgf" accept="image/jpeg,image/png"><button type="button" class="btn sm ghost" id="sgd" style="${T.has_signature ? '' : 'display:none'}">Remove signature</button></div>${T.has_signature ? `<img src="/api/template/signature?v=${T.sv}" alt="" style="max-height:60px;margin-top:.4rem;background:#fff;border:1px solid #ddd;padding:2px">` : ''}
       <h3>Header (used when there is no image)</h3>${F('header_name', 'Firm name')}${F('tagline', 'Tagline')}${F('address', 'Address', { area: 1 })}${F('phone', 'Phone')}${F('email', 'Email')}${F('website', 'Website')}
       <h3>Colours &amp; font</h3><div class="row"><div><label>Main</label><input name="primary" type="color" value="${T.settings.primary}"></div><div><label>Accent</label><input name="accent" type="color" value="${T.settings.accent}"></div><div><label>Title</label><input name="title_color" type="color" value="${T.settings.title_color}"></div></div>
       <label>Font</label><select name="font"><option value="sans" ${T.settings.font === 'sans' ? 'selected' : ''}>Modern (sans-serif)</option><option value="serif" ${T.settings.font === 'serif' ? 'selected' : ''}>Classic (serif)</option></select>
@@ -383,7 +382,7 @@ route(/^\/template$/, async () => {
       <p class="mute">Top and bottom are the space kept clear for the letterhead's header and footer. They apply on every page of a long document. Margins are in millimetres.</p>
       <div class="row"><div>${F('top_mm', 'Top / header', { type: 'number' })}</div><div>${F('bottom_mm', 'Bottom / footer', { type: 'number' })}</div></div><div class="row"><div>${F('left_mm', 'Left', { type: 'number' })}</div><div>${F('right_mm', 'Right', { type: 'number' })}</div></div>
       <div class="row" style="margin-top:.4rem"><button type="button" class="btn sm ghost" id="mstd">Standard A4 (25 mm all round)</button></div>
-      <h3>Wording</h3>${F('invoice_title', 'Invoice title')}${F('receipt_title', 'Receipt title')}${F('signatory_name', 'Signatory name')}${F('signatory_title', 'Signatory designation')}${F('payment_details', 'Payment details (bank / UPI)', { area: 1 })}${F('invoice_footer', 'Invoice footer note', { area: 1 })}
+      <h3>Wording</h3>${F('invoice_title', 'Invoice title')}${F('receipt_title', 'Receipt title')}${F('signatory_name', 'Signatory name')}${F('signatory_title', 'Signatory designation')}${F('payment_details', 'Payment details (bank / UPI)', { area: 1 })}${F('invoice_footer', 'Invoice footer note', { area: 1 })}${F('pan', 'PAN (printed under Notes)')}${F('invoice_terms', 'Terms & conditions (one per line)', { area: 1 })}
       <p class="err" hidden></p><div style="margin-top:1rem"><button class="btn gold" style="width:100%">Save design</button></div></form></div>
       <div class="tplprev" id="pv"></div></div>`);
   const form = $('#tf'), pv = $('#pv');
@@ -395,7 +394,34 @@ route(/^\/template$/, async () => {
     e.preventDefault(); const err = $('.err', form); err.hidden = true;
     try { await PUT('/api/template', read()); T = await getTpl(true); paint(); toast('Design saved'); } catch (ex) { err.hidden = false; err.textContent = ex.message; }
   };
-  $('#lhf').onchange = async (e) => { const f = e.target.files[0]; if (!f) return; const fd = new FormData(); fd.append('file', f); try { await POST('/api/template/letterhead', fd); T = await getTpl(true); toast('Letterhead uploaded'); go(); } catch (ex) { toast(ex.message, true); } };
+  const readImg = (f) => new Promise((ok, no) => { const fr = new FileReader(); fr.onerror = no; fr.onload = () => { const im = new Image(); im.onload = () => ok(im); im.onerror = no; im.src = fr.result; }; fr.readAsDataURL(f); });
+  // read the letterhead: find the header/footer depth and the dominant dark + bright colours
+  const matchLh = async (src) => {
+    const im = typeof src === 'string' ? await new Promise((ok, no) => { const i = new Image(); i.onload = () => ok(i); i.onerror = no; i.src = src; }) : await readImg(src);
+    const W = 200, H = Math.round(W * im.naturalHeight / im.naturalWidth), c = document.createElement('canvas'); c.width = W; c.height = H;
+    const g = c.getContext('2d'); g.drawImage(im, 0, 0, W, H); const px = g.getImageData(0, 0, W, H).data;
+    const ink = (x, y) => { const k = (y * W + x) * 4; return px[k + 3] > 40 && (px[k] + px[k + 1] + px[k + 2]) / 3 < 225; };
+    const rowInk = []; for (let y = 0; y < H; y++) { let n = 0; for (let x = 0; x < W; x++) if (ink(x, y)) n++; rowInk.push(n > 1); }
+    const mm = (y) => Math.round(y * 297 / H), gap = Math.max(3, Math.round(H * 0.03));
+    let top = 0; { let y = 0, blank = 0; for (; y < H * 0.45; y++) { if (rowInk[y]) { top = y; blank = 0; } else if (top && ++blank >= gap) break; } }
+    let bot = H; { let y = H - 1, blank = 0; for (; y > H * 0.55; y--) { if (rowInk[y]) { bot = y; blank = 0; } else if (bot < H && ++blank >= gap) break; } }
+    const bk = new Map();
+    for (let y = 0; y < H; y++) for (let x = 0; x < W; x++) { const k = (y * W + x) * 4, r = px[k], gg = px[k + 1], b = px[k + 2];
+      if (px[k + 3] < 40 || Math.max(r, gg, b) - Math.min(r, gg, b) < 45) continue;
+      const key = (r >> 5) * 64 + (gg >> 5) * 8 + (b >> 5); const e = bk.get(key) || [0, 0, 0, 0]; e[0]++; e[1] += r; e[2] += gg; e[3] += b; bk.set(key, e); }
+    const hex = (e) => '#' + [e[1], e[2], e[3]].map((v) => Math.round(v / e[0]).toString(16).padStart(2, '0')).join('');
+    const rgb = (e) => [e[1] / e[0], e[2] / e[0], e[3] / e[0]], dist = (p, q) => Math.hypot(p[0] - q[0], p[1] - q[1], p[2] - q[2]);
+    const list = [...bk.values()].filter((e) => e[0] > 25).sort((p, q) => q[0] - p[0]);
+    let dk = null, br = null;
+    if (list.length) { const dark = list.find((e) => (rgb(e)[0] + rgb(e)[1] + rgb(e)[2]) / 3 < 150) || list[0]; dk = hex(dark); const o = list.find((e) => dist(rgb(e), rgb(dark)) > 110); br = o ? hex(o) : null; }
+    return { top_mm: Math.min(120, Math.max(10, mm(top) + 3)), bottom_mm: Math.min(80, Math.max(8, 297 - mm(bot) + 2)), primary: dk, accent: br };
+  };
+  const applyMatch = async (src) => { const m = await matchLh(src); const o = { top_mm: m.top_mm, bottom_mm: m.bottom_mm }; if (m.primary) o.primary = m.primary; if (m.accent) o.accent = m.accent; await PUT('/api/template', { ...T.settings, ...o }); };
+  $('#lhf').onchange = async (e) => { const f = e.target.files[0]; if (!f) return; const fd = new FormData(); fd.append('file', f);
+    try { await POST('/api/template/letterhead', fd); try { await applyMatch(f); } catch (x) { console.error('match failed', x); } T = await getTpl(true); toast('Letterhead uploaded - colours and margins matched'); go(); } catch (ex) { toast(ex.message, true); } };
+  $('#lhm').onclick = async () => { try { await applyMatch('/api/template/letterhead?v=' + Date.now()); T = await getTpl(true); toast('Colours and margins matched to your letterhead'); go(); } catch (ex) { toast(ex.message, true); } };
+  $('#sgf').onchange = async (e) => { const f = e.target.files[0]; if (!f) return; const fd = new FormData(); fd.append('file', f); try { await POST('/api/template/signature', fd); T = await getTpl(true); toast('Signature uploaded'); go(); } catch (ex) { toast(ex.message, true); } };
+  $('#sgd').onclick = async () => { if (!sure('Remove the signature?')) return; await DEL('/api/template/signature'); await getTpl(true); go(); };
   $('#lhd').onclick = async () => { if (!sure('Remove the letterhead image?')) return; await DEL('/api/template/letterhead'); await getTpl(true); go(); };
 });
 

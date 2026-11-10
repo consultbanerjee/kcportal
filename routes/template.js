@@ -11,16 +11,24 @@ const KC = {
   header_name: 'KC LEGAL', tagline: 'Advocates, Solicitors, Consultants', address: 'Olisa House, 10th Floor, 4, Government Place, Kolkata 700001, WB.',
   phone: '+91 98311 90819', email: 'info@kclegal.us', website: 'www.kclegal.us', signatory_name: 'Krishnika Chatterjee', signatory_title: 'Advocate',
 };
+const KC_TERMS = ['Payment shall be paid in favour of KC LEGAL through account payee cheque or demand draft or online bank transfer only.',
+  'Payment shall be made within the due date, failing which a simple interest of 6% will be levied up to one month, and thereafter the firm reserve right to initiate appropriate legal action to recover the dues.',
+  'All disputes are subject to Kolkata jurisdiction only. Regarding financial disputes, all the correspondence shall be marked to kclegal.us@gmail.com only.',
+  'In case of non-payment, the service may be discontinued without any further notice.',
+  'GST not applicable on the bill of advocates/law firms vide notification no.12/2017 Central Tax.',
+  'TDS of not more than 10% can be deducted under section 194J of the Income Tax Act, 1961. TDS Certificate shall be furnished upon deduction if any.',
+  'Transaction within Special Economic Zone area does not attract any Tax liabilities.'].join('\n');
 const base = (name) => ({
   header_name: name, tagline: '', address: '', phone: '', email: '', website: '',
-  primary: '#1f2a44', accent: '#f5a623', title_color: '#d0021b', font: 'sans', page_size: 'a4', top_mm: 58, bottom_mm: 34, left_mm: 20, right_mm: 20,
+  primary: '#14388c', accent: '#ffad33', title_color: '#d0021b', font: 'sans', page_size: 'a4', top_mm: 50, bottom_mm: 11, left_mm: 20, right_mm: 20,
   invoice_title: 'INVOICE', receipt_title: 'RECEIPT', signatory_name: '', signatory_title: '', payment_details: '',
-  invoice_footer: 'Kindly quote the invoice number when making payment.',
+  invoice_footer: 'Kindly quote the invoice number when making payment.', pan: '', invoice_terms: /KC LEGAL/i.test(name || '') ? KC_TERMS : '',
 });
-const STR = { header_name: 80, tagline: 120, address: 240, phone: 60, email: 120, website: 120, invoice_title: 30, receipt_title: 30, signatory_name: 80, signatory_title: 80, payment_details: 600, invoice_footer: 300 };
+const STR = { header_name: 80, tagline: 120, address: 240, phone: 60, email: 120, website: 120, invoice_title: 30, receipt_title: 30, signatory_name: 80, signatory_title: 80, payment_details: 600, invoice_footer: 300, pan: 40, invoice_terms: 1800 };
 const NUM = { top_mm: [0, 120], bottom_mm: [0, 80], left_mm: [5, 60], right_mm: [5, 60] };
 const COL = ['primary', 'accent', 'title_color'];
 
+const sigFile = (tid) => { try { return fs.readdirSync(dir(tid)).find((f) => f.startsWith('signature.')) || null; } catch (e) { return null; } };
 const dir = (tid) => path.resolve(DATA_DIR, 'templates', String(tid));
 function read(tid) {
   const r = db.prepare('SELECT * FROM tenant_templates WHERE tenant_id=?').get(tid);
@@ -53,7 +61,8 @@ module.exports = (app) => {
 
   app.get('/api/template', L.requireLogin, (req, res) => {
     const r = read(T(req));
-    res.json({ settings: r.settings, has_letterhead: !!r.letterhead, v: r.letterhead ? fs.statSync(path.join(dir(T(req)), r.letterhead)).mtimeMs : 0 });
+    const sg = sigFile(T(req));
+    res.json({ settings: r.settings, has_letterhead: !!r.letterhead, v: r.letterhead ? fs.statSync(path.join(dir(T(req)), r.letterhead)).mtimeMs : 0, has_signature: !!sg, sv: sg ? fs.statSync(path.join(dir(T(req)), sg)).mtimeMs : 0 });
   });
   app.put('/api/template', L.need('admin'), (req, res) => {
     const cur = read(T(req)).settings;
@@ -78,6 +87,26 @@ module.exports = (app) => {
     if (r.letterhead) { try { fs.unlinkSync(path.join(dir(T(req)), r.letterhead)); } catch (e) {} }
     db.prepare('UPDATE tenant_templates SET letterhead=NULL WHERE tenant_id=?').run(T(req));
     res.json({ ok: true });
+  });
+  app.post('/api/template/signature', L.need('admin'), up.single('file'), (req, res) => {
+    const b = req.file && req.file.buffer;
+    if (!L.must(res, b && b.length <= 1024 * 1024, 'Signature picture must be under 1 MB.')) return;
+    const ext = b && b[0] === 0xff && b[1] === 0xd8 && b[2] === 0xff ? 'jpg' : b && b[0] === 0x89 && b.slice(1, 4).toString() === 'PNG' ? 'png' : null;
+    if (!L.must(res, ext, 'Please upload a JPG or PNG picture of the signature (a transparent PNG looks best).')) return;
+    fs.mkdirSync(dir(T(req)), { recursive: true });
+    for (const f of fs.readdirSync(dir(T(req)))) if (f.startsWith('signature.')) fs.unlinkSync(path.join(dir(T(req)), f));
+    fs.writeFileSync(path.join(dir(T(req)), 'signature.' + ext), b, { mode: 0o600 });
+    audit(T(req), req.user.id, 'signature_uploaded', 'template', T(req), null, L.ip(req));
+    res.json({ ok: true });
+  });
+  app.delete('/api/template/signature', L.need('admin'), (req, res) => {
+    const f = sigFile(T(req)); if (f) { try { fs.unlinkSync(path.join(dir(T(req)), f)); } catch (e) {} }
+    res.json({ ok: true });
+  });
+  app.get('/api/template/signature', L.requireLogin, (req, res) => {
+    const f = sigFile(T(req)); if (!f) return res.status(404).end();
+    res.set('Cache-Control', 'private, max-age=300');
+    res.sendFile(path.join(dir(T(req)), f));
   });
   app.get('/api/template/letterhead', L.requireLogin, (req, res) => {
     const r = read(T(req));

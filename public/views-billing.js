@@ -6,22 +6,34 @@ route(/^\/invoices$/, async () => {
     <div class="card"><h2>Receipts</h2>${pay.length ? `<ul class="list">${pay.map((p) => `<li><a href="#/receipt/${p.id}">${esc(p.rec_no)}</a><span>${inr(p.amount_paise)} · ${dt(p.pay_date)}</span></li>`).join('')}</ul>` : '<p class="mute">No receipts.</p>'}</div>`);
 }, { client: true });
 
+
+function invoiceSheet(i, S, T) {
+  const lines = (t) => esc(t).replace(/\n/g, '<br>');
+  const terms = (() => { if (!i.due_date || i.due_date <= i.inv_date) return 'Due on Receipt'; const n = Math.round((new Date(i.due_date) - new Date(i.inv_date)) / 864e5); return 'Due in ' + n + ' day' + (n === 1 ? '' : 's'); })();
+  const due = i.total_paise - i.paid_paise, closed = ['draft', 'cancelled'].includes(i.status);
+  const tc = String(S.invoice_terms || '').split('\n').map((x) => x.trim()).filter(Boolean);
+  const stamp = { paid: 'PAID', cancelled: 'CANCELLED', draft: 'DRAFT' }[i.status] || '';
+  return `<div class="vi">
+    <div class="vi-title"><h1>${esc(S.invoice_title)}</h1>${stamp ? `<span class="vi-stamp">${stamp}</span>` : ''}</div>
+    <div class="vi-box vi-meta"><div><p><span>Invoice No.</span>: <b>${esc(i.inv_no)}</b></p><p><span>Invoice Date</span>: <b>${dt(i.inv_date)}</b></p></div><div><p><span>Terms</span>: <b>${terms}</b></p><p><span>Due Date</span>: <b>${dt(i.due_date || i.inv_date)}</b></p></div></div>
+    <div class="vi-bar">Bill To</div>
+    <div class="vi-box vi-bill"><b>${esc(i.client_name)}</b>${i.client_address ? `<div>${lines(i.client_address)}</div>` : ''}</div>
+    ${i.subject ? `<div class="vi-box vi-sub"><span>Subject :</span> <b>${esc(i.subject)}</b></div>` : ''}
+    <table class="vi-items"><tr><th class="c">#</th><th>Item &amp; Description</th><th class="n">Qty</th><th class="n">Rate</th><th class="n">Amount</th></tr>${i.items.map((x, k) => { const [h, ...r] = String(x.description).split('\n'); return `<tr><td class="c">${k + 1}</td><td><b>${esc(h)}</b>${r.length ? `<div class="d">${lines(r.join('\n'))}</div>` : ''}</td><td class="n">${Number(x.qty).toFixed(2)}</td><td class="n">${inr(x.rate_paise).slice(1)}</td><td class="n">${inr(Math.round(x.qty * x.rate_paise)).slice(1)}</td></tr>`; }).join('')}</table>
+    <div class="vi-tot"><div class="w"><span>Total In Words</span><em>${inWords(i.total_paise).replace(/^Rupees/, 'Indian Rupee')}</em></div>
+      <table><tr><td>Sub Total</td><td class="n">${inr(i.total_paise).slice(1)}</td></tr><tr class="t"><td>Total</td><td class="n">${inr(i.total_paise)}</td></tr>${i.paid_paise ? `<tr><td>Payment Received</td><td class="n">(−) ${inr(i.paid_paise)}</td></tr>` : ''}${closed ? '' : `<tr class="due"><td>Balance Due</td><td class="n">${inr(due)}</td></tr>`}</table></div>
+    ${i.notes || S.pan || S.payment_details || S.invoice_footer || i.payments.length ? `<div class="vi-notes"><div class="nl">${S.payment_details ? `<p class="bk"><u>BANK DETAILS</u><br>${lines(String(S.payment_details).replace(/(IFSC[^\n(]*?)\s*\(([^)\n]+)\)/i, '$1\nBranch: $2'))}</p>` : ''}${S.pan ? `<p>PAN: ${esc(S.pan)}</p>` : ''}${i.notes ? `<p>${lines(i.notes)}</p>` : ''}${S.invoice_footer ? `<p class="ft">${esc(S.invoice_footer)}</p>` : ''}</div><div class="vi-sign"><div class="gap">${T && T.has_signature ? `<img src="/api/template/signature?v=${T.sv}" alt="">` : ''}</div><div>Authorised Signatory</div></div>${i.payments.length ? `<p class="ft"><b>Receipts:</b> ${i.payments.map((p) => `${esc(p.rec_no)} (${inr(p.amount_paise)}, ${dt(p.pay_date)})`).join('; ')}</p>` : ''}</div>` : `<div class="vi-sign"><div class="gap">${T && T.has_signature ? `<img src="/api/template/signature?v=${T.sv}" alt="">` : ''}</div><div>Authorised Signatory</div></div>`}
+    ${tc.length ? `<div class="vi-terms"><span>Terms &amp; Conditions</span><ol>${tc.map((x) => `<li>${esc(x)}</li>`).join('')}</ol></div>` : ''}
+  </div>`;
+}
+
 route(/^\/invoice\/(\d+)$/, async ([id]) => {
   const [i, T] = await Promise.all([GET('/api/invoices/' + id), getTpl()]), S = T.settings, billing = can('admin', 'advocate', 'accounts');
   view(`<div class="row sp noprint"><a class="btn ghost sm" href="#/" data-back>← Back</a><div class="row">
     ${billing && i.status === 'draft' ? '<button class="btn gold sm" id="iss">Issue to client</button>' : ''}
     ${billing && ['sent', 'part_paid'].includes(i.status) ? '<button class="btn sm" id="rcv">Record payment</button><button class="btn sm ghost" id="rmd">Send reminder with pay link</button>' : ''}
     ${billing && ['draft', 'sent'].includes(i.status) ? '<button class="btn red sm" id="cxl">Cancel</button>' : ''}<button class="btn sm" data-print>Print</button></div></div>
-    ${sheetFor(T, `<div class="dochead"><h1>${esc(S.invoice_title)}</h1><div class="meta"><div><span>Invoice No.</span><b>${esc(i.inv_no)}</b></div><div><span>Date</span><b>${dt(i.inv_date)}</b></div>${i.due_date ? `<div><span>Due date</span><b>${dt(i.due_date)}</b></div>` : ''}<div><span>Status</span><b>${esc(String(i.status).replace('_', ' ').toUpperCase())}</b></div></div></div>
-    <div class="billto"><span>BILLED TO</span><b>${esc(i.client_name)}</b>${i.client_address ? `<div>${esc(i.client_address)}</div>` : ''}</div>
-    <table class="itab"><tr><th>#</th><th>Description</th><th class="n">Qty</th><th class="n">Rate (₹)</th><th class="n">Amount (₹)</th></tr>${i.items.map((x, k) => `<tr><td>${k + 1}</td><td>${esc(x.description)}</td><td class="n">${x.qty}</td><td class="n">${inr(x.rate_paise).slice(1)}</td><td class="n">${inr(Math.round(x.qty * x.rate_paise)).slice(1)}</td></tr>`).join('')}</table>
-    <table class="ttab"><tr><td>Total</td><td class="n">${inr(i.total_paise)}</td></tr>${i.paid_paise ? `<tr><td>Received</td><td class="n">− ${inr(i.paid_paise)}</td></tr>` : ''}<tr class="due"><td>${i.paid_paise ? 'Balance due' : 'Amount due'}</td><td class="n">${inr(i.total_paise - i.paid_paise)}</td></tr></table>
-    <p class="words"><span>Amount in words:</span> ${inWords(i.total_paise - i.paid_paise)}</p>
-    ${i.notes ? `<p class="inote">${esc(i.notes)}</p>` : ''}
-    ${i.payments.length ? `<p class="inote"><b>Receipts:</b> ${i.payments.map((p) => `${esc(p.rec_no)} (${inr(p.amount_paise)}, ${dt(p.pay_date)})`).join('; ')}</p>` : ''}
-    ${S.payment_details ? `<div class="paybox"><b>Payment details</b><div>${esc(S.payment_details).replace(/\n/g, '<br>')}</div></div>` : ''}
-    ${S.invoice_footer ? `<p class="inote">${esc(S.invoice_footer)}</p>` : ''}
-    ${signBlock(S)}`)}`);
+    ${sheetFor(T, invoiceSheet(i, S, T))}`);
   const act = (sel, fn) => { const b = $(sel); if (b) b.onclick = fn; };
   act('#iss', async () => { await POST(`/api/invoices/${id}/issue`); go(); });
   act('#cxl', async () => { if (sure('Cancel this invoice?')) { await POST(`/api/invoices/${id}/cancel`); go(); } });
@@ -50,9 +62,12 @@ const BTABS = [['invoices', 'Invoices'], ['payments', 'Receipts'], ['payouts', '
 route(/^\/(?:billing|accounts)(?:\/(\w+))?$/, async ([tab = 'invoices'], p) => {
   const head = `<h1>Accounts</h1><div class="tabs">${BTABS.map(([k, l]) => `<a href="#/accounts/${k}" class="${tab === k ? 'on' : ''}">${l}</a>`).join('')}</div>`;
   if (tab === 'invoices') {
+    const sk = invSortKey(), rowsHtml = (list) => list.map((i) => `<tr><td><a href="#/invoice/${i.id}">${esc(i.inv_no)}</a></td><td>${esc(i.client_name)}</td><td>${dt(i.inv_date)}</td><td class="n">${inr(i.total_paise)}</td><td class="n">${inr(i.paid_paise)}</td><td>${sp(i.status)}</td></tr>`).join('');
     const rows = await GET('/api/invoices');
-    view(`${head}<div class="row sp" style="margin-bottom:.8rem"><span class="mute">${rows.length} invoices</span><button class="btn" id="add">New invoice</button></div><div class="card"><div class="tw"><table><tr><th>No.</th><th>Client</th><th>Date</th><th class="n">Total</th><th class="n">Received</th><th></th></tr>${rows.map((i) => `<tr><td><a href="#/invoice/${i.id}">${esc(i.inv_no)}</a></td><td>${esc(i.client_name)}</td><td>${dt(i.inv_date)}</td><td class="n">${inr(i.total_paise)}</td><td class="n">${inr(i.paid_paise)}</td><td>${sp(i.status)}</td></tr>`).join('')}</table></div></div>`);
-    $('#add').onclick = async () => ask('New invoice', [{ name: 'client_id', label: 'Client', type: 'select', options: await clientOpts(), required: true }, { name: 'matter_id', label: 'Matter', type: 'select', options: await matterOpts() }, { name: 'inv_date', label: 'Date', type: 'date', value: today() }, { name: 'due_date', label: 'Due date', type: 'date' },
+    view(`${head}<div class="row sp" style="margin-bottom:.8rem"><span class="mute">${rows.length} invoices</span><span class="row" style="gap:.5rem">${invSortSel(sk)}<button class="btn" id="add">New invoice</button></span></div><div class="card"><div class="tw"><table><tr><th>No.</th><th>Client</th><th>Date</th><th class="n">Total</th><th class="n">Received</th><th></th></tr>${rowsHtml(sortInv(rows, sk))}</table></div></div>`);
+    
+    $('#invsort').onchange = (e) => { invSortSave(e.target.value); const tb = document.querySelector('.card table'); const hdr = tb.rows[0].outerHTML; tb.innerHTML = '<tbody>' + hdr + rowsHtml(sortInv(rows, e.target.value)) + '</tbody>'; };
+    $('#add').onclick = async () => ask('New invoice', [{ name: 'client_id', label: 'Client', type: 'select', options: await clientOpts(), required: true }, { name: 'matter_id', label: 'Matter', type: 'select', options: await matterOpts() }, { name: 'inv_date', label: 'Date', type: 'date', value: today() }, { name: 'due_date', label: 'Due date', type: 'date' }, { name: 'subject', label: 'Subject (printed on the invoice)' },
       { name: 'lines', label: 'Items — one per line: Description | Qty | Rate (₹)', type: 'textarea', required: true, ph: 'Professional fee — hearing | 1 | 15000\nDrafting of reply | 1 | 5000' }, { name: 'notes', label: 'Notes on invoice' }], 'Create draft', async (v) => {
       const items = v.lines.split('\n').map((s) => s.trim()).filter(Boolean).map((s) => { const [d, q, r] = s.split('|').map((x) => x.trim()); if (!d || !(+r > 0)) throw new Error('Check this line: ' + s); return { description: d, qty: +q || 1, rate: +r }; });
       const r = await POST('/api/invoices', { ...v, items, matter_id: v.matter_id || null }); location.hash = '#/invoice/' + r.id; }, true);

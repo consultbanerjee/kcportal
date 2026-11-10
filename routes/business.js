@@ -293,7 +293,7 @@ module.exports = (app, limiter) => {
     const rows = db.prepare(`SELECT i.*, c.name AS client_name,
       COALESCE((SELECT SUM(amount_paise) FROM payments p WHERE p.invoice_id=i.id),0) AS paid_paise
       FROM invoices i JOIN clients c ON c.id=i.client_id WHERE i.tenant_id=? ${cli ? "AND i.client_id=? AND i.status NOT IN ('draft','cancelled')" : fcl ? 'AND i.client_id=?' : ''}
-      ORDER BY i.id DESC LIMIT 300`).all(...(cli ? [T(req), req.user.client_id] : fcl ? [T(req), fcl] : [T(req)]));
+      ORDER BY i.inv_date DESC, i.inv_no DESC, i.id DESC LIMIT 300`).all(...(cli ? [T(req), req.user.client_id] : fcl ? [T(req), fcl] : [T(req)]));
     if (!cli && req.user.role === 'telecaller') return res.status(403).json({ error: 'Not permitted.' });
     res.json(rows);
   });
@@ -328,8 +328,8 @@ module.exports = (app, limiter) => {
       })();
     })();
     const id = db.transaction(() => {
-      const r = db.prepare('INSERT INTO invoices(tenant_id,client_id,matter_id,inv_no,inv_date,due_date,notes,total_paise) VALUES (?,?,?,?,?,?,?,?)')
-        .run(T(req), client.id, L.int(req.body.matter_id), no, date, L.isDate(req.body.due_date) ? req.body.due_date : null, L.str(req.body.notes, 800), total);
+      const r = db.prepare('INSERT INTO invoices(tenant_id,client_id,matter_id,inv_no,inv_date,due_date,notes,total_paise,subject) VALUES (?,?,?,?,?,?,?,?,?)')
+        .run(T(req), client.id, L.int(req.body.matter_id), no, date, L.isDate(req.body.due_date) ? req.body.due_date : null, L.str(req.body.notes, 800), total, L.str(req.body.subject, 200));
       const ins = db.prepare('INSERT INTO invoice_items(tenant_id,invoice_id,description,qty,rate_paise) VALUES (?,?,?,?,?)');
       items.forEach((x) => ins.run(T(req), r.lastInsertRowid, x.d, x.q, x.r));
       return r.lastInsertRowid;

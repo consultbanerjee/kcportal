@@ -163,3 +163,57 @@ input[type=color]{width:64px;height:38px;padding:2px}
 
 .printhead{display:none}
 @media print{.printhead{display:block;margin-bottom:.6rem}.printhead hr{border:0;border-top:2px solid #b8893b}.tabs,.chead,.fx-bar{display:none!important}.msg{break-inside:avoid}table{font-size:10pt}body{-webkit-print-color-adjust:exact;print-color-adjust:exact}}
+
+/* invoice in the firm's tax-invoice layout (navy + amber letter-pad colours) */
+.vi{font-size:9.5pt;line-height:1.45;color:#1b2238}
+.vi-title{display:flex;justify-content:space-between;align-items:flex-end;margin-bottom:3mm}.vi-title h1{margin:0;font-size:26pt;letter-spacing:.06em;font-weight:500;color:var(--pri)}
+.vi-stamp{border:2px solid var(--acc);color:#b87700;font-weight:700;padding:1mm 4mm;letter-spacing:.14em;transform:rotate(-4deg)}
+.vi-box{border:1px solid #c9cfdc;border-bottom:0;padding:2.4mm 3mm}.vi-meta{display:grid;grid-template-columns:1fr 1fr;padding:0}.vi-meta>div{padding:2.4mm 3mm}.vi-meta>div:first-child{border-right:1px solid #c9cfdc}
+.vi-meta p{margin:0;display:flex}.vi-meta span{display:inline-block;width:27mm;color:#4a5370}.vi-meta b{margin-left:1.5mm}
+.vi-bar{background:var(--pri);color:#fff;font-weight:700;padding:1.6mm 3mm;border:1px solid var(--pri);border-bottom:0}.vi-bill b{font-size:11.5pt}
+.vi-sub span{color:#4a5370;font-size:9pt}.vi-sub p{margin:1mm 0 0}
+.vi-items{width:100%;border-collapse:collapse;border:1px solid #c9cfdc}.vi-items th{background:var(--pri);color:#fff;padding:1.8mm 3mm;text-align:left;font-size:9pt;border-right:1px solid rgba(255,255,255,.3)}
+.vi-items td{padding:2.2mm 3mm;vertical-align:top;border-top:1px solid #dde1ea}.vi-items .c{width:9mm;text-align:center}.vi-items .n{text-align:right;white-space:nowrap}.vi-items th.n{text-align:right}.vi-items .d{color:#4a5370;font-size:9pt}
+.vi-tot{display:flex;justify-content:space-between;gap:6mm;border:1px solid #c9cfdc;border-top:0;padding:3mm}.vi-tot .w{flex:1}.vi-tot .w span{display:block;color:#4a5370}.vi-tot .w em{display:block;font-weight:700;color:var(--pri)}
+.vi-tot table{width:78mm;border-collapse:collapse}.vi-tot td{padding:1.2mm 2mm}.vi-tot td.n{text-align:right}.vi-tot .t td{font-weight:700}.vi-tot .due td{background:var(--acc);color:var(--pri);font-weight:700;font-size:11pt;padding:2mm}
+.vi-notes{border:1px solid #c9cfdc;border-top:0;padding:3mm}.vi-notes>span{display:block;color:#4a5370;margin-bottom:1mm}.vi-notes p{margin:0 0 2mm}.vi-notes .ft{color:#4a5370;font-size:9pt}
+.vi-sign{margin:6mm 0 4mm auto;width:62mm;text-align:center}.vi-sign .gap{height:16mm;border-bottom:1px solid #9aa3b8;margin-bottom:1.5mm}
+.vi-terms{font-size:8.5pt;color:#333;break-inside:avoid}.vi-terms>span{display:block;font-weight:700;color:var(--pri);margin-bottom:1mm;border-bottom:2px solid var(--acc);padding-bottom:1mm}.vi-terms ol{margin:1.5mm 0 0 4.5mm;padding:0}.vi-terms li{margin-bottom:.6mm}
+.vi-box,.vi-bar,.vi-items tr,.vi-tot,.vi-notes{break-inside:avoid}
+.vi-items .c{width:10mm}.vi-items th.n,.vi-items td.n{width:24mm;padding-left:2mm;padding-right:3mm}.vi-items th:nth-child(3),.vi-items td:nth-child(3){width:16mm}
+.vi-terms ol{columns:2;column-gap:7mm;margin-left:4mm}.vi-terms li{break-inside:avoid;font-size:8pt}
+.vi-notes{display:grid;grid-template-columns:1fr 1fr;column-gap:6mm}.vi-notes>span{grid-column:1/3}.vi-notes .ft{grid-column:1/3;margin:0}
+.vi-sign{margin:3mm 0 3mm auto}.vi-sign .gap{height:11mm}.vi-title{margin-bottom:2mm}.vi-box{padding:1.8mm 3mm}
+.vi-box{padding:1.3mm 3mm}.vi-meta>div{padding:1.6mm 3mm}.vi-items td{padding:1.6mm 3mm}.vi-tot{padding:2mm 3mm}.vi-notes{padding:2mm 3mm}.vi-notes p{margin:0 0 1mm}.vi-sign{margin:2mm 0 2mm auto}.vi-sign .gap{height:9mm}.vi-terms li{margin-bottom:.2mm}.vi-title h1{font-size:23pt}
+.vi-terms li{font-size:7.6pt;line-height:1.35}.vi-terms>span{font-size:8.5pt}
+.vi-terms{break-inside:auto}
+.vi-terms ol{columns:3;column-gap:5mm}.vi-terms li{font-size:7.2pt;line-height:1.3}.vi-terms{break-inside:avoid}
+.vi-terms .tcg{display:grid;grid-template-columns:repeat(3,1fr);column-gap:5mm}.vi-terms ol{columns:auto}
+.vi-sign .gap{height:6mm}.vi-sign{margin:1.5mm 0 1.5mm auto}.vi-title h1{font-size:21pt}.vi-terms li{font-size:7pt;line-height:1.25}.vi-items td{padding:1.3mm 3mm}
+.vi-title{position:relative;display:block;text-align:center;margin:1mm 0 2mm}.vi-title h1{color:#d11f1f;text-align:center;margin:0;font-size:22pt;letter-spacing:.2em}.vi-stamp{position:absolute;right:0;top:50%;margin-top:-5mm}
+.vi-terms ol{columns:auto;margin:1mm 0 0 4mm}.vi-terms li{font-size:7.4pt;line-height:1.3;margin-bottom:.2mm}.vi-sign .gap{height:8mm}.vi-notes p{margin:0 0 .5mm}.vi-box{padding:1mm 3mm}.vi-meta>div{padding:1mm 3mm}.vi-items td{padding:1.1mm 3mm}
+.vi-bar{background:#fff!important;color:var(--pri)!important;border:1px solid #c9cfdc!important;border-bottom:2px solid var(--acc)!important}
+.vi-items th{background:#fff!important;color:var(--pri)!important;border-right:0!important;border-bottom:2px solid var(--acc)!important;border-top:1px solid #c9cfdc}
+.vi-tot .due td{background:#fff!important;border-top:2px solid var(--acc);border-bottom:2px solid var(--acc)}
+.vi-bar{padding:.8mm 3mm!important}.vi-items td.d,.vi-items .d{font-size:8pt;line-height:1.25}.vi-items th{padding:1mm 3mm!important}.vi-items td{padding:.9mm 3mm!important}.vi-box.vi-bill{padding:.8mm 3mm}.vi-meta span{width:24mm}.vi-meta p{font-size:9.5pt}.vi-sign{margin:1mm 0 1mm auto}.vi-sign .gap{height:7mm}.vi-notes{padding:1.2mm 3mm}.vi-tot{padding:1.2mm 3mm}.vi-tot td{padding:.6mm 2mm}.vi-tot .due td{padding:1mm 2mm}
+.vi-items th:nth-child(2),.vi-items td:nth-child(2){width:auto}.vi-items td.n,.vi-items th.n{width:21mm}.vi-items th:nth-child(3),.vi-items td:nth-child(3){width:12mm}
+.vi-items{table-layout:fixed;width:100%}.vi-items th.c,.vi-items td.c{width:9mm}.vi-items th:nth-child(3),.vi-items td:nth-child(3){width:14mm}.vi-items th:nth-child(4),.vi-items td:nth-child(4),.vi-items th:nth-child(5),.vi-items td:nth-child(5){width:27mm}.vi-items td:nth-child(2){width:auto;max-width:none}
+.vi-sub p{display:inline;margin:0}.vi-items th:nth-child(4),.vi-items td:nth-child(4),.vi-items th:nth-child(5),.vi-items td:nth-child(5){width:23mm}.vi-items .d{font-size:7.6pt;line-height:1.2}.vi-terms li{font-size:7pt;line-height:1.22}.vi-notes .ft{font-size:8.5pt}.vi-title{margin:0 0 1mm}
+.vi-stamp{top:auto;bottom:0;margin-top:0;font-size:8.5pt;padding:.4mm 3mm}
+.vi-notes{display:grid!important;grid-template-columns:1.4fr 1fr;column-gap:6mm;align-items:end}.vi-notes .nl p{margin:0 0 .8mm}.vi-notes .ft{grid-column:1/3}.vi-notes .vi-sign{margin:0;width:auto;align-self:end}.vi-notes .vi-sign .gap{height:9mm}
+.vi-title h1{color:#e0201b}.vi-bar{border-bottom-color:var(--acc)!important}
+.vi-notes{padding-bottom:0!important}.vi-notes .nl{padding-bottom:1.2mm}.vi-notes .vi-sign{padding:0;line-height:1;margin-bottom:0}.vi-notes .vi-sign .gap{margin-bottom:.8mm}.vi-notes .vi-sign>div:last-child{padding-bottom:0;line-height:1.1;position:relative;top:0}.vi-notes .ft{padding-bottom:1.2mm}.vi-terms{margin-top:3.5mm}
+.vi-notes .nl .ft{grid-column:auto;padding:0;margin:0}.vi-notes .vi-sign{margin-bottom:0}
+/* vivid invoice: light tints of the firm's own colours (low ink) */
+.vi-title h1{color:var(--ttl,#d0021b)}
+.vi-bar{background:color-mix(in srgb,var(--pri) 10%,#fff)!important;color:var(--pri)!important;border-left:4px solid var(--pri)!important;border-bottom:2px solid var(--acc)!important}
+.vi-items th{background:color-mix(in srgb,var(--acc) 26%,#fff)!important;color:var(--pri)!important;border-bottom:2px solid var(--acc)!important}
+.vi-items tbody tr:nth-child(even) td,.vi-items tr:nth-child(odd) td{background:transparent}
+.vi-items td.c{color:var(--pri);font-weight:700}
+.vi-tot .t td{color:var(--pri);font-size:11pt}.vi-tot .due td{background:color-mix(in srgb,var(--acc) 30%,#fff)!important;color:var(--pri)}
+.vi-tot .w em{color:var(--pri)}.vi-meta span{color:var(--pri)}.vi-box{border-color:color-mix(in srgb,var(--pri) 28%,#fff)}.vi-meta{border-top:3px solid var(--acc)}
+.vi-notes .bk u{color:var(--pri);text-decoration:none;font-weight:700;border-bottom:2px solid var(--acc)}
+.vi-terms>span{color:var(--pri);border-bottom-color:var(--acc)}.vi-terms{background:color-mix(in srgb,var(--pri) 4%,#fff);padding:1.5mm 2.5mm;border-left:3px solid var(--acc)}
+.vi-sign .gap{position:relative;height:11mm}.vi-sign .gap img{position:absolute;bottom:0;left:50%;transform:translateX(-50%);max-height:12mm;max-width:100%;mix-blend-mode:multiply}
+.vi-notes .vi-sign{border-top:0}.vi-notes .vi-sign .gap{margin-bottom:.8mm}
+.vi-stamp{color:var(--acc);border-color:var(--acc)}
