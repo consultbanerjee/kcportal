@@ -349,3 +349,20 @@ CREATE UNIQUE INDEX IF NOT EXISTS invoices_share_token ON invoices(share_token) 
 for (const [col, def] of [['status', "TEXT DEFAULT 'ready'"], ['error', 'TEXT'], ['page', 'TEXT'], ['profile', 'TEXT'], ['doc_ids', 'TEXT'], ['annexures', 'TEXT'], ['built', 'TEXT'], ['share_token', 'TEXT'], ['share_expires', 'TEXT'], ['share_files', 'TEXT'], ['last_number', 'INTEGER']]) {
   try { db.exec(`ALTER TABLE ai_drafts ADD COLUMN ${col} ${def}`); } catch (e) { /* already there */ }
 }
+
+// ---- Calendar: holidays (official lists + manual), birthdays and greeting log ----
+db.exec(`
+CREATE TABLE IF NOT EXISTS cal_holidays (
+  id INTEGER PRIMARY KEY, tenant_id INTEGER NOT NULL, cat TEXT NOT NULL, date TEXT NOT NULL, end_date TEXT,
+  title TEXT NOT NULL, note TEXT, src TEXT, provisional INTEGER NOT NULL DEFAULT 0, origin TEXT NOT NULL DEFAULT 'data',
+  created_at TEXT DEFAULT CURRENT_TIMESTAMP);
+CREATE INDEX IF NOT EXISTS cal_h_idx ON cal_holidays(tenant_id, date);
+CREATE TABLE IF NOT EXISTS cal_hide (tenant_id INTEGER NOT NULL, key TEXT NOT NULL, PRIMARY KEY (tenant_id, key));
+CREATE TABLE IF NOT EXISTS cal_birthdays (
+  id INTEGER PRIMARY KEY, tenant_id INTEGER NOT NULL, name TEXT NOT NULL, month INTEGER NOT NULL, day INTEGER NOT NULL,
+  year INTEGER, email TEXT, phone TEXT, client_id INTEGER, active INTEGER NOT NULL DEFAULT 1, created_at TEXT DEFAULT CURRENT_TIMESTAMP);
+CREATE TABLE IF NOT EXISTS cal_greet_log (
+  id INTEGER PRIMARY KEY, tenant_id INTEGER NOT NULL, bday_id INTEGER NOT NULL, year INTEGER NOT NULL, channel TEXT NOT NULL,
+  status TEXT NOT NULL, error TEXT, auto INTEGER NOT NULL DEFAULT 0, created_at TEXT DEFAULT CURRENT_TIMESTAMP);
+CREATE INDEX IF NOT EXISTS cal_g_idx ON cal_greet_log(tenant_id, bday_id, year, channel);
+`);

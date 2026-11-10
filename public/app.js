@@ -127,27 +127,35 @@ function navItems() {
   n.push(['#/clients', 'Clients', LG]);
   if (pro) n.push(['#/matters', 'Cases', LG]);
   n.push(['#/tasks', 'Tasks', LG]);
+  n.push(['#/calendar', 'Calendar', LG]);
   if (pro || r === 'accounts') n.push(['#/files', 'Files', LG]);
   if (pro) n.push(['#/letters', 'Letters', LG], ['#/register', 'In-Out Register', LG]);
   if (FEAT.drafting && pro) n.push(['#/draft', 'AI Drafting', LG]);
   if (r !== 'accounts') n.push(['#/messages', 'Messages', LG]);
-  if (FEAT.email && pro) n.push(['#/mail', 'Mail']);
-  if (FEAT.chat && [...['admin', 'advocate', 'staff'], 'telecaller'].includes(r)) n.push(['#/chats', 'Chats']);
-  if (['admin', 'advocate', 'staff', 'telecaller'].includes(r)) n.push(['#/tickets', 'Tickets'], ['#/leads', 'Leads']);
-  if (r !== 'accounts') n.push(['#/appointments', 'Calls']);
+  if (FEAT.email && pro) n.push(['#/mail', 'Mail', 'CRM']);
+  if (FEAT.chat && [...['admin', 'advocate', 'staff'], 'telecaller'].includes(r)) n.push(['#/chats', 'Chats', 'CRM']);
+  if (['admin', 'advocate', 'staff', 'telecaller'].includes(r)) n.push(['#/tickets', 'Tickets', 'CRM'], ['#/leads', 'Leads', 'CRM']);
+  if (r !== 'accounts') n.push(['#/appointments', 'Calls', 'CRM']);
   if (['admin', 'advocate', 'accounts'].includes(r)) n.push(['#/accounts', 'Accounts']);
   if (r !== 'telecaller' && r !== 'accounts') n.push(['#/judgments', 'Judgments']);
   if (r === 'admin') n.push(['#/ai', 'AI Control', 'Settings'], ['#/template', 'Design', 'Settings'], ['#/team', 'Team', 'Settings'], ['#/settings', 'Firm settings', 'Settings']);
   return n;
 }
 function navHtml(items, active) {
-  let out = '', last = null;
+  let out = '', last = null, gi = 0;
+  const store = (k, v) => { try { if (v === undefined) return localStorage.getItem('kc-nav-' + k); localStorage.setItem('kc-nav-' + k, v); } catch (e) {} };
+  const open = (g) => items.some(([h, , gg]) => gg === g && active(h)) || (store(g) === null ? g === 'Litigation' : store(g) === '1');
   for (const [h, l, g] of items) {
-    if (g && g !== last) out += `<div class="ngrp">${esc(g)}</div>`;
-    if (!g && last) out += '<div class="ngrp" style="padding:0;height:6px"></div>';
+    if (g && g !== last) {
+      if (last) out += '</div>';
+      const o = open(g);
+      out += `<div class="ngrp tg" role="button" tabindex="0" data-g="${esc(g)}" aria-expanded="${o}">${esc(g)} <span class="car">${o ? '▾' : '▸'}</span></div><div class="gbody" ${o ? '' : 'hidden'}>`;
+    }
+    if (!g && last) { out += '</div><div class="ngrp" style="padding:0;height:6px"></div>'; }
     last = g || null;
     out += `<a href="${h}" class="${active(h)}${g ? ' sub' : ''}">${l}</a>`;
   }
+  if (last) out += '</div>';
   return out;
 }
 function layout() {
@@ -159,6 +167,7 @@ function layout() {
     <div style="flex:1;min-width:0"><div class="top"><b>${esc(FIRM)}</b><span><a href="#/account">${esc(ME.name.split(' ')[0])}</a> · <a href="#/logout">Sign out</a></span></div>
     <main class="main" id="view"></main></div>
     <nav class="bottom">${items.slice(0, isClient() ? 6 : 14).map(([h, l]) => `<a href="${h}" class="${active(h)}">${l}</a>`).join('')}</nav></div>`;
+  $$('.side .tg').forEach((t) => { const tg = () => { const b = t.nextElementSibling, o = b.hidden; b.hidden = !o; t.setAttribute('aria-expanded', o); $('.car', t).textContent = o ? '▾' : '▸'; try { localStorage.setItem('kc-nav-' + t.dataset.g, o ? '1' : '0'); } catch (e) {} }; t.onclick = tg; t.onkeydown = (e) => { if (e.key === 'Enter' || e.key === ' ') { e.preventDefault(); tg(); } }; });
   // firm logo in the side brand (loaded once; harmless if the firm has none)
   getTpl().then((t) => { const b = $('.side .brand'); if (t && t.has_logo && b && !$('.blogo', b)) b.insertAdjacentHTML('afterbegin', `<img class="blogo" src="/api/template/logo?v=${t.lv}" alt="">`); }).catch(() => {});
 }

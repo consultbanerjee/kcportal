@@ -17,6 +17,7 @@ const DEFAULT_TEMPLATES = [
   { name: 'kc_appointment_confirmed', label: 'Consultation confirmed', text: 'Dear {{1}}, your consultation on {{2}} is confirmed. Join here: {{3}} — {{4}}', vars: ['Client name', 'Date & time', 'Video link', 'Firm'] },
   { name: 'kc_fee_reminder', label: 'Fee reminder', text: 'Dear {{1}}, a gentle reminder that invoice {{2}} for {{3}} is pending. — {{4}}', vars: ['Client name', 'Invoice no.', 'Amount', 'Firm'] },
   { name: 'kc_payment_link', label: 'Payment reminder with link', text: 'Dear {{1}}, invoice {{2}} for {{3}} is pending. You can pay by Google Pay / any UPI app here: {{4}} — {{5}}', vars: ['Client name', 'Invoice no.', 'Amount', 'Payment link', 'Firm'] },
+  { name: 'kc_birthday', label: 'Birthday greeting', text: 'Dear {{1}}, warm birthday greetings from {{2}}! Wishing you good health and happiness in the year ahead.', vars: ['Name', 'Firm'] },
   { name: 'kc_welcome', label: 'Welcome greeting', text: 'Welcome to {{1}}! Dear {{2}}, thank you for choosing us. We will keep you informed about your matters here. For any query, just reply to this message. — {{1}}', vars: ['Firm', 'Client name'] },
   { name: 'kc_general_update', label: 'General update', text: 'Dear {{1}}, {{2}} — {{3}}', vars: ['Client name', 'Message', 'Firm'] },
 ];

@@ -1,0 +1,873 @@
+{
+ "version": "2026-11-10",
+ "updated": "2026-11-10",
+ "note": "Official lists: WB 2026, Central 2026-27, Calcutta HC 2026, Supreme Court 2026-27. WB/HC 2027 not yet notified.",
+ "items": [
+  {
+   "cat": "state",
+   "date": "2026-01-01",
+   "title": "New Year's Day",
+   "src": "WB Finance Dept 4188-F(P2)"
+  },
+  {
+   "cat": "state",
+   "date": "2026-01-12",
+   "title": "Birthday of Swami Vivekananda",
+   "src": "WB Finance Dept 4188-F(P2)"
+  },
+  {
+   "cat": "state",
+   "date": "2026-01-23",
+   "title": "Netaji's Birthday",
+   "src": "WB Finance Dept 4188-F(P2)"
+  },
+  {
+   "cat": "state",
+   "date": "2026-01-23",
+   "title": "Saraswati Puja (Sree Panchami)",
+   "src": "WB Finance Dept 4188-F(P2)"
+  },
+  {
+   "cat": "state",
+   "date": "2026-01-26",
+   "title": "Republic Day",
+   "src": "WB Finance Dept 4188-F(P2)"
+  },
+  {
+   "cat": "state",
+   "date": "2026-03-03",
+   "title": "Doljatra",
+   "src": "WB Finance Dept 4188-F(P2)"
+  },
+  {
+   "cat": "state",
+   "date": "2026-03-21",
+   "title": "Eid-Ul-Fitr",
+   "src": "WB Finance Dept 4188-F(P2)"
+  },
+  {
+   "cat": "state",
+   "date": "2026-03-26",
+   "title": "Ram Navami",
+   "src": "WB Finance Dept 4188-F(P2)"
+  },
+  {
+   "cat": "state",
+   "date": "2026-03-31",
+   "title": "Mahavir Jayanti",
+   "src": "WB Finance Dept 4188-F(P2)"
+  },
+  {
+   "cat": "state",
+   "date": "2026-04-03",
+   "title": "Good Friday",
+   "src": "WB Finance Dept 4188-F(P2)"
+  },
+  {
+   "cat": "state",
+   "date": "2026-04-14",
+   "title": "Birthday of Dr. B. R. Ambedkar",
+   "src": "WB Finance Dept 4188-F(P2)"
+  },
+  {
+   "cat": "state",
+   "date": "2026-04-15",
+   "title": "Bengali New Year (Nababarsha)",
+   "src": "WB Finance Dept 4188-F(P2)"
+  },
+  {
+   "cat": "state",
+   "date": "2026-05-01",
+   "title": "May Day / Buddha Purnima",
+   "src": "WB Finance Dept 4188-F(P2)"
+  },
+  {
+   "cat": "state",
+   "date": "2026-05-09",
+   "title": "Birthday of Rabindranath Tagore",
+   "src": "WB Finance Dept 4188-F(P2)"
+  },
+  {
+   "cat": "state",
+   "date": "2026-05-27",
+   "title": "Id-Ud-Zoha (Bakrid)",
+   "src": "WB Finance Dept 4188-F(P2)"
+  },
+  {
+   "cat": "state",
+   "date": "2026-06-26",
+   "title": "Muharram",
+   "src": "WB Finance Dept 4188-F(P2)"
+  },
+  {
+   "cat": "state",
+   "date": "2026-08-15",
+   "title": "Independence Day",
+   "src": "WB Finance Dept 4188-F(P2)"
+  },
+  {
+   "cat": "state",
+   "date": "2026-09-04",
+   "title": "Janmastami",
+   "src": "WB Finance Dept 4188-F(P2)"
+  },
+  {
+   "cat": "state",
+   "date": "2026-10-02",
+   "title": "Birthday of Gandhiji",
+   "src": "WB Finance Dept 4188-F(P2)"
+  },
+  {
+   "cat": "state",
+   "date": "2026-10-10",
+   "title": "Mahalaya",
+   "src": "WB Finance Dept 4188-F(P2)"
+  },
+  {
+   "cat": "state",
+   "date": "2026-10-19",
+   "title": "Durga Puja, Maha Ashtami",
+   "src": "WB Finance Dept 4188-F(P2)"
+  },
+  {
+   "cat": "state",
+   "date": "2026-10-20",
+   "title": "Durga Puja, Maha Navami",
+   "src": "WB Finance Dept 4188-F(P2)"
+  },
+  {
+   "cat": "state",
+   "date": "2026-10-21",
+   "title": "Durga Puja, Dasami",
+   "src": "WB Finance Dept 4188-F(P2)"
+  },
+  {
+   "cat": "state",
+   "date": "2026-11-11",
+   "title": "Bhratridwitiya",
+   "src": "WB Finance Dept 4188-F(P2)"
+  },
+  {
+   "cat": "state",
+   "date": "2026-11-24",
+   "title": "Birthday of Guru Nanak",
+   "src": "WB Finance Dept 4188-F(P2)"
+  },
+  {
+   "cat": "state",
+   "date": "2026-12-25",
+   "title": "Christmas Day",
+   "src": "WB Finance Dept 4188-F(P2)"
+  },
+  {
+   "cat": "state",
+   "date": "2026-01-22",
+   "title": "Day before Saraswati Puja",
+   "src": "WB Finance Dept 4188-F(P2)"
+  },
+  {
+   "cat": "state",
+   "date": "2026-02-04",
+   "title": "Shab-e-Barat",
+   "src": "WB Finance Dept 4188-F(P2)"
+  },
+  {
+   "cat": "state",
+   "date": "2026-02-14",
+   "title": "Birthday of Thakur Panchanan Barma",
+   "src": "WB Finance Dept 4188-F(P2)"
+  },
+  {
+   "cat": "state",
+   "date": "2026-03-04",
+   "title": "Holi (Day after Doljatra)",
+   "src": "WB Finance Dept 4188-F(P2)"
+  },
+  {
+   "cat": "state",
+   "date": "2026-03-17",
+   "title": "Birthday of Shri Shri Harichand Thakur",
+   "src": "WB Finance Dept 4188-F(P2)"
+  },
+  {
+   "cat": "state",
+   "date": "2026-03-20",
+   "title": "Day before Eid-Ul-Fitr",
+   "src": "WB Finance Dept 4188-F(P2)"
+  },
+  {
+   "cat": "state",
+   "date": "2026-05-26",
+   "title": "Day before Id-Ud-Zoha",
+   "src": "WB Finance Dept 4188-F(P2)"
+  },
+  {
+   "cat": "state",
+   "date": "2026-07-16",
+   "title": "Rathayatra",
+   "src": "WB Finance Dept 4188-F(P2)"
+  },
+  {
+   "cat": "state",
+   "date": "2026-08-26",
+   "title": "Fateha-Dwaz-Daham",
+   "src": "WB Finance Dept 4188-F(P2)"
+  },
+  {
+   "cat": "state",
+   "date": "2026-08-28",
+   "title": "Rakhi Bandhan",
+   "src": "WB Finance Dept 4188-F(P2)"
+  },
+  {
+   "cat": "state",
+   "date": "2026-09-17",
+   "title": "Viswakarma Puja",
+   "src": "WB Finance Dept 4188-F(P2)"
+  },
+  {
+   "cat": "state",
+   "date": "2026-10-15",
+   "title": "Durga Puja, Maha Chaturthi",
+   "src": "WB Finance Dept 4188-F(P2)"
+  },
+  {
+   "cat": "state",
+   "date": "2026-10-16",
+   "title": "Durga Puja, Maha Panchami",
+   "src": "WB Finance Dept 4188-F(P2)"
+  },
+  {
+   "cat": "state",
+   "date": "2026-10-17",
+   "title": "Durga Puja, Maha Shashthi",
+   "src": "WB Finance Dept 4188-F(P2)"
+  },
+  {
+   "cat": "state",
+   "date": "2026-10-22",
+   "title": "Additional day for Durga Puja",
+   "src": "WB Finance Dept 4188-F(P2)"
+  },
+  {
+   "cat": "state",
+   "date": "2026-10-23",
+   "title": "Additional day for Durga Puja",
+   "src": "WB Finance Dept 4188-F(P2)"
+  },
+  {
+   "cat": "state",
+   "date": "2026-10-24",
+   "title": "Additional day for Durga Puja",
+   "src": "WB Finance Dept 4188-F(P2)"
+  },
+  {
+   "cat": "state",
+   "date": "2026-10-26",
+   "title": "Additional day for Lakshmi Puja",
+   "src": "WB Finance Dept 4188-F(P2)"
+  },
+  {
+   "cat": "state",
+   "date": "2026-11-09",
+   "title": "Additional day for Kali Puja",
+   "src": "WB Finance Dept 4188-F(P2)"
+  },
+  {
+   "cat": "state",
+   "date": "2026-11-10",
+   "title": "Additional day for Kali Puja",
+   "src": "WB Finance Dept 4188-F(P2)"
+  },
+  {
+   "cat": "state",
+   "date": "2026-11-12",
+   "title": "Day after Bhratridwitiya",
+   "src": "WB Finance Dept 4188-F(P2)"
+  },
+  {
+   "cat": "state",
+   "date": "2026-11-16",
+   "title": "Additional day for Chhat Puja",
+   "src": "WB Finance Dept 4188-F(P2)"
+  },
+  {
+   "cat": "central",
+   "date": "2026-01-26",
+   "title": "Republic Day",
+   "src": "DoPT OM 03.07.2025"
+  },
+  {
+   "cat": "central",
+   "date": "2026-03-04",
+   "title": "Holi",
+   "src": "DoPT OM 03.07.2025"
+  },
+  {
+   "cat": "central",
+   "date": "2026-03-21",
+   "title": "Id-ul-Fitr",
+   "src": "DoPT OM 03.07.2025"
+  },
+  {
+   "cat": "central",
+   "date": "2026-03-26",
+   "title": "Ram Navami",
+   "src": "DoPT OM 03.07.2025"
+  },
+  {
+   "cat": "central",
+   "date": "2026-03-31",
+   "title": "Mahavir Jayanti",
+   "src": "DoPT OM 03.07.2025"
+  },
+  {
+   "cat": "central",
+   "date": "2026-04-03",
+   "title": "Good Friday",
+   "src": "DoPT OM 03.07.2025"
+  },
+  {
+   "cat": "central",
+   "date": "2026-05-01",
+   "title": "Buddha Purnima",
+   "src": "DoPT OM 03.07.2025"
+  },
+  {
+   "cat": "central",
+   "date": "2026-05-27",
+   "title": "Id-ul-Zuha (Bakrid)",
+   "src": "DoPT OM 03.07.2025"
+  },
+  {
+   "cat": "central",
+   "date": "2026-06-26",
+   "title": "Muharram",
+   "src": "DoPT OM 03.07.2025"
+  },
+  {
+   "cat": "central",
+   "date": "2026-08-15",
+   "title": "Independence Day",
+   "src": "DoPT OM 03.07.2025"
+  },
+  {
+   "cat": "central",
+   "date": "2026-08-26",
+   "title": "Milad-un-Nabi (Id-e-Milad)",
+   "src": "DoPT OM 03.07.2025"
+  },
+  {
+   "cat": "central",
+   "date": "2026-09-04",
+   "title": "Janmashtami",
+   "src": "DoPT OM 03.07.2025"
+  },
+  {
+   "cat": "central",
+   "date": "2026-10-02",
+   "title": "Mahatma Gandhi's Birthday",
+   "src": "DoPT OM 03.07.2025"
+  },
+  {
+   "cat": "central",
+   "date": "2026-10-20",
+   "title": "Dussehra (Vijaya Dashmi)",
+   "src": "DoPT OM 03.07.2025"
+  },
+  {
+   "cat": "central",
+   "date": "2026-11-08",
+   "title": "Diwali (Deepavali)",
+   "src": "DoPT OM 03.07.2025"
+  },
+  {
+   "cat": "central",
+   "date": "2026-11-24",
+   "title": "Guru Nanak's Birthday",
+   "src": "DoPT OM 03.07.2025"
+  },
+  {
+   "cat": "central",
+   "date": "2026-12-25",
+   "title": "Christmas Day",
+   "src": "DoPT OM 03.07.2025"
+  },
+  {
+   "cat": "central",
+   "date": "2027-01-26",
+   "title": "Republic Day",
+   "src": "DoPT OM 16.07.2026"
+  },
+  {
+   "cat": "central",
+   "date": "2027-03-10",
+   "title": "Id-ul-Fitr",
+   "src": "DoPT OM 16.07.2026"
+  },
+  {
+   "cat": "central",
+   "date": "2027-03-23",
+   "title": "Holi",
+   "src": "DoPT OM 16.07.2026"
+  },
+  {
+   "cat": "central",
+   "date": "2027-03-26",
+   "title": "Good Friday",
+   "src": "DoPT OM 16.07.2026"
+  },
+  {
+   "cat": "central",
+   "date": "2027-04-15",
+   "title": "Ram Navami",
+   "src": "DoPT OM 16.07.2026"
+  },
+  {
+   "cat": "central",
+   "date": "2027-04-19",
+   "title": "Mahavir Jayanti",
+   "src": "DoPT OM 16.07.2026"
+  },
+  {
+   "cat": "central",
+   "date": "2027-05-17",
+   "title": "Id-ul-Zuha (Bakrid)",
+   "src": "DoPT OM 16.07.2026"
+  },
+  {
+   "cat": "central",
+   "date": "2027-05-20",
+   "title": "Buddha Purnima",
+   "src": "DoPT OM 16.07.2026"
+  },
+  {
+   "cat": "central",
+   "date": "2027-06-16",
+   "title": "Muharram",
+   "src": "DoPT OM 16.07.2026"
+  },
+  {
+   "cat": "central",
+   "date": "2027-08-15",
+   "title": "Independence Day / Id-e-Milad (Sunday)",
+   "src": "DoPT OM 16.07.2026"
+  },
+  {
+   "cat": "central",
+   "date": "2027-08-25",
+   "title": "Janmashtami (Vaishnav)",
+   "src": "DoPT OM 16.07.2026"
+  },
+  {
+   "cat": "central",
+   "date": "2027-10-02",
+   "title": "Mahatma Gandhi's Birthday",
+   "src": "DoPT OM 16.07.2026"
+  },
+  {
+   "cat": "central",
+   "date": "2027-10-09",
+   "title": "Dussehra (Vijaya Dashmi)",
+   "src": "DoPT OM 16.07.2026"
+  },
+  {
+   "cat": "central",
+   "date": "2027-10-29",
+   "title": "Diwali (Deepavali)",
+   "src": "DoPT OM 16.07.2026"
+  },
+  {
+   "cat": "central",
+   "date": "2027-11-14",
+   "title": "Guru Nanak's Birthday",
+   "src": "DoPT OM 16.07.2026"
+  },
+  {
+   "cat": "central",
+   "date": "2027-12-25",
+   "title": "Christmas Day",
+   "src": "DoPT OM 16.07.2026"
+  },
+  {
+   "cat": "hc",
+   "date": "2026-01-01",
+   "title": "New Year's Day",
+   "src": "Calcutta HC list of holidays 2026"
+  },
+  {
+   "cat": "hc",
+   "date": "2026-01-12",
+   "title": "Swami Vivekananda's Birthday",
+   "src": "Calcutta HC list of holidays 2026"
+  },
+  {
+   "cat": "hc",
+   "date": "2026-01-23",
+   "title": "Netaji's Birthday / Saraswati Puja",
+   "src": "Calcutta HC list of holidays 2026"
+  },
+  {
+   "cat": "hc",
+   "date": "2026-01-26",
+   "title": "Republic Day",
+   "src": "Calcutta HC list of holidays 2026"
+  },
+  {
+   "cat": "hc",
+   "date": "2026-03-03",
+   "title": "Doljatra",
+   "src": "Calcutta HC list of holidays 2026"
+  },
+  {
+   "cat": "hc",
+   "date": "2026-03-04",
+   "title": "Holi",
+   "src": "Calcutta HC list of holidays 2026"
+  },
+  {
+   "cat": "hc",
+   "date": "2026-03-26",
+   "title": "Ram Navami",
+   "src": "Calcutta HC list of holidays 2026"
+  },
+  {
+   "cat": "hc",
+   "date": "2026-04-03",
+   "title": "Good Friday",
+   "src": "Calcutta HC list of holidays 2026"
+  },
+  {
+   "cat": "hc",
+   "date": "2026-04-04",
+   "title": "Easter Saturday",
+   "src": "Calcutta HC list of holidays 2026"
+  },
+  {
+   "cat": "hc",
+   "date": "2026-04-14",
+   "title": "Chaitra Sankranti / Dr. B. R. Ambedkar's Birthday",
+   "src": "Calcutta HC list of holidays 2026"
+  },
+  {
+   "cat": "hc",
+   "date": "2026-04-15",
+   "title": "Bengali New Year's Day",
+   "src": "Calcutta HC list of holidays 2026"
+  },
+  {
+   "cat": "hc",
+   "date": "2026-04-29",
+   "title": "Poll-day holiday (Chowrangee constituency)",
+   "src": "Calcutta HC list of holidays 2026"
+  },
+  {
+   "cat": "hc",
+   "date": "2026-05-01",
+   "title": "Buddha Purnima",
+   "src": "Calcutta HC list of holidays 2026"
+  },
+  {
+   "cat": "hc",
+   "date": "2026-08-15",
+   "title": "Independence Day",
+   "src": "Calcutta HC list of holidays 2026"
+  },
+  {
+   "cat": "hc",
+   "date": "2026-09-04",
+   "title": "Janmastami",
+   "src": "Calcutta HC list of holidays 2026"
+  },
+  {
+   "cat": "hc",
+   "date": "2026-10-02",
+   "title": "Mahatma Gandhi's Birthday",
+   "src": "Calcutta HC list of holidays 2026"
+  },
+  {
+   "cat": "hc",
+   "date": "2026-11-18",
+   "title": "Jagaddhatri Puja",
+   "src": "Calcutta HC list of holidays 2026"
+  },
+  {
+   "cat": "hc",
+   "date": "2026-11-24",
+   "title": "Guru Nanak's Birthday / Parswanath's Rathajatra",
+   "src": "Calcutta HC list of holidays 2026"
+  },
+  {
+   "cat": "hc",
+   "date": "2026-05-25",
+   "title": "Summer Vacation",
+   "end": "2026-06-06",
+   "src": "Calcutta HC list of holidays 2026"
+  },
+  {
+   "cat": "hc",
+   "date": "2026-10-16",
+   "title": "Annual (Puja) Vacation",
+   "end": "2026-11-11",
+   "src": "Calcutta HC list of holidays 2026"
+  },
+  {
+   "cat": "hc",
+   "date": "2026-12-25",
+   "title": "Christmas Vacation",
+   "end": "2026-12-31",
+   "src": "Calcutta HC list of holidays 2026"
+  },
+  {
+   "cat": "sc",
+   "date": "2026-01-01",
+   "title": "New Year Holidays",
+   "end": "2026-01-02",
+   "src": "Supreme Court calendar 2026"
+  },
+  {
+   "cat": "sc",
+   "date": "2026-01-14",
+   "title": "Makar Sankranti / Magh Bihu / Pongal",
+   "src": "Supreme Court calendar 2026"
+  },
+  {
+   "cat": "sc",
+   "date": "2026-01-26",
+   "title": "Republic Day",
+   "src": "Supreme Court calendar 2026"
+  },
+  {
+   "cat": "sc",
+   "date": "2026-03-21",
+   "title": "Id-ul-Fitr",
+   "src": "Supreme Court calendar 2026"
+  },
+  {
+   "cat": "sc",
+   "date": "2026-03-26",
+   "title": "Ram Navami",
+   "src": "Supreme Court calendar 2026"
+  },
+  {
+   "cat": "sc",
+   "date": "2026-03-27",
+   "title": "Local holiday",
+   "src": "Supreme Court calendar 2026"
+  },
+  {
+   "cat": "sc",
+   "date": "2026-03-30",
+   "title": "Local holiday",
+   "src": "Supreme Court calendar 2026"
+  },
+  {
+   "cat": "sc",
+   "date": "2026-03-31",
+   "title": "Mahavir Jayanti",
+   "src": "Supreme Court calendar 2026"
+  },
+  {
+   "cat": "sc",
+   "date": "2026-04-03",
+   "title": "Good Friday",
+   "src": "Supreme Court calendar 2026"
+  },
+  {
+   "cat": "sc",
+   "date": "2026-05-01",
+   "title": "Budha Purnima",
+   "src": "Supreme Court calendar 2026"
+  },
+  {
+   "cat": "sc",
+   "date": "2026-05-28",
+   "title": "Id-ul-Zuha (Bakrid) — shifted from 27 May",
+   "src": "Supreme Court calendar 2026"
+  },
+  {
+   "cat": "sc",
+   "date": "2026-06-26",
+   "title": "Muharram",
+   "src": "Supreme Court calendar 2026"
+  },
+  {
+   "cat": "sc",
+   "date": "2026-08-15",
+   "title": "Independence Day",
+   "src": "Supreme Court calendar 2026"
+  },
+  {
+   "cat": "sc",
+   "date": "2026-08-26",
+   "title": "Milad-un-Nabi",
+   "src": "Supreme Court calendar 2026"
+  },
+  {
+   "cat": "sc",
+   "date": "2026-08-27",
+   "title": "Additional holiday (22 Aug Saturday is a working day)",
+   "src": "Supreme Court calendar 2026"
+  },
+  {
+   "cat": "sc",
+   "date": "2026-08-28",
+   "title": "Raksha Bandhan",
+   "src": "Supreme Court calendar 2026"
+  },
+  {
+   "cat": "sc",
+   "date": "2026-09-04",
+   "title": "Janmashtami",
+   "src": "Supreme Court calendar 2026"
+  },
+  {
+   "cat": "sc",
+   "date": "2026-09-14",
+   "title": "Ganesh Chaturthi",
+   "src": "Supreme Court calendar 2026"
+  },
+  {
+   "cat": "sc",
+   "date": "2026-10-02",
+   "title": "Mahatma Gandhi's Birthday",
+   "src": "Supreme Court calendar 2026"
+  },
+  {
+   "cat": "sc",
+   "date": "2026-11-24",
+   "title": "Guru Nanak's Birthday",
+   "src": "Supreme Court calendar 2026"
+  },
+  {
+   "cat": "sc",
+   "date": "2026-03-02",
+   "title": "Holi Holidays",
+   "end": "2026-03-07",
+   "src": "Supreme Court calendar 2026"
+  },
+  {
+   "cat": "sc",
+   "date": "2026-06-01",
+   "title": "Partial court working days (summer vacation)",
+   "end": "2026-07-12",
+   "src": "Supreme Court calendar 2026"
+  },
+  {
+   "cat": "sc",
+   "date": "2026-10-19",
+   "title": "Dussehra Holidays",
+   "end": "2026-10-24",
+   "src": "Supreme Court calendar 2026"
+  },
+  {
+   "cat": "sc",
+   "date": "2026-11-09",
+   "title": "Diwali Holidays",
+   "end": "2026-11-14",
+   "src": "Supreme Court calendar 2026"
+  },
+  {
+   "cat": "sc",
+   "date": "2026-12-21",
+   "title": "Christmas & New Year Holidays",
+   "end": "2027-01-01",
+   "src": "Supreme Court calendar 2026"
+  },
+  {
+   "cat": "sc",
+   "date": "2027-01-14",
+   "title": "Makar Sankranti / Magh Bihu",
+   "src": "Supreme Court calendar 2027"
+  },
+  {
+   "cat": "sc",
+   "date": "2027-01-15",
+   "title": "Pongal / Guru Gobind Singh's Birthday",
+   "src": "Supreme Court calendar 2027"
+  },
+  {
+   "cat": "sc",
+   "date": "2027-01-26",
+   "title": "Republic Day",
+   "src": "Supreme Court calendar 2027"
+  },
+  {
+   "cat": "sc",
+   "date": "2027-04-15",
+   "title": "Ram Navami",
+   "src": "Supreme Court calendar 2027"
+  },
+  {
+   "cat": "sc",
+   "date": "2027-04-19",
+   "title": "Mahavir Jayanti",
+   "src": "Supreme Court calendar 2027"
+  },
+  {
+   "cat": "sc",
+   "date": "2027-05-17",
+   "title": "Bakrid (subject to moon)",
+   "src": "Supreme Court calendar 2027"
+  },
+  {
+   "cat": "sc",
+   "date": "2027-05-20",
+   "title": "Budha Purnima",
+   "src": "Supreme Court calendar 2027"
+  },
+  {
+   "cat": "sc",
+   "date": "2027-06-16",
+   "title": "Muharram (subject to moon)",
+   "src": "Supreme Court calendar 2027"
+  },
+  {
+   "cat": "sc",
+   "date": "2027-08-17",
+   "title": "Raksha Bandhan",
+   "src": "Supreme Court calendar 2027"
+  },
+  {
+   "cat": "sc",
+   "date": "2027-08-25",
+   "title": "Janmashtami",
+   "src": "Supreme Court calendar 2027"
+  },
+  {
+   "cat": "sc",
+   "date": "2027-03-22",
+   "title": "Holi Holidays and Good Friday",
+   "end": "2027-03-27",
+   "src": "Supreme Court calendar 2027"
+  },
+  {
+   "cat": "sc",
+   "date": "2027-05-31",
+   "title": "Partial court working days (summer vacation)",
+   "end": "2027-07-11",
+   "src": "Supreme Court calendar 2027"
+  },
+  {
+   "cat": "sc",
+   "date": "2027-10-04",
+   "title": "Dussehra Vacation",
+   "end": "2027-10-09",
+   "src": "Supreme Court calendar 2027"
+  },
+  {
+   "cat": "sc",
+   "date": "2027-10-26",
+   "title": "Diwali Vacation",
+   "end": "2027-10-30",
+   "src": "Supreme Court calendar 2027"
+  },
+  {
+   "cat": "sc",
+   "date": "2027-12-20",
+   "title": "Christmas & New Year Holidays",
+   "end": "2028-01-01",
+   "src": "Supreme Court calendar 2027"
+  }
+ ]
+}
