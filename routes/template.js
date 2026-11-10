@@ -22,9 +22,10 @@ const base = (name) => ({
   header_name: name, tagline: '', address: '', phone: '', email: '', website: '',
   primary: '#14388c', accent: '#ffad33', title_color: '#d0021b', font: 'sans', page_size: 'a4', top_mm: 50, bottom_mm: 11, left_mm: 20, right_mm: 20,
   invoice_title: 'INVOICE', receipt_title: 'RECEIPT', signatory_name: '', signatory_title: '', payment_details: '',
-  invoice_footer: 'Kindly quote the invoice number when making payment.', pan: '', invoice_terms: /KC LEGAL/i.test(name || '') ? KC_TERMS : '',
+  invoice_footer: 'Kindly quote the invoice number when making payment.', pan: '', qr_caption: 'Scan to pay', inv_hide_footer: /KC LEGAL/i.test(name || '') ? '1' : '',
+  pay1_title: 'Bank Details', pay1_text: '', pay2_title: 'PAN', pay2_text: '', pay3_title: '', pay3_text: '', pay4_title: '', pay4_text: '', invoice_terms: /KC LEGAL/i.test(name || '') ? KC_TERMS : '',
 });
-const STR = { header_name: 80, tagline: 120, address: 240, phone: 60, email: 120, website: 120, invoice_title: 30, receipt_title: 30, signatory_name: 80, signatory_title: 80, payment_details: 600, invoice_footer: 300, pan: 40, invoice_terms: 1800 };
+const STR = { header_name: 80, tagline: 120, address: 240, phone: 60, email: 120, website: 120, invoice_title: 30, receipt_title: 30, signatory_name: 80, signatory_title: 80, payment_details: 600, invoice_footer: 300, pan: 40, qr_caption: 40, pay1_title: 40, pay2_title: 40, pay3_title: 40, pay4_title: 40, pay1_text: 400, pay2_text: 400, pay3_text: 400, pay4_text: 400, invoice_terms: 1800 };
 const NUM = { top_mm: [0, 120], bottom_mm: [0, 80], left_mm: [5, 60], right_mm: [5, 60] };
 const COL = ['primary', 'accent', 'title_color'];
 
@@ -53,6 +54,7 @@ function clean(body, cur) {
   for (const [k, max] of Object.entries(STR)) if (body[k] !== undefined) out[k] = L.str(body[k], max);
   for (const k of COL) if (body[k] !== undefined && /^#[0-9a-fA-F]{6}$/.test(body[k])) out[k] = body[k].toLowerCase();
   for (const [k, [lo, hi]] of Object.entries(NUM)) if (body[k] !== undefined) { const n = Number(body[k]); if (Number.isFinite(n)) out[k] = Math.max(lo, Math.min(hi, Math.round(n))); }
+  if (body.inv_hide_footer !== undefined) out.inv_hide_footer = body.inv_hide_footer && body.inv_hide_footer !== '0' ? '1' : '';
   if (['sans', 'serif'].includes(body.font)) out.font = body.font;
   if (['a4', 'legal', 'letter'].includes(body.page_size)) out.page_size = body.page_size;
   if (!out.invoice_title) out.invoice_title = 'INVOICE';
@@ -61,11 +63,11 @@ function clean(body, cur) {
 }
 
 function tplInfo(tid) {
-  const r = read(tid), sg = sigFile(tid), lg = assetFile(tid, 'logo'), m = (f) => fs.statSync(path.join(dir(tid), f)).mtimeMs;
-  return { settings: r.settings, has_letterhead: !!r.letterhead, v: r.letterhead ? m(r.letterhead) : 0, has_signature: !!sg, sv: sg ? m(sg) : 0, has_logo: !!lg, lv: lg ? m(lg) : 0 };
+  const r = read(tid), sg = sigFile(tid), lg = assetFile(tid, 'logo'), qr = assetFile(tid, 'qr'), m = (f) => fs.statSync(path.join(dir(tid), f)).mtimeMs;
+  return { settings: r.settings, has_letterhead: !!r.letterhead, v: r.letterhead ? m(r.letterhead) : 0, has_signature: !!sg, sv: sg ? m(sg) : 0, has_logo: !!lg, lv: lg ? m(lg) : 0, has_qr: !!qr, qv: qr ? m(qr) : 0 };
 }
 function publicAsset(tid, kind) {
-  const f = kind === 'letterhead' ? read(tid).letterhead : ['logo', 'signature'].includes(kind) ? assetFile(tid, kind) : null;
+  const f = kind === 'letterhead' ? read(tid).letterhead : ['logo', 'signature', 'qr'].includes(kind) ? assetFile(tid, kind) : null;
   return f && fs.existsSync(path.join(dir(tid), f)) ? path.join(dir(tid), f) : null;
 }
 module.exports = (app) => {
@@ -137,6 +139,26 @@ module.exports = (app) => {
   });
   app.get('/api/template/logo', L.requireLogin, (req, res) => {
     const f = assetFile(T(req), 'logo'); if (!f) return res.status(404).end();
+    res.set('Cache-Control', 'private, max-age=300');
+    res.sendFile(path.join(dir(T(req)), f));
+  });
+  app.post('/api/template/qr', L.need('admin'), up.single('file'), (req, res) => {
+    const b = req.file && req.file.buffer;
+    if (!L.must(res, b && b.length <= 2 * 1024 * 1024, 'QR picture must be under 2 MB.')) return;
+    const ext = b && b[0] === 0xff && b[1] === 0xd8 && b[2] === 0xff ? 'jpg' : b && b[0] === 0x89 && b.slice(1, 4).toString() === 'PNG' ? 'png' : null;
+    if (!L.must(res, ext, 'Please upload a JPG or PNG picture of your payment QR code (UPI / bank).')) return;
+    fs.mkdirSync(dir(T(req)), { recursive: true });
+    for (const f of fs.readdirSync(dir(T(req)))) if (f.startsWith('qr.')) fs.unlinkSync(path.join(dir(T(req)), f));
+    fs.writeFileSync(path.join(dir(T(req)), 'qr.' + ext), b, { mode: 0o600 });
+    audit(T(req), req.user.id, 'qr_uploaded', 'template', T(req), null, L.ip(req));
+    res.json({ ok: true });
+  });
+  app.delete('/api/template/qr', L.need('admin'), (req, res) => {
+    const f = assetFile(T(req), 'qr'); if (f) { try { fs.unlinkSync(path.join(dir(T(req)), f)); } catch (e) {} }
+    res.json({ ok: true });
+  });
+  app.get('/api/template/qr', L.requireLogin, (req, res) => {
+    const f = assetFile(T(req), 'qr'); if (!f) return res.status(404).end();
     res.set('Cache-Control', 'private, max-age=300');
     res.sendFile(path.join(dir(T(req)), f));
   });

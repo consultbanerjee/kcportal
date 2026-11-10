@@ -100,7 +100,7 @@ function inWords(paise) {
   return 'Rupees ' + parts.join(' ') + ' Only';
 }
 const PAGES = { a4: ['A4', 210, 297], legal: ['legal', 216, 356], letter: ['letter', 216, 279] };
-const tplUrl = (T, k) => { const v = k === 'letterhead' ? T.v : k === 'logo' ? T.lv : T.sv; return T.pub ? `/api/public/invoice/${T.pub}/asset/${k}?v=${v}` : `/api/template/${k}?v=${v}`; };
+const tplUrl = (T, k) => { const v = k === 'letterhead' ? T.v : k === 'logo' ? T.lv : k === 'qr' ? T.qv : T.sv; return T.pub ? `/api/public/invoice/${T.pub}/asset/${k}?v=${v}` : `/api/template/${k}?v=${v}`; };
 function sheetFor(T, inner) {
   const s = T.settings, lh = T.has_letterhead, pg = PAGES[s.page_size] || PAGES.a4;
   const font = s.font === 'serif' ? 'Georgia,"Bookman Old Style",serif' : 'Poppins,"Helvetica Neue",Arial,sans-serif';
@@ -109,7 +109,7 @@ function sheetFor(T, inner) {
   const text = lh ? '' : `<div class="thead">${T.has_logo ? `<img class="tlogo" src="${tplUrl(T, 'logo')}" alt="">` : ''}<div class="tname">${esc(s.header_name)}</div>${s.tagline ? `<div class="ttag">${esc(s.tagline)}</div>` : ''}${s.address ? `<div class="tcon">${esc(s.address)}</div>` : ''}${contact ? `<div class="tcon">${contact}</div>` : ''}</div>`;
   const top = lh ? s.top_mm : 16, bot = lh ? s.bottom_mm : 12, l = s.left_mm ?? s.side_mm ?? 20, r = s.right_mm ?? s.side_mm ?? 20;
   // the table's header/footer rows repeat on every printed page, so the top/bottom margin holds on page 2, 3 ...
-  return `<style>@page{size:${pg[0]};margin:0}</style><div class="sheet" style="--pri:${s.primary};--acc:${s.accent};--ttl:${s.title_color};--pw:${pg[1]}mm;--ph:${pg[2]}mm;font-family:${font}">${art}<table class="flow"><thead><tr><td style="height:${top}mm"></td></tr></thead><tfoot><tr><td style="height:${bot}mm"></td></tr></tfoot><tbody><tr><td class="sbody" style="padding:0 ${r}mm 0 ${l}mm">${text}${inner}</td></tr></tbody></table></div>`;
+  return `<style>@page{size:${pg[0]};margin:0}</style><div class="sheet" style="--pri:${s.primary};--acc:${s.accent};--ttl:${s.title_color};--pw:${pg[1]}mm;--ph:${pg[2]}mm;font-family:${font}">${art}${s.inv_hide_footer && String(inner).includes('class="vi"') ? '<div class="fmask"></div>' : ''}<table class="flow"><thead><tr><td style="height:${top}mm"></td></tr></thead><tfoot><tr><td style="height:${bot}mm"></td></tr></tfoot><tbody><tr><td class="sbody" style="padding:0 ${r}mm 0 ${l}mm">${text}${inner}</td></tr></tbody></table></div>`;
 }
 const signBlock = (s) => `<div class="isign"><div>For <b>${esc(s.header_name)}</b></div><div class="gap"></div><div>Authorised Signatory${s.signatory_name ? `<br>${esc(s.signatory_name)}${s.signatory_title ? ', ' + esc(s.signatory_title) : ''}` : ''}</div></div>`;
 

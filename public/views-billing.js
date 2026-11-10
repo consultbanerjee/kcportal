@@ -48,6 +48,12 @@ async function sendInvoiceModal(i) {
     else go(); }, true);
 }
 
+// up to four titled payment items (Bank Details, PAN, UPI ...). Old firms that only filled bank details / PAN still print them.
+const payItems = (S) => {
+  let a = [1, 2, 3, 4].map((n) => ({ t: String(S['pay' + n + '_title'] || '').trim(), x: String(S['pay' + n + '_text'] || '').trim() })).filter((p) => p.x);
+  if (!a.length) a = [{ t: 'Bank Details', x: String(S.payment_details || '').trim() }, { t: 'PAN', x: String(S.pan || '').trim() }].filter((p) => p.x);
+  return a;
+};
 function invoiceSheet(i, S, T) {
   const lines = (t) => esc(t).replace(/\n/g, '<br>');
   const terms = (() => { if (!i.due_date || i.due_date <= i.inv_date) return 'Due on Receipt'; const n = Math.round((new Date(i.due_date) - new Date(i.inv_date)) / 864e5); return 'Due in ' + n + ' day' + (n === 1 ? '' : 's'); })();
@@ -63,7 +69,7 @@ function invoiceSheet(i, S, T) {
     <table class="vi-items"><tr><th class="c">#</th><th>Item &amp; Description</th><th class="n">Qty</th><th class="n">Rate</th><th class="n">Amount</th></tr>${i.items.map((x, k) => { const [h, ...r] = String(x.description).split('\n'); return `<tr><td class="c">${k + 1}</td><td><b>${esc(h)}</b>${r.length ? `<div class="d">${lines(r.join('\n'))}</div>` : ''}</td><td class="n">${Number(x.qty).toFixed(2)}</td><td class="n">${inr(x.rate_paise).slice(1)}</td><td class="n">${inr(Math.round(x.qty * x.rate_paise)).slice(1)}</td></tr>`; }).join('')}</table>
     <div class="vi-tot"><div class="w"><span>Total In Words</span><em>${inWords(i.total_paise).replace(/^Rupees/, 'Indian Rupee')}</em></div>
       <table><tr><td>Sub Total</td><td class="n">${inr(i.total_paise).slice(1)}</td></tr><tr class="t"><td>Total</td><td class="n">${inr(i.total_paise)}</td></tr>${i.paid_paise ? `<tr><td>Payment Received</td><td class="n">(−) ${inr(i.paid_paise)}</td></tr>` : ''}${closed ? '' : `<tr class="due"><td>Balance Due</td><td class="n">${inr(due)}</td></tr>`}</table></div>
-    ${i.notes || S.pan || S.payment_details || S.invoice_footer || i.payments.length ? `<div class="vi-notes"><div class="nl">${S.payment_details ? `<p class="bk"><u>BANK DETAILS</u><br>${lines(String(S.payment_details).replace(/(IFSC[^\n(]*?)\s*\(([^)\n]+)\)/i, '$1\nBranch: $2'))}</p>` : ''}${S.pan ? `<p>PAN: ${esc(S.pan)}</p>` : ''}${i.notes ? `<p>${lines(i.notes)}</p>` : ''}${S.invoice_footer ? `<p class="ft">${esc(S.invoice_footer)}</p>` : ''}</div><div class="vi-sign"><div class="gap">${T && T.has_signature ? `<img src="${tplUrl(T, 'signature')}" alt="">` : ''}</div><div>Authorised Signatory</div></div>${i.payments.length ? `<p class="ft"><b>Receipts:</b> ${i.payments.map((p) => `${esc(p.rec_no)} (${inr(p.amount_paise)}, ${dt(p.pay_date)})`).join('; ')}</p>` : ''}</div>` : `<div class="vi-sign"><div class="gap">${T && T.has_signature ? `<img src="${tplUrl(T, 'signature')}" alt="">` : ''}</div><div>Authorised Signatory</div></div>`}
+    ${i.notes || payItems(S).length || S.invoice_footer || i.payments.length || (T && T.has_qr) ? `<div class="vi-notes${T && T.has_qr ? ' hasqr' : ''}"><div class="nl">${payItems(S).length ? '<div class="pis">' : ''}${payItems(S).map((p) => `<div class="pi">${p.t ? `<u>${esc(p.t.toUpperCase())}</u><br>` : ''}${lines(p.x.replace(/(IFSC[^\n(]*?)\s*\(([^)\n]+)\)/i, '$1\nBranch: $2'))}</div>`).join('')}${payItems(S).length ? '</div>' : ''}${i.notes ? `<p>${lines(i.notes)}</p>` : ''}${S.invoice_footer ? `<p class="ft">${esc(S.invoice_footer)}</p>` : ''}</div>${T && T.has_qr ? `<div class="vi-qr"><img src="${tplUrl(T, 'qr')}" alt="">${S.qr_caption ? `<div>${esc(S.qr_caption)}</div>` : ''}</div>` : ''}<div class="vi-sign"><div class="gap">${T && T.has_signature ? `<img src="${tplUrl(T, 'signature')}" alt="">` : ''}</div><div>Authorised Signatory</div></div>${i.payments.length ? `<p class="ft"><b>Receipts:</b> ${i.payments.map((p) => `${esc(p.rec_no)} (${inr(p.amount_paise)}, ${dt(p.pay_date)})`).join('; ')}</p>` : ''}</div>` : `<div class="vi-sign"><div class="gap">${T && T.has_signature ? `<img src="${tplUrl(T, 'signature')}" alt="">` : ''}</div><div>Authorised Signatory</div></div>`}
     ${tc.length ? `<div class="vi-terms"><span>Terms &amp; Conditions</span><ol>${tc.map((x) => `<li>${esc(x)}</li>`).join('')}</ol></div>` : ''}
   </div>`;
 }
