@@ -17,7 +17,7 @@ const pill = (t, k = '') => `<span class="pill ${k}">${esc(t)}</span>`;
 const STATUS_PILL = { tagged: 'ok', paid: 'ok', confirmed: 'ok', sent: '', part_paid: 'warn', draft: 'warn', awaiting_payment: 'warn', cancelled: 'bad', expired: 'bad', open: 'ok', closed: '', matched: 'ok', suggested: 'warn', unmatched: 'warn', ignored: '' };
 const sp = (s) => pill(String(s).replace(/_/g, ' '), STATUS_PILL[s] || '');
 
-let ME = null, FIRM = 'KC LEGAL', FIRMQ = '', FEAT = {};
+let ME = null, FIRM = 'KC LEGAL', FIRMQ = '', FEAT = {}, MODS = { off: [], powered: '', product: '' };
 const isClient = () => ME && ME.role === 'client';
 const can = (...roles) => ME && roles.includes(ME.role);
 
@@ -123,22 +123,27 @@ function on(root, ev, sel, fn) { root.addEventListener(ev, (e) => { const t = e.
 function navItems() {
   if (ME.role === 'superadmin') return [['#/firms', 'Firms'], ['#/account', 'Account']];
   if (isClient()) return [['#/', 'Home'], ['#/matters', 'My cases'], ['#/myfiles', 'My files'], ['#/letters', 'Letters'], ['#/messages', 'Messages'], ['#/livechat', 'Live chat'], ['#/invoices', 'Fees'], ['#/book', 'Book']];
-  const r = ME.role, LG = 'Litigation', n = [['#/', 'Home']], pro = ['admin', 'advocate', 'staff'].includes(r);
+  const r = ME.role, LG = 'Litigation', n = [['#/', 'Home']], pro = ['admin', 'advocate', 'staff'].includes(r), mod = (k) => !(MODS.off || []).includes(k);
   n.push(['#/clients', 'Clients', LG]);
   if (pro) n.push(['#/matters', 'Cases', LG]);
   n.push(['#/tasks', 'Tasks', LG]);
-  n.push(['#/calendar', 'Calendar', LG]);
+  if (mod('calendar')) n.push(['#/calendar', 'Calendar', LG]);
   if (pro || r === 'accounts') n.push(['#/files', 'Files', LG]);
   if (pro) n.push(['#/letters', 'Letters', LG], ['#/register', 'In-Out Register', LG]);
   if (FEAT.drafting && pro) n.push(['#/draft', 'AI Drafting', LG]);
+  if (pro) n.push(['#/limitation', 'Limitation', LG]);
   if (r !== 'accounts') n.push(['#/messages', 'Messages', LG]);
   if (FEAT.email && pro) n.push(['#/mail', 'Mail', 'CRM']);
   if (FEAT.chat && [...['admin', 'advocate', 'staff'], 'telecaller'].includes(r)) n.push(['#/chats', 'Chats', 'CRM']);
-  if (['admin', 'advocate', 'staff', 'telecaller'].includes(r)) n.push(['#/tickets', 'Tickets', 'CRM'], ['#/leads', 'Leads', 'CRM']);
-  if (r !== 'accounts') n.push(['#/appointments', 'Calls', 'CRM']);
-  if (['admin', 'advocate', 'accounts'].includes(r)) n.push(['#/accounts', 'Accounts']);
-  if (r !== 'telecaller' && r !== 'accounts') n.push(['#/judgments', 'Judgments']);
-  if (r === 'admin') n.push(['#/ai', 'AI Control', 'Settings'], ['#/template', 'Design', 'Settings'], ['#/team', 'Team', 'Settings'], ['#/settings', 'Firm settings', 'Settings']);
+  if (mod('crm')) {
+    if (['admin', 'advocate', 'staff', 'telecaller'].includes(r)) n.push(['#/followups', 'Follow-ups', 'CRM'], ['#/tickets', 'Tickets', 'CRM'], ['#/leads', 'Leads', 'CRM']);
+    if (r !== 'accounts') n.push(['#/appointments', 'Calls', 'CRM']);
+  }
+  if (pro) n.push(['#/consents', 'Consents', 'CRM']);
+  if (mod('accounts') && ['admin', 'advocate', 'accounts'].includes(r)) n.push(['#/accounts', 'Accounts']);
+  if (mod('judgments') && r !== 'telecaller' && r !== 'accounts') n.push(['#/judgments', 'Judgments']);
+  if (mod('repository')) n.push(['#/repository', 'Repository']);
+  if (r === 'admin') n.push(['#/ai', 'AI Control', 'Settings'], ['#/template', 'Design', 'Settings'], ['#/team', 'Team', 'Settings'], ['#/settings', 'Firm settings', 'Settings'], ['#/plan', 'Plan and usage', 'Settings']);
   return n;
 }
 function navHtml(items, active) {
@@ -165,7 +170,7 @@ function layout() {
     ${navHtml(items, active)}
     <div class="who">${esc(ME.name)}<br><a href="#/account" style="padding:0;display:inline">Account</a> · <a href="#/logout" style="padding:0;display:inline">Sign out</a></div></nav>
     <div style="flex:1;min-width:0"><div class="top"><b>${esc(FIRM)}</b><span><a href="#/account">${esc(ME.name.split(' ')[0])}</a> · <a href="#/logout">Sign out</a></span></div>
-    <main class="main" id="view"></main></div>
+    <main class="main" id="view"></main>${MODS.powered ? `<div class="mute noprint" style="text-align:center;padding:.6rem;font-size:.78rem">${esc(MODS.powered)}</div>` : ''}</div>
     <nav class="bottom">${items.slice(0, isClient() ? 6 : 14).map(([h, l]) => `<a href="${h}" class="${active(h)}">${l}</a>`).join('')}</nav></div>`;
   $$('.side .tg').forEach((t) => { const tg = () => { const b = t.nextElementSibling, o = b.hidden; b.hidden = !o; t.setAttribute('aria-expanded', o); $('.car', t).textContent = o ? '▾' : '▸'; try { localStorage.setItem('kc-nav-' + t.dataset.g, o ? '1' : '0'); } catch (e) {} }; t.onclick = tg; t.onkeydown = (e) => { if (e.key === 'Enter' || e.key === ' ') { e.preventDefault(); tg(); } }; });
   // firm logo in the side brand (loaded once; harmless if the firm has none)
@@ -244,4 +249,4 @@ route(/^\/account$/, async () => {
     'Change', async (v) => { await POST('/api/password', { current: v.current, next: v.next }); toast('Password changed.'); });
 });
 
-async function loadMe() { const r = await GET('/api/me'); ME = r.user; FIRM = r.tenant.name; FEAT = {}; if (ME && ME.role !== 'client' && ME.role !== 'superadmin') { try { FEAT = await GET('/api/features'); } catch (e) {} } }
+async function loadMe() { const r = await GET('/api/me'); ME = r.user; FIRM = r.tenant.name; FEAT = {}; MODS = { off: [], powered: '', product: '' }; if (ME) { try { MODS = await GET('/api/modules'); } catch (e) {} } if (ME && ME.role !== 'client' && ME.role !== 'superadmin') { try { FEAT = await GET('/api/features'); } catch (e) {} } }

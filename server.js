@@ -19,6 +19,7 @@ app.use(cookieParser());
 app.use(L.loadUser);
 app.use(L.csrfGuard);
 app.use(require('./routes/portalctl').mw);
+require('./routes/superadmin')(app);
 // after a client / lead / matter is saved: push to Google Contacts, and greet a client whose WhatsApp number was just added
 // any change to documents or to a client (new reference, rename, upload, move, delete) goes to Google Drive within a moment
 app.use((req, res, next) => { if (['POST', 'PUT', 'PATCH', 'DELETE'].includes(req.method) && /^\/api\/(fs|clients|matters|documents|letters|register|upload|drafts)(\/|$)/.test(req.path)) res.on('finish', () => { if (res.statusCode < 300 && req.user) { try { require('./routes/drive').kick(req.user.tenant_id); } catch (e) {} } }); next(); });
@@ -79,6 +80,7 @@ function bootstrap() {
       'Lease deeds for Falta SEZ units: interest on arrear rent at a flat 12% per annum compounded quarterly; rent and charges payable quarterly in advance within the first month of each quarter.',
     ].join('\n'));
   }
+  if (AIc.getS(firm.id, 'sa_seeded') !== '1') { AIc.setS(firm.id, 'sa_seeded', '1'); AIc.setS(firm.id, 'sa_plan', 'premium'); AIc.setS(firm.id, 'sa_exempt', '1'); AIc.setS(firm.id, 'sa_ai_bill', '0'); }  // KC LEGAL is the owner's own firm: all modules, never suspended, no AI bill
   for (const f of db.prepare("SELECT * FROM tenants WHERE kind='firm'").all()) tpl.ensureTemplate(f, f.id === firm.id && f.slug === 'kclegal');
 }
 bootstrap();
@@ -107,6 +109,8 @@ require('./routes/drive')(app);
 require('./routes/files')(app);
 require('./routes/register')(app);
 require('./routes/news')(app);
+require('./routes/books')(app);
+require('./routes/extras')(app);
 
 app.get('/chat.js', (req, res, next) => { res.set('Cross-Origin-Resource-Policy', 'cross-origin'); res.set('Cache-Control', 'public, max-age=300'); next(); });
 app.use('/api', (req, res) => res.status(404).json({ error: 'Not found.' }));
@@ -132,5 +136,6 @@ if (require.main === module) {
   require('./routes/calendar').startWorker();
   require('./routes/contacts').startWorker();
   require('./routes/news').startWorker();
+  require('./routes/superadmin').startWorker();
 }
 module.exports = app;

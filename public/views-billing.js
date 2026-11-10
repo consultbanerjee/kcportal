@@ -103,7 +103,7 @@ async function recordPaymentModal(clientId, invoiceId, amountPaise) {
 }
 
 /* ===== billing hub (office) ===== */
-const BTABS = [['invoices', 'Invoices'], ['recurring', 'Recurring'], ['payments', 'Receipts'], ['payouts', 'Payments'], ['sched', 'Scheduled payments'], ['payees', 'Payees'], ['ledgers', 'Ledgers'], ['cash', 'Cash book'], ['bank', 'Bank reconciliation'], ['reports', 'Final accounts']];
+const BTABS = [['invoices', 'Invoices'], ['recurring', 'Recurring'], ['payments', 'Receipts'], ['payouts', 'Payments'], ['sched', 'Scheduled payments'], ['payees', 'Payees'], ['ledgers', 'Ledgers'], ['cash', 'Cash book'], ['bank', 'Bank reconciliation'], ['reports', 'Reports'], ['audit', 'Audit pack'], ['heads', 'Heads']];
 route(/^\/(?:billing|accounts)(?:\/(\w+))?$/, async ([tab = 'invoices'], p) => {
   const head = `<h1>Accounts</h1><div class="tabs">${BTABS.map(([k, l]) => `<a href="#/accounts/${k}" class="${tab === k ? 'on' : ''}">${l}</a>`).join('')}</div>`;
   if (tab === 'invoices') {
@@ -228,21 +228,6 @@ route(/^\/(?:billing|accounts)(?:\/(\w+))?$/, async ([tab = 'invoices'], p) => {
       ${kind !== 'head' ? `<select name="id"><option value="">— choose —</option>${opts.map(([v, l]) => `<option value="${v}" ${String(v) === id ? 'selected' : ''}>${esc(l)}</option>`).join('')}</select>` : ''}<button class="btn ghost">Show</button>${id || kind === 'head' ? '<button type="button" class="btn sm" data-print>Print</button>' : ''}</form>${body}`);
     $('#lf').onsubmit = (e) => { e.preventDefault(); const f = e.target; location.hash = `#/accounts/ledgers?kind=${f.kind.value}${f.id ? '&id=' + f.id.value : ''}`; };
     $('#lf').kind.onchange = () => { location.hash = `#/accounts/ledgers?kind=${$('#lf').kind.value}`; };
-  } else if (tab === 'reports') {
-    const clients = await GET('/api/clients'), cid = p.get('client'), from = p.get('from') || `${new Date().getFullYear() - (new Date().getMonth() < 3 ? 1 : 0)}-04-01`, to = p.get('to') || today();
-    const [out, fin] = await Promise.all([GET('/api/reports/outstanding'), GET(`/api/reports/final?from=${from}&to=${to}`)]);
-    const led = cid ? await GET('/api/reports/ledger?client_id=' + cid) : null;
-    view(`${head}
-      <div class="card"><h2>Client ledger</h2><select id="lc"><option value="">Choose a client…</option>${clients.map((c) => `<option value="${c.id}" ${cid == c.id ? 'selected' : ''}>${esc(c.name)}</option>`).join('')}</select>
-      ${led ? `<div class="tw" style="margin-top:.8rem"><table><tr><th>Date</th><th>Particulars</th><th class="n">Billed</th><th class="n">Received</th><th class="n">Balance</th></tr>${led.rows.map((r) => `<tr><td>${dt(r.date)}</td><td>${esc(r.particulars)}</td><td class="n">${r.debit_paise ? inr(r.debit_paise) : ''}</td><td class="n">${r.credit_paise ? inr(r.credit_paise) : ''}</td><td class="n">${inr(r.balance_paise)}</td></tr>`).join('')}<tr><td colspan="4"><b>Closing balance</b></td><td class="n"><b>${inr(led.balance_paise)}</b></td></tr></table></div><button class="btn sm noprint" data-print>Print</button>` : ''}</div>
-      <div class="card"><h2>Outstanding fees</h2>${out.length ? `<div class="tw"><table><tr><th>Client</th><th>Phone</th><th class="n">Billed</th><th class="n">Received</th><th class="n">Due</th></tr>${out.map((o) => `<tr><td><a href="#/accounts/reports?client=${o.id}">${esc(o.name)}</a></td><td>${esc(o.phone || '')}</td><td class="n">${inr(o.billed_paise)}</td><td class="n">${inr(o.paid_paise)}</td><td class="n"><b>${inr(o.due_paise)}</b></td></tr>`).join('')}</table></div>` : '<p class="mute">Nothing outstanding.</p>'}</div>
-      <div class="card"><h2>Income & expenditure with position</h2><form class="row noprint" id="ff"><input type="date" name="from" value="${from}" style="width:auto"><input type="date" name="to" value="${to}" style="width:auto"><button class="btn ghost">Show</button></form>
-      <div class="tw"><table><tr><th colspan="2">Income (fees received)</th></tr>${fin.income.map((x) => `<tr><td>${esc(x.mode)}</td><td class="n">${inr(x.paise)}</td></tr>`).join('')}<tr><td><b>Total income</b></td><td class="n"><b>${inr(fin.total_income_paise)}</b></td></tr>
-      <tr><th colspan="2">Expenditure</th></tr>${fin.expenses.map((x) => `<tr><td>${esc(x.head)}</td><td class="n">${inr(x.paise)}</td></tr>`).join('')}<tr><td><b>Total expenditure</b></td><td class="n"><b>${inr(fin.total_expense_paise)}</b></td></tr>
-      <tr><td><b>Surplus / (deficit)</b></td><td class="n"><b>${inr(fin.surplus_paise)}</b></td></tr>
-      <tr><th colspan="2">Position at ${dt(fin.to)}</th></tr><tr><td>Cash in hand</td><td class="n">${inr(fin.cash_balance_paise)}</td></tr><tr><td>Bank balance (last statement)</td><td class="n">${fin.bank_balance_paise == null ? '—' : inr(fin.bank_balance_paise)}</td></tr><tr><td>Fees receivable</td><td class="n">${inr(fin.receivables_paise)}</td></tr></table></div>
-      <p class="mute">Prepared on a cash basis from recorded receipts, the cash book and imported bank statements. Your chartered accountant will finalise statutory accounts.</p><button class="btn sm noprint" data-print>Print</button></div>`);
-    $('#lc').onchange = (e) => (location.hash = '#/accounts/reports' + (e.target.value ? '?client=' + e.target.value : ''));
-    $('#ff').onsubmit = (e) => { e.preventDefault(); location.hash = `#/accounts/reports?from=${e.target.from.value}&to=${e.target.to.value}`; };
+  } else if (tab === 'reports' || tab === 'audit' || tab === 'heads') { await accTab(tab, head, p);
   } else view('<div class="card">Unknown section.</div>');
 }, { roles: ['admin', 'advocate', 'accounts'] });

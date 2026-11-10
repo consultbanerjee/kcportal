@@ -31,9 +31,8 @@ const COLUMNS = [
     { name: 'PIB', url: 'https://pib.gov.in/RssMain.aspx?ModId=6&Lang=1&Regid=3' },
   ] },
   { key: 'wb', title: 'Government of West Bengal', sources: [
-    { name: 'Millennium Post', url: 'https://www.millenniumpost.in/bengal', re: /millenniumpost\.in\/bengal\/[^/?#]+-\d{5,}$/ },
-    { name: 'AIR', url: 'https://newsonair.gov.in/category/states/west-bengal/', re: /newsonair\.gov\.in\/[a-z0-9]+(?:-[a-z0-9]+){3,}\/?$/ },
-    { name: 'AIR', url: 'https://newsonair.gov.in/category/regional/', re: /newsonair\.gov\.in\/[a-z0-9]*bengal[a-z0-9-]*\/?$/ },
+    { name: 'GN', url: 'https://news.google.com/rss/search?q=%22West+Bengal+government%22+OR+Nabanna+OR+%22West+Bengal+cabinet%22+when:3d&hl=en-IN&gl=IN&ceid=IN:en', tail: true },
+    { name: 'GN', url: 'https://news.google.com/rss/search?q=%22Chief+Minister%22+%22West+Bengal%22+announces+when:3d&hl=en-IN&gl=IN&ceid=IN:en', tail: true },
   ] },
   { key: 'law', title: 'Law News (India)', sources: [
     { name: 'Bar & Bench', url: 'https://www.barandbench.com/news', re: /barandbench\.com\/news\/(?:[a-z-]+\/)?[^/?#]+-[^/?#]+$/ },
@@ -83,7 +82,8 @@ async function pull(src) {
     if (!r.ok) return [];
     const body = await r.text();
     const feedy = /^\s*(<\?xml|<rss|<feed)/i.test(body) || /<(rss|feed)[\s>]/i.test(body.slice(0, 600));
-    return feedy ? fromFeed(body) : fromHtml(body, src.url, src.re);
+    if (feedy) { const L = fromFeed(body); return src.tail ? L.map((i) => ({ title: i.title.replace(/\s+[-–|]\s+[^-–|]{2,60}$/, ''), url: i.url })) : L; }
+    return fromHtml(body, src.url, src.re);
   } catch (e) { return []; } finally { clearTimeout(to); }
 }
 

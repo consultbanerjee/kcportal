@@ -299,6 +299,25 @@ for (const c of ['meet_event_id TEXT', 'meet_code TEXT', 'meet_note TEXT', 'rec_
 if (!hasCol('clients', 'wa_optout')) db.exec('ALTER TABLE clients ADD COLUMN wa_optout INTEGER NOT NULL DEFAULT 0');
 if (!hasCol('documents', 'fs_id')) db.exec('ALTER TABLE documents ADD COLUMN fs_id INTEGER');
 
+
+// ---- v4.0: platform billing (Super Admin bills each firm) ----
+db.exec(`
+CREATE TABLE IF NOT EXISTS sub_invoices (
+  id INTEGER PRIMARY KEY, tenant_id INTEGER NOT NULL, kind TEXT NOT NULL DEFAULT 'monthly', period TEXT NOT NULL,
+  plan_paise INTEGER NOT NULL DEFAULT 0, ai_paise INTEGER NOT NULL DEFAULT 0, other_paise INTEGER NOT NULL DEFAULT 0, total_paise INTEGER NOT NULL DEFAULT 0,
+  note TEXT, status TEXT NOT NULL DEFAULT 'due', due_date TEXT, paid_on TEXT, paid_ref TEXT, created_at TEXT DEFAULT CURRENT_TIMESTAMP);
+CREATE UNIQUE INDEX IF NOT EXISTS uq_sub_month ON sub_invoices(tenant_id, period) WHERE kind='monthly';
+CREATE TABLE IF NOT EXISTS acc_heads (id INTEGER PRIMARY KEY, tenant_id INTEGER NOT NULL, name TEXT NOT NULL, grp TEXT NOT NULL CHECK(grp IN ('income','expense')), keywords TEXT, sys INTEGER NOT NULL DEFAULT 0, sort INTEGER NOT NULL DEFAULT 100);
+CREATE TABLE IF NOT EXISTS repo_links (id INTEGER PRIMARY KEY, tenant_id INTEGER NOT NULL, cat TEXT NOT NULL, title TEXT NOT NULL, url TEXT NOT NULL, note TEXT, created_at TEXT DEFAULT CURRENT_TIMESTAMP);
+CREATE TABLE IF NOT EXISTS repo_hide (tenant_id INTEGER NOT NULL, key TEXT NOT NULL, PRIMARY KEY(tenant_id, key));
+CREATE TABLE IF NOT EXISTS client_consents (
+  id INTEGER PRIMARY KEY, tenant_id INTEGER NOT NULL, client_id INTEGER NOT NULL, purpose TEXT NOT NULL, mode TEXT NOT NULL DEFAULT 'written',
+  given_on TEXT NOT NULL, note TEXT, withdrawn_on TEXT, created_by INTEGER, created_at TEXT DEFAULT CURRENT_TIMESTAMP);
+CREATE INDEX IF NOT EXISTS idx_consent_c ON client_consents(tenant_id, client_id);
+CREATE INDEX IF NOT EXISTS idx_acc_heads ON acc_heads(tenant_id);
+CREATE INDEX IF NOT EXISTS idx_ai_usage_t ON ai_usage(tenant_id, created_at);
+`);
+
 module.exports = { db, nextNumber, audit, DATA_DIR };
 
 // ---- v2.3: client reference (who referred the client) and the In-Out register ----

@@ -22,8 +22,9 @@ module.exports = (app) => {
     const usage = db.prepare("SELECT feature, COUNT(*) calls, COALESCE(SUM(in_tok),0) in_tok, COALESCE(SUM(out_tok),0) out_tok FROM ai_usage WHERE tenant_id=? AND created_at>=date('now','start of month') GROUP BY feature").all(t);
     const slug = (db.prepare('SELECT slug FROM tenants WHERE id=?').get(t) || {}).slug;
     res.json({
-      on: Object.fromEntries(TOG.map((f) => [f, AI.on(t, f)])),
-      key_set: !!AI.secret(t, 'ai_key'), key_env: !!process.env.ANTHROPIC_API_KEY, key_hint: AI.secret(t, 'ai_key') ? '…' + AI.secret(t, 'ai_key').slice(-4) : '',
+      claude_allowed: AI.allowed(t),
+      on: Object.fromEntries(TOG.map((f) => [f, AI.getS(t, 'ai_' + f, '0') === '1'])),
+      key_set: !!AI.secret(t, 'ai_key'), key_env: !!process.env.ANTHROPIC_API_KEY || !!AI.secret(0, 'platform_key'), key_hint: AI.secret(t, 'ai_key') ? '…' + AI.secret(t, 'ai_key').slice(-4) : '',
       text: Object.fromEntries(Object.keys(TXT).map((k) => [k, g(k)])), num: { mail_imap_port: g('mail_imap_port', '993'), mail_smtp_port: g('mail_smtp_port', '465'), mail_poll_min: g('mail_poll_min', '5'), mail_auto_delay_min: g('mail_auto_delay_min', '30'), chat_daily_cap: g('chat_daily_cap', '400') },
       mail_mode: g('mail_mode', 'review'), mail_ai_disclose: g('mail_ai_disclose', '1') === '1',
       secrets: { mail_imap_pass: !!AI.secret(t, 'mail_imap_pass'), mail_smtp_pass: !!AI.secret(t, 'mail_smtp_pass') },

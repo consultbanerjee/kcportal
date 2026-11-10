@@ -8,7 +8,9 @@ const { db, DATA_DIR } = require('./db');
 // ---- settings (key/value per firm) ----
 const getS = (tid, key, def = '') => { const r = db.prepare('SELECT value FROM firm_settings WHERE tenant_id=? AND key=?').get(tid, key); return r && r.value != null ? r.value : def; };
 const setS = (tid, key, value) => db.prepare('INSERT INTO firm_settings(tenant_id,key,value) VALUES (?,?,?) ON CONFLICT(tenant_id,key) DO UPDATE SET value=excluded.value').run(tid, key, value == null ? '' : String(value));
-const on = (tid, feature) => getS(tid, 'ai_' + feature, '0') === '1';
+// The Super Admin can switch Claude off for the whole platform or for one firm.
+const allowed = (tid) => getS(0, 'sa_claude_all', '1') === '1' && getS(tid, 'sa_claude', '1') === '1';
+const on = (tid, feature) => getS(tid, 'ai_' + feature, '0') === '1' && allowed(tid);
 
 // ---- secrets: AES-256-GCM, key from SECRET_KEY env or an auto-generated file in the data dir ----
 function masterKey() {
@@ -37,11 +39,12 @@ const setSecret = (tid, key, v) => setS(tid, key, v ? enc(v) : '');
 // ---- Anthropic Messages API ----
 let transport = null; // tests replace this
 const setTransport = (fn) => { transport = fn; };
-const apiKey = (tid) => secret(tid, 'ai_key') || process.env.ANTHROPIC_API_KEY || '';
+const apiKey = (tid) => secret(tid, 'ai_key') || secret(0, 'platform_key') || process.env.ANTHROPIC_API_KEY || '';
 const model = (tid) => getS(tid, 'ai_model') || process.env.AI_MODEL || 'claude-sonnet-5-5';
 const configured = (tid) => !!transport || !!apiKey(tid);
 
 async function call(tid, feature, { system, messages, tools, tool_choice, max_tokens = 4000, model: useModel, timeoutMs = 170000 }) {
+  if (!allowed(tid)) throw Object.assign(new Error('AI (Claude) is switched off for this firm by the platform administrator.'), { status: 403 });
   const body = { model: useModel || model(tid), max_tokens, system, messages };
   if (tools) { body.tools = tools; if (tool_choice) body.tool_choice = tool_choice; }
   let res;
@@ -77,4 +80,4 @@ function firmInfo(tid) {
   return { name: t.name || 'the firm', phone: s.phone || '', email: s.email || '', address: s.address || '', website: s.website || '', signatory: [s.signatory_name, s.signatory_title].filter(Boolean).join(', ') };
 }
 
-module.exports = { getS, setS, on, enc, dec, secret, setSecret, setTransport, call, textOf, configured, apiKey, model, firmInfo };
+module.exports = { allowed, getS, setS, on, enc, dec, secret, setSecret, setTransport, call, textOf, configured, apiKey, model, firmInfo };

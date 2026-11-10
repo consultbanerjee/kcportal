@@ -93,7 +93,7 @@ module.exports = (app) => {
     const title = L.str(req.body.title, 250);
     if (!L.must(res, client && title, 'Choose a client and enter the matter title.')) return;
     const { n, year } = nextNumber(T(req), 'matter');
-    const file_no = `KC/M/${pad(n)}/${year}`;
+    const file_no = `${(db.prepare('SELECT prefix FROM tenants WHERE id=?').get(T(req)) || {}).prefix || 'KC'}/M/${pad(n)}/${year}`;
     const r = db.prepare(`INSERT INTO matters(tenant_id,client_id,file_no,title,forum,case_no,opposite_party,stage,assigned_to,summary)
       VALUES (?,?,?,?,?,?,?,?,?,?)`).run(T(req), client.id, file_no, title, L.str(req.body.forum, 200), L.str(req.body.case_no, 100),
       L.str(req.body.opposite_party, 250), L.str(req.body.stage, 100), L.int(req.body.assigned_to), L.str(req.body.summary, 3000));

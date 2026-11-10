@@ -32,6 +32,7 @@ route(/^\/$/, async () => {
     <a class="stat" href="#/letters"><b>${d.drafts_to_approve}</b><span>Letter drafts</span></a></div>
     <div class="card" style="margin-top:1rem"><h2>Court dates — next 7 days</h2>${d.dates.length ? `<ul class="list">${d.dates.map((x) => `<li><span><a href="#/matter/${x.matter_id}">${esc(x.title)}</a><div class="mute">${esc(x.file_no)} · ${esc(x.forum || '')}</div></span><b>${dt(x.date)}</b></li>`).join('')}</ul>` : '<p class="mute">Nothing listed for the coming week.</p>'}</div>`);
   const qc = $('#qc'); if (qc) qc.onclick = () => addClient();
+  homeExtras();
 }, {});
 
 /* ===== clients ===== */
@@ -306,11 +307,11 @@ route(/^\/settings$/, async () => {
       ${rm.log.length ? `<details><summary>Recent reminders</summary><div class="tw"><table><tr><th>When</th><th>Invoice</th><th>Client</th><th>Via</th><th>Result</th></tr>${rm.log.map((l) => `<tr><td>${dtm(l.created_at.replace(' ', 'T') + 'Z')}</td><td>${esc(l.inv_no)}</td><td>${esc(l.client || '')}</td><td>${esc(l.channel)}${l.manual ? ' (manual)' : ''}</td><td>${esc(l.status)}${l.error ? ' — ' + esc(l.error) : ''}</td></tr>`).join('')}</table></div></details>` : ''}</div>
     <div class="card"><h2>Google Pay / UPI collection</h2>
       <form id="upf"><label>UPI ID (the one on your Google Pay for Business account)</label><input name="upi_id" value="${esc(up.vpa || '')}" placeholder="kclegal@okhdfcbank" autocomplete="off">
-        <label>Name shown to the payer</label><input name="upi_name" value="${esc(up.name || '')}" placeholder="KC LEGAL">
+        <label>Name shown to the payer</label><input name="upi_name" value="${esc(up.name || '')}" placeholder="${esc(FIRM)}">
         <label>Note on the pay page (optional)</label><input name="upi_note" value="${esc(up.note || '')}">
         <p><button class="btn">Save</button></p></form>
       <p>Your shareable payment link (for invoices, WhatsApp, e-mail): <code>${esc(up.pay_url)}</code> <button class="btn sm ghost" id="upc" type="button">Copy</button></p>
-      <p class="mute">Add <code>&amp;amt=5000&amp;note=KC/INV/000101</code> to the end for a fixed amount. Booking payments use this UPI ID automatically, with the exact fee, a Google Pay button and a QR; the client then enters the UTR and you press “Confirm payment” in Appointments after seeing the credit in Google Pay.</p></div>
+      <p class="mute">Add <code>&amp;amt=5000&amp;note=INV/000101</code> to the end for a fixed amount. Booking payments use this UPI ID automatically, with the exact fee, a Google Pay button and a QR; the client then enters the UTR and you press “Confirm payment” in Appointments after seeing the credit in Google Pay.</p></div>
     <div class="card"><h2>WhatsApp to clients (Meta WhatsApp Business)</h2>
       <p>Status: ${wa.configured ? pill('connected', 'ok') : pill('not set up — messages open in WhatsApp for you to send by hand', 'warn')}</p>
       <form id="waf"><label>Phone number ID</label><input name="phone_id" value="${esc(wa.phone_id || '')}" autocomplete="off" placeholder="from Meta › WhatsApp › API setup">
@@ -318,7 +319,7 @@ route(/^\/settings$/, async () => {
         <label>Permanent access token ${wa.has_token ? '(saved — leave blank to keep)' : ''}</label><input name="token" type="text" autocomplete="off" data-lpignore="true" style="-webkit-text-security:disc">
         <label>App secret ${wa.has_secret ? '(saved — leave blank to keep)' : ''}</label><input name="app_secret" type="text" autocomplete="off" data-lpignore="true" style="-webkit-text-security:disc">
         <label>Template language code</label><input name="lang" value="${esc(wa.lang || 'en')}" style="max-width:8rem">
-        <label class="chk"><input type="checkbox" name="welcome" ${wa.welcome ? 'checked' : ''}> Send a “Welcome to ${esc('KC LEGAL')}” greeting when a client's WhatsApp number is added for the first time</label>
+        <label class="chk"><input type="checkbox" name="welcome" ${wa.welcome ? 'checked' : ''}> Send a “Welcome to ${esc(FIRM)}” greeting when a client's WhatsApp number is added for the first time</label>
         <label class="chk"><input type="checkbox" name="auto" ${wa.auto_booking ? 'checked' : ''}> Send the client a WhatsApp (with the video link) when a consultation is confirmed</label>
         <p><button class="btn">Save WhatsApp settings</button></p></form>
       <details><summary>How to set up</summary><ol class="mute">
@@ -361,7 +362,7 @@ route(/^\/settings$/, async () => {
 route(/^\/template$/, async () => {
   if (ME.role !== 'admin') { view('<p class="mute">Only the firm administrator can change the document design.</p>'); return; }
   let T = await getTpl(true);
-  const F = (k, label, o = {}) => `<label>${label}</label>${o.area ? `<textarea name="${k}" rows="3">` : `<input name="${k}" type="${o.type || 'text'}" ${o.type === 'number' ? 'min="0" max="120"' : ''} value="`}${o.area ? esc(T.settings[k] || '') + '</textarea>' : esc(T.settings[k] ?? '') + '">'}`;
+  const F = (k, label, o = {}) => `<label>${label}</label>${o.hint ? `<div class="mute" style="font-size:.78rem;margin:-.1rem 0 .25rem">${o.hint}</div>` : ''}${o.area ? `<textarea name="${k}" rows="${o.rows || 3}" placeholder="${esc(o.ph || '')}">` : `<input name="${k}" type="${o.type || 'text'}" ${o.type === 'number' ? 'min="0" max="120"' : ''} value="`}${o.area ? esc(T.settings[k] || '') + '</textarea>' : esc(T.settings[k] ?? '') + '">'}`;
   const sample = () => {
     const S = T.settings, d = new Date().toISOString().slice(0, 10);
     const inv = { inv_no: 'INV/0001', inv_date: d, due_date: d, status: 'sent', client_name: 'Sample Client Pvt. Ltd.', client_address: '12 Park Street\nKolkata 700016', subject: 'Professional fees for legal services',
@@ -384,7 +385,7 @@ route(/^\/template$/, async () => {
       <p class="mute">Top and bottom are the space kept clear for the letterhead's header and footer. They apply on every page of a long document. Margins are in millimetres.</p>
       <div class="row"><div>${F('top_mm', 'Top / header', { type: 'number' })}</div><div>${F('bottom_mm', 'Bottom / footer', { type: 'number' })}</div></div><div class="row"><div>${F('left_mm', 'Left', { type: 'number' })}</div><div>${F('right_mm', 'Right', { type: 'number' })}</div></div>
       <div class="row" style="margin-top:.4rem"><button type="button" class="btn sm ghost" id="mstd">Standard A4 (25 mm all round)</button></div>
-      <h3>Wording</h3>${F('invoice_title', 'Invoice title')}${F('receipt_title', 'Receipt title')}${F('signatory_name', 'Signatory name')}${F('signatory_title', 'Signatory designation')}${F('payment_details', 'Payment details (bank / UPI)', { area: 1 })}${F('invoice_footer', 'Invoice footer note', { area: 1 })}${F('pan', 'PAN (printed under Notes)')}${F('invoice_terms', 'Terms & conditions (one per line)', { area: 1 })}
+      <h3>Wording</h3>${F('invoice_title', 'Invoice title')}${F('receipt_title', 'Receipt title')}${F('signatory_name', 'Signatory name')}${F('signatory_title', 'Signatory designation')}${F('payment_details', 'Bank details (this firm\'s own account, printed on its invoices)', { area: 1, rows: 5, hint: 'Each firm enters its own details here. One item per line.', ph: 'A/c Name: Your Firm Name\nA/c No.: 000000000000\nBank: Bank name\nIFSC: ABCD0000000 (Branch name, City)\nUPI: yourid@bank' })}${F('invoice_footer', 'Invoice footer note', { area: 1 })}${F('pan', 'PAN of this firm (printed under the bank details)')}${F('invoice_terms', 'Terms & conditions (one per line)', { area: 1 })}
       <p class="err" hidden></p><div style="margin-top:1rem"><button class="btn gold" style="width:100%">Save design</button></div></form></div>
       <div class="tplprev" id="pv"></div></div>`);
   const form = $('#tf'), pv = $('#pv');
@@ -429,19 +430,6 @@ route(/^\/template$/, async () => {
   $('#lhd').onclick = async () => { if (!sure('Remove the letterhead image?')) return; await DEL('/api/template/letterhead'); await getTpl(true); go(); };
 });
 
-/* ===== Super Admin: firms ===== */
-route(/^\/firms$/, async () => {
-  const firms = await GET('/api/platform/firms');
-  view(`<div class="row sp"><h1>Firms</h1><button class="btn" id="nf">Add firm</button></div>
-    <p class="mute">Each firm has its own administrator, team, clients and document design. You create the firm and its administrator; the administrator does the rest.</p>
-    ${firms.map((f) => `<div class="card"><div class="row sp"><h2>${esc(f.name)} ${f.active ? '' : pill('disabled', 'bad')}</h2><button class="btn sm ghost" data-tg="${f.id}" data-a="${f.active ? 0 : 1}">${f.active ? 'Disable firm' : 'Enable firm'}</button></div>
-      <p class="mute">Booking link: <code>${esc(location.origin)}/#/book?firm=${esc(f.slug)}</code> · ${f.team} team · ${f.clients} clients</p>
-      <ul class="list">${f.admins.map((a) => `<li><span><b>${esc(a.name)}</b> <span class="mute">${esc(a.email)}</span> ${a.joined ? '' : pill('invited')}</span><span class="row"><button class="btn sm ghost" data-inv="${a.id}">Invite link</button></span></li>`).join('')}</ul></div>`).join('')}`);
-  const link = (p) => show('Invitation link', `<p>Send this private link to the administrator. It works once and expires in 7 days.</p><input readonly value="${esc(location.origin + '/' + p)}">`);
-  $('#nf').onclick = () => ask('Add firm', [{ name: 'name', label: 'Firm name', required: true }, { name: 'prefix', label: 'Number prefix (e.g. KC)', required: true }, { name: 'slug', label: 'Short web name (optional)' }, { name: 'admin_name', label: 'Administrator name', required: true }, { name: 'admin_email', label: 'Administrator email', type: 'email', required: true }], 'Create', async (v) => { const r = await POST('/api/platform/firms', v); setTimeout(() => link(r.invite_path), 50); go(); });
-  $$('[data-inv]').forEach((b) => (b.onclick = async () => link((await POST(`/api/platform/admins/${b.dataset.inv}/invite`)).invite_path)));
-  $$('[data-tg]').forEach((b) => (b.onclick = async () => { if (b.dataset.a === '0' && !sure('Disable this firm? Nobody in it can sign in until you enable it again.')) return; await PATCH('/api/platform/firms/' + b.dataset.tg, { active: b.dataset.a === '1' }); go(); }));
-});
 route(/^\/account$/, async () => {
   view(`<h1>Account</h1><div class="card"><p><b>${esc(ME.name)}</b><br><span class="mute">${esc(ME.email)} · Super Admin</span></p><p class="mute">Change your password from the sign-in page using “Forgot password”, or ask the server owner.</p></div>`);
 });

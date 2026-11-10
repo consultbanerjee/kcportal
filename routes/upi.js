@@ -10,7 +10,7 @@ const VPA = /^[a-zA-Z0-9._-]{2,256}@[a-zA-Z]{2,64}$/;
 const cfg = (tid) => ({ vpa: AI.getS(tid, 'upi_id', ''), name: AI.getS(tid, 'upi_name', ''), note: AI.getS(tid, 'upi_note', '') });
 function link(tid, amountPaise, note) {
   const c = cfg(tid); if (!c.vpa) return null;
-  const p = new URLSearchParams({ pa: c.vpa, pn: c.name || 'KC LEGAL', cu: 'INR' });
+  const p = new URLSearchParams({ pa: c.vpa, pn: c.name || (require('../db').db.prepare('SELECT name FROM tenants WHERE id=?').get(tid) || {}).name || 'Firm', cu: 'INR' });
   if (amountPaise > 0) p.set('am', (amountPaise / 100).toFixed(2));
   if (note) p.set('tn', String(note).slice(0, 60));
   return 'upi://pay?' + p.toString().replace(/\+/g, '%20');
