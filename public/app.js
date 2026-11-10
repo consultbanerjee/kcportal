@@ -35,7 +35,7 @@ async function api(method, url, body) {
   let j = null; try { j = await r.json(); } catch (e) {}
   if (r.status === 403 && ME && ME.role === 'client' && !url.startsWith('/api/login')) { const j403 = await r.clone().json().catch(() => ({})); if (j403.blocked) { ME = null; location.hash = '#/login'; toast(j403.error, true); throw new Error(j403.error); } }
   if (r.status === 401 && !url.startsWith('/api/login') && !url.startsWith('/api/me')) { ME = null; location.hash = '#/login'; throw new Error('Please sign in.'); }
-  if (!r.ok) throw new Error((j && j.error) || 'Something went wrong.');
+  if (!r.ok) { const er = new Error((j && j.error) || 'Something went wrong.'); if (j && j.choices) er.choices = j.choices; throw er; }
   return j;
 }
 const GET = (u) => api('GET', u), POST = (u, b) => api('POST', u, b || {}), PUT = (u, b) => api('PUT', u, b), PATCH = (u, b) => api('PATCH', u, b), DEL = (u) => api('DELETE', u);
@@ -213,16 +213,34 @@ const LOGIN_KINDS = {
 };
 route(/^\/login(?:\/(client|firm|admin))?$/, async ([kind]) => {
   if (ME) { location.hash = '#/'; return; }
-  const k = LOGIN_KINDS[kind] || { h: 'Sign in', p: 'Clients receive a private invitation link from the office to set their password.' };
+  const hq = (location.hash.split('?')[1] || ''); const qf = new URLSearchParams(hq).get('firm'); if (qf) FIRMQ = qf;
+  if (FIRMQ) { try { const pf = await GET('/api/public/firm?firm=' + encodeURIComponent(FIRMQ)); if (pf && pf.name) FIRM = pf.name; } catch (e) {} }
+  const k = LOGIN_KINDS[kind] || { h: 'Login', p: 'One login for everyone: clients, advocates, staff, administrators and law firms. After you sign in you are taken to your own pages. New clients receive a private invitation link from the office to set a password.' };
   authShell(`<h2>${k.h}</h2><form id="lf"><label>Email</label><input name="email" type="email" autocomplete="username" required>
     <label>Password</label><input name="password" type="password" autocomplete="current-password" required><p class="err" hidden></p>
     <div style="margin-top:1rem"><button class="btn" style="width:100%">Sign in</button></div></form>
-    <p class="mute" style="margin-top:1rem">${k.p}</p>`);
+    <p style="margin:.8rem 0 0"><a href="#/forgot${FIRMQ ? '?firm=' + encodeURIComponent(FIRMQ) : ''}">Forgot password?</a></p>
+    <p class="mute" style="margin-top:.6rem">${k.p}</p>`);
+  const doLogin = async (f, firm) => { await POST('/api/login', { email: f.email.value, password: f.password.value, as: kind || '', firm: firm || FIRMQ || '' }); await loadMe(); location.hash = '#/'; go(); };
   $('#lf').onsubmit = async (e) => {
     e.preventDefault(); const f = e.target, err = $('.err', f), b = $('button', f); b.disabled = true; err.hidden = true;
-    try { await POST('/api/login', { email: f.email.value, password: f.password.value, as: kind || '' }); await loadMe(); location.hash = '#/'; go(); }
-    catch (ex) { err.hidden = false; err.textContent = ex.message; b.disabled = false; }
+    try { await doLogin(f); }
+    catch (ex) {
+      if (ex.choices) {
+        err.hidden = false; err.innerHTML = 'This email is registered with more than one firm. Which firm do you want to open?<br>' + ex.choices.map((c) => `<button type="button" class="btn ghost pick" data-s="${esc(c.slug)}" style="margin:.3rem .3rem 0 0">${esc(c.name)}</button>`).join('');
+        $$('.pick', f).forEach((x) => { x.onclick = async () => { try { await doLogin(f, x.dataset.s); } catch (e2) { err.textContent = e2.message; } }; });
+      } else { err.hidden = false; err.textContent = ex.message; }
+      b.disabled = false;
+    }
   };
+}, { public: true });
+
+route(/^\/forgot$/, async () => {
+  const qf = new URLSearchParams(location.hash.split('?')[1] || '').get('firm'); if (qf) FIRMQ = qf;
+  authShell(`<h2>Forgot password</h2><p class="mute">Enter your email. If it is registered, we send a link to set a new password.</p>
+    <form id="ff"><label>Email</label><input name="email" type="email" required><p class="err" hidden></p><div style="margin-top:1rem"><button class="btn" style="width:100%">Send link</button></div></form>
+    <p style="margin-top:1rem"><a href="#/login${FIRMQ ? '?firm=' + encodeURIComponent(FIRMQ) : ''}">Back to login</a></p>`);
+  $('#ff').onsubmit = async (e) => { e.preventDefault(); const f = e.target, err = $('.err', f); try { const r = await POST('/api/forgot', { email: f.email.value, firm: FIRMQ }); err.hidden = false; err.style.color = 'inherit'; err.textContent = r.message; } catch (ex) { err.hidden = false; err.textContent = ex.message; } };
 }, { public: true });
 
 route(/^\/invite\/([a-f0-9]+)$/, async ([tok]) => {

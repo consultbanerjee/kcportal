@@ -11,7 +11,10 @@ module.exports = (app, limiter) => {
     const password = String(req.body.password || '');
     const fail = () => res.status(401).json({ error: 'Email or password is not correct.' });
     // The same email can exist in more than one firm; sign in to the firm whose password matches.
-    const cands = db.prepare('SELECT u.* FROM users u JOIN tenants t ON t.id=u.tenant_id WHERE u.email=? AND u.active=1 AND t.active=1 AND u.pass_hash IS NOT NULL').all(email);
+    let cands = db.prepare('SELECT u.*, t.name AS firm_name, t.slug AS firm_slug FROM users u JOIN tenants t ON t.id=u.tenant_id WHERE u.email=? AND u.active=1 AND t.active=1 AND u.pass_hash IS NOT NULL').all(email);
+    // A firm-specific login link (?firm=slug) limits the check to that firm; platform staff (Super Admin) may still sign in from any link.
+    const firmSlug = L.str(req.body.firm, 60);
+    if (firmSlug) cands = cands.filter((c) => c.firm_slug === firmSlug || c.role === 'superadmin');
     if (!cands.length) { L.checkPassword(password, '$2a$11$invalidinvalidinvalidinvalidinvalidinvalidinvalidinvali'); return fail(); }
     const locked = cands.find((c) => c.locked_until && c.locked_until > L.nowIso());
     if (locked && !cands.some((c) => !(c.locked_until && c.locked_until > L.nowIso()) && L.checkPassword(password, c.pass_hash))) return res.status(429).json({ error: 'Too many wrong attempts. Try again in a few minutes.' });
@@ -23,6 +26,11 @@ module.exports = (app, limiter) => {
         audit(c.tenant_id, c.id, 'login_failed', 'user', c.id, null, L.ip(req));
       }
       return fail();
+    }
+    // Same person, same password, more than one firm: ask which firm to open (password already proved).
+    if (!firmSlug) {
+      const also = cands.filter((c) => !(c.locked_until && c.locked_until > L.nowIso()) && L.checkPassword(password, c.pass_hash));
+      if (also.length > 1) return res.status(409).json({ error: 'Choose the firm to open.', choices: also.map((c) => ({ slug: c.firm_slug, name: c.firm_name })) });
     }
     const GROUPS = { client: ['client'], firm: ['advocate', 'staff', 'telecaller', 'accounts'], admin: ['admin', 'superadmin'] };
     const NAMES = { client: 'Client Login', firm: 'Law Firm Login', admin: 'Administrator Login' };
@@ -74,9 +82,28 @@ module.exports = (app, limiter) => {
     if (!u) return res.status(404).json({ error: 'This invitation link is not valid or has expired.' });
     const problem = L.passwordProblem(req.body.password);
     if (problem) return res.status(400).json({ error: problem });
-    db.prepare('UPDATE users SET pass_hash=?, invite_token=NULL, invite_expires=NULL, active=1 WHERE id=?').run(L.hashPassword(req.body.password), u.id);
+    db.prepare('UPDATE users SET pass_hash=?, invite_token=NULL, invite_expires=NULL, active=1, failed_logins=0, locked_until=NULL WHERE id=?').run(L.hashPassword(req.body.password), u.id);
     audit(u.tenant_id, u.id, 'invite_accepted', 'user', u.id, null, L.ip(req));
     res.json({ ok: true });
+  });
+
+  // Forgot password: always answers the same, so nobody can discover which emails exist. The link is valid for 30 minutes.
+  app.post('/api/forgot', limiter, async (req, res) => {
+    const email = L.str(req.body.email, 200).toLowerCase(), firmSlug = L.str(req.body.firm, 60);
+    res.json({ ok: true, message: 'If this email is registered, a link to set a new password has been sent. It is valid for 30 minutes. If nothing arrives, please ask the office to send you a fresh link.' });
+    try {
+      let us = db.prepare('SELECT u.*, t.name AS firm_name, t.slug AS firm_slug FROM users u JOIN tenants t ON t.id=u.tenant_id WHERE u.email=? AND u.active=1 AND t.active=1').all(email);
+      if (firmSlug) us = us.filter((c) => c.firm_slug === firmSlug || c.role === 'superadmin');
+      const base = process.env.PUBLIC_URL || (req.protocol + '://' + req.get('host'));
+      for (const u of us) {
+        const token = L.rand(24);
+        db.prepare('UPDATE users SET invite_token=?, invite_expires=? WHERE id=?').run(token, new Date(Date.now() + 30 * 60000).toISOString(), u.id);
+        audit(u.tenant_id, u.id, 'password_reset_requested', 'user', u.id, null, L.ip(req));
+        const M = require('./aimail');
+        const tid = u.role === 'superadmin' ? (L.defaultFirm() || {}).id : u.tenant_id;
+        M.sendMail(tid, { to: u.email, subject: 'Set a new password - ' + u.firm_name, text: `Dear ${u.name},\n\nUse this link to set a new password (valid for 30 minutes):\n${base}/#/invite/${token}\n\nIf you did not ask for this, ignore this email; your password stays as it is.\n\n${u.firm_name}` }).catch(() => {});
+      }
+    } catch (e) { /* silent by design */ }
   });
 
   // ----- User management (admin) -----
