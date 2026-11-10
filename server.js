@@ -104,6 +104,7 @@ require('./routes/contacts')(app);
 require('./routes/drive')(app);
 require('./routes/files')(app);
 require('./routes/register')(app);
+require('./routes/news')(app);
 
 app.get('/chat.js', (req, res, next) => { res.set('Cross-Origin-Resource-Policy', 'cross-origin'); res.set('Cache-Control', 'public, max-age=300'); next(); });
 app.use('/api', (req, res) => res.status(404).json({ error: 'Not found.' }));
@@ -126,5 +127,6 @@ if (require.main === module) {
   require('./routes/payees').startWorker();
   require('./routes/reminders').startWorker();
   require('./routes/contacts').startWorker();
+  require('./routes/news').startWorker();
 }
 module.exports = app;

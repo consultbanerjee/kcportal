@@ -144,3 +144,44 @@ route(/^\/ai$/, async () => {
   $('#tai').onclick = async () => { $('#tair').textContent = 'Testing…'; try { const r = await POST('/api/ai-admin/test-ai'); $('#tair').textContent = r.ok ? 'Connected ✓ (save first if you just typed a key)' : 'Unexpected reply'; } catch (ex) { $('#tair').textContent = ex.message; } };
   $('#tml').onclick = async () => { $('#tmlr').textContent = 'Testing…'; try { const r = await POST('/api/ai-admin/test-mail'); $('#tmlr').textContent = `Incoming: ${r.imap} · Outgoing: ${r.smtp} (save first if you just typed details)`; } catch (ex) { $('#tmlr').textContent = ex.message; } };
 });
+
+/* ---------- Tickets raised by the chat assistant ---------- */
+route(/^\/tickets$/, async (_, q) => {
+  const st = q.get('s') || 'open', list = await GET('/api/tickets?status=' + st);
+  view(`<h1>Tickets</h1><p class="mute">Chats the assistant could not settle, or where the person asked for someone from the office. Their contact details are saved so you can call or write back.</p>
+    <div class="row" style="margin-bottom:.8rem"><a class="btn sm ${st === 'open' ? '' : 'ghost'}" href="#/tickets?s=open">Open</a><a class="btn sm ${st === 'closed' ? '' : 'ghost'}" href="#/tickets?s=closed">Closed</a></div>
+    <div class="card">${list.length ? `<ul class="list">${list.map((k) => `<li><span><a href="#/ticket/${k.id}"><b>${esc(k.subject || 'Chat follow-up')}</b></a> ${k.priority === 'high' ? pill('urgent', 'bad') : ''} ${k.existing_client ? pill('existing client?') : ''}<div>${esc(k.name || 'Name not given')} · ${esc(k.phone || '')} ${esc(k.email || '')}</div><div class="mute">${esc(k.source)} · ${dtm(k.created_at)}</div></span></li>`).join('')}</ul>` : '<p class="mute">Nothing here.</p>'}</div>`);
+});
+route(/^\/ticket\/(\d+)$/, async ([id]) => {
+  const k = await GET('/api/tickets/' + id);
+  view(`<a class="btn ghost sm" href="#/tickets">← Tickets</a>
+    <div class="card"><h2>${esc(k.subject || 'Chat follow-up')} ${k.priority === 'high' ? pill('urgent', 'bad') : ''} ${pill(k.status, k.status === 'open' ? 'bad' : '')}</h2>
+      <p><b>${esc(k.name || 'Name not given')}</b>${k.client_name ? ` · <a href="#/client/${k.client_id}">${esc(k.client_name)} (client file)</a>` : ''}</p>
+      <p>${k.phone ? `<a href="tel:${esc(k.phone)}">${esc(k.phone)}</a> · <a href="https://wa.me/${esc(String(k.phone).replace(/\D/g, ''))}" target="_blank" rel="noopener">WhatsApp</a>` : 'No phone'} ${k.email ? ` · <a href="mailto:${esc(k.email)}">${esc(k.email)}</a>` : ''}</p>
+      ${k.address ? `<p>${esc(k.address)}</p>` : ''}${k.existing_client ? `<p class="mute">${esc(k.existing_client)}</p>` : ''}
+      <h3>What they need</h3><p style="white-space:pre-wrap">${esc(k.summary || '')}</p>
+      <label>Your note</label><textarea id="sn" rows="3">${esc(k.staff_note || '')}</textarea>
+      <div class="row" style="margin-top:.8rem"><button class="btn gold" id="sv">Save note</button><button class="btn ghost" id="st">${k.status === 'open' ? 'Mark as done' : 'Reopen'}</button></div></div>
+    ${k.messages.length ? `<div class="card"><h3>Chat</h3>${k.messages.map((m) => `<p><b>${m.role === 'user' ? 'Visitor' : 'Assistant'}:</b> ${esc(m.content)}</p>`).join('')}</div>` : ''}`);
+  $('#sv').onclick = async () => { await PATCH('/api/tickets/' + id, { staff_note: $('#sn').value }); toast('Saved'); };
+  $('#st').onclick = async () => { await PATCH('/api/tickets/' + id, { status: k.status === 'open' ? 'closed' : 'open', staff_note: $('#sn').value }); location.hash = '#/tickets'; };
+});
+
+/* ---------- Live chat for signed-in clients ---------- */
+route(/^\/livechat$/, async () => {
+  const c = await GET('/api/client-chat');
+  view(`<h1>Live chat</h1><p class="mute">Ask about your cases, next dates, documents or fees. If it needs your advocate, a note is passed to them.</p>
+    <div class="card" style="padding:0"><div id="lcm" style="height:55vh;min-height:300px;overflow:auto;padding:1rem;background:#f6f7fb"></div>
+    <form id="lcf" class="row" style="border-top:1px solid #e1e5ee;padding:.6rem"><input name="t" maxlength="1000" placeholder="Type your message…" autocomplete="off" style="flex:1" ${c.enabled ? '' : 'disabled'}><button class="btn gold" ${c.enabled ? '' : 'disabled'}>Send</button></form></div>
+    ${c.enabled ? '' : '<p class="mute">Live chat is not switched on yet. Please use the Messages page to reach your advocate.</p>'}`);
+  const box = $('#lcm');
+  const add = (who, text) => { const d = document.createElement('div'); d.style.cssText = 'margin:.35rem 0;display:flex;justify-content:' + (who === 'u' ? 'flex-end' : 'flex-start'); const b = document.createElement('div'); b.style.cssText = 'max-width:80%;padding:.55rem .8rem;border-radius:12px;white-space:pre-wrap;border:1px solid #e1e5ee;background:' + (who === 'u' ? '#1f2a44;color:#fff' : '#fff'); b.textContent = text; d.appendChild(b); box.appendChild(d); box.scrollTop = box.scrollHeight; return b; };
+  if (!c.messages.length) add('a', c.greeting); else c.messages.forEach((m) => add(m.role === 'user' ? 'u' : 'a', m.content));
+  $('#lcf').onsubmit = async (e) => {
+    e.preventDefault(); const f = e.target, text = f.t.value.trim(); if (!text) return; f.t.value = ''; add('u', text);
+    const w = add('a', '…'), t0 = Date.now(); f.t.disabled = true;
+    try { const r = await POST('/api/client-chat', { text }); const wait = Math.max(0, Math.min(3500, 700 + r.reply.length * 18) - (Date.now() - t0)); await new Promise((ok) => setTimeout(ok, wait)); w.textContent = r.reply; }
+    catch (ex) { w.textContent = ex.message; }
+    f.t.disabled = false; f.t.focus(); box.scrollTop = box.scrollHeight;
+  };
+}, { client: true });

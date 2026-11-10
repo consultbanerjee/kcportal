@@ -24,6 +24,13 @@ module.exports = (app, limiter) => {
       }
       return fail();
     }
+    const GROUPS = { client: ['client'], firm: ['advocate', 'staff', 'telecaller', 'accounts'], admin: ['admin', 'superadmin'] };
+    const NAMES = { client: 'Client Login', firm: 'Law Firm Login', admin: 'Administrator Login' };
+    const as = String(req.body.as || '');
+    if (GROUPS[as] && !GROUPS[as].includes(u.role)) {
+      const right = Object.keys(GROUPS).find((k) => GROUPS[k].includes(u.role));
+      return res.status(403).json({ error: 'This is the ' + NAMES[as] + ' page. Please use the ' + NAMES[right] + ' page instead.' });
+    }
     if (u.role === 'client' && L.portalClosed(u)) { audit(u.tenant_id, u.id, 'login_refused', 'user', u.id, 'portal closed', L.ip(req)); return res.status(403).json({ error: L.CLOSED_MSG, blocked: true }); }
     const t = { id: u.tenant_id };
     db.prepare('UPDATE users SET failed_logins=0, locked_until=NULL WHERE id=?').run(u.id);

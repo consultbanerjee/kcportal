@@ -1,0 +1,16 @@
+const assert=require('assert'),http=require('http');
+process.env.DATA_DIR='/tmp/kcnews'+Date.now();
+const N=require('../routes/news');
+const rss='<?xml version="1.0"?><rss><channel><item><title><![CDATA[Cabinet approves &amp; new scheme for rail]]></title><link>https://x.gov.in/a-b-c-d</link></item></channel></rss>';
+assert.deepStrictEqual(N._t.fromFeed(rss),[{title:'Cabinet approves & new scheme for rail',url:'https://x.gov.in/a-b-c-d'}]);
+const html='<a href="/high-court/calcutta-high-court/some-long-headline-about-bail-557901"><h2>Calcutta High Court grants bail to a businessman in fraud case</h2></a><a href="/about">About us page link text long enough here</a><a href="/high-court/calcutta-high-court/some-long-headline-about-bail-557901">Calcutta High Court grants bail to a businessman in fraud case</a>';
+const r=N._t.fromHtml(html,'https://www.livelaw.in/high-court/calcutta-high-court',/livelaw\.in\/high-court\/calcutta-high-court\/[^/?#]+-\d{5,}$/);
+assert.strictEqual(r.length,1);assert.strictEqual(r[0].url,'https://www.livelaw.in/high-court/calcutta-high-court/some-long-headline-about-bail-557901');
+console.log('news parsing ok');
+const app=require('express')();N(app);
+const srv=app.listen(0,async()=>{const p=srv.address().port;
+ const o=await fetch(`http://127.0.0.1:${p}/api/public/news`,{headers:{Origin:'https://www.kclegal.us'}});
+ assert.strictEqual(o.headers.get('access-control-allow-origin'),'https://www.kclegal.us');
+ const b=await fetch(`http://127.0.0.1:${p}/api/public/news`,{headers:{Origin:'https://evil.example'}});
+ assert.strictEqual(b.headers.get('access-control-allow-origin'),null);
+ console.log('news endpoint ok');srv.close();process.exit(0)});

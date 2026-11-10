@@ -321,3 +321,13 @@ if (!db.prepare("SELECT 1 FROM firm_settings WHERE key='reg_dak_moved'").get()) 
   db.prepare("INSERT OR REPLACE INTO firm_settings(tenant_id,key,value) SELECT id,'reg_dak_moved','1' FROM tenants").run();
   db.prepare("INSERT OR IGNORE INTO firm_settings(tenant_id,key,value) VALUES (0,'reg_dak_moved','1')").run();
 }
+
+// ---- v2.5: chat tickets, signed-in client live chat ----
+for (const c of ['unresolved INTEGER NOT NULL DEFAULT 0', 'address TEXT', "kind TEXT NOT NULL DEFAULT 'public'", 'client_id INTEGER', 'user_id INTEGER', 'ticket_id INTEGER', 'matched_client_id INTEGER']) if (!hasCol('chat_sessions', c.split(' ')[0])) db.exec('ALTER TABLE chat_sessions ADD COLUMN ' + c);
+db.exec(`CREATE TABLE IF NOT EXISTS tickets (
+  id INTEGER PRIMARY KEY, tenant_id INTEGER NOT NULL, session_id INTEGER, client_id INTEGER, lead_id INTEGER,
+  source TEXT NOT NULL DEFAULT 'website chat', name TEXT, phone TEXT, email TEXT, address TEXT,
+  subject TEXT, summary TEXT, priority TEXT NOT NULL DEFAULT 'normal', status TEXT NOT NULL DEFAULT 'open',
+  existing_client TEXT, staff_note TEXT, assigned_to INTEGER,
+  created_at TEXT DEFAULT CURRENT_TIMESTAMP, updated_at TEXT DEFAULT CURRENT_TIMESTAMP, closed_at TEXT);
+CREATE INDEX IF NOT EXISTS idx_tk_tenant ON tickets(tenant_id, status, created_at);`);

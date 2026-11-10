@@ -115,7 +115,7 @@ function on(root, ev, sel, fn) { root.addEventListener(ev, (e) => { const t = e.
 // Each item is [href, label, group]. Items with a group are shown under that group's heading in the left panel.
 function navItems() {
   if (ME.role === 'superadmin') return [['#/firms', 'Firms'], ['#/account', 'Account']];
-  if (isClient()) return [['#/', 'Home'], ['#/matters', 'My cases'], ['#/myfiles', 'My files'], ['#/letters', 'Letters'], ['#/messages', 'Messages'], ['#/invoices', 'Fees'], ['#/book', 'Book']];
+  if (isClient()) return [['#/', 'Home'], ['#/matters', 'My cases'], ['#/myfiles', 'My files'], ['#/letters', 'Letters'], ['#/messages', 'Messages'], ['#/livechat', 'Live chat'], ['#/invoices', 'Fees'], ['#/book', 'Book']];
   const r = ME.role, LG = 'Litigation', n = [['#/', 'Home']], pro = ['admin', 'advocate', 'staff'].includes(r);
   n.push(['#/clients', 'Clients', LG]);
   if (pro) n.push(['#/matters', 'Cases', LG]);
@@ -126,7 +126,7 @@ function navItems() {
   if (r !== 'accounts') n.push(['#/messages', 'Messages', LG]);
   if (FEAT.email && pro) n.push(['#/mail', 'Mail']);
   if (FEAT.chat && [...['admin', 'advocate', 'staff'], 'telecaller'].includes(r)) n.push(['#/chats', 'Chats']);
-  if (['admin', 'advocate', 'staff', 'telecaller'].includes(r)) n.push(['#/leads', 'Leads']);
+  if (['admin', 'advocate', 'staff', 'telecaller'].includes(r)) n.push(['#/tickets', 'Tickets'], ['#/leads', 'Leads']);
   if (r !== 'accounts') n.push(['#/appointments', 'Calls']);
   if (['admin', 'advocate', 'accounts'].includes(r)) n.push(['#/accounts', 'Accounts']);
   if (r !== 'telecaller' && r !== 'accounts') n.push(['#/judgments', 'Judgments']);
@@ -183,15 +183,21 @@ function authShell(inner) {
   $('#app').innerHTML = `<div class="login"><div class="pubhead"><h1 style="margin:0">${esc(FIRM)}</h1></div><div class="card">${inner}</div>
     <p class="mute" style="text-align:center"><a href="#/book${FIRMQ ? '?firm=' + encodeURIComponent(FIRMQ) : ''}">Book a paid online consultation</a></p></div>`;
 }
-route(/^\/login$/, async () => {
+const LOGIN_KINDS = {
+  client: { h: 'Client Login', p: 'Clients receive a private invitation link from the office to set their password.' },
+  firm: { h: 'Law Firm Login', p: 'For advocates and office staff of the firm.' },
+  admin: { h: 'Administrator Login', p: 'Restricted to firm administrators.' },
+};
+route(/^\/login(?:\/(client|firm|admin))?$/, async ([kind]) => {
   if (ME) { location.hash = '#/'; return; }
-  authShell(`<h2>Sign in</h2><form id="lf"><label>Email</label><input name="email" type="email" autocomplete="username" required>
+  const k = LOGIN_KINDS[kind] || { h: 'Sign in', p: 'Clients receive a private invitation link from the office to set their password.' };
+  authShell(`<h2>${k.h}</h2><form id="lf"><label>Email</label><input name="email" type="email" autocomplete="username" required>
     <label>Password</label><input name="password" type="password" autocomplete="current-password" required><p class="err" hidden></p>
     <div style="margin-top:1rem"><button class="btn" style="width:100%">Sign in</button></div></form>
-    <p class="mute" style="margin-top:1rem">Clients receive a private invitation link from the office to set their password.</p>`);
+    <p class="mute" style="margin-top:1rem">${k.p}</p>`);
   $('#lf').onsubmit = async (e) => {
     e.preventDefault(); const f = e.target, err = $('.err', f), b = $('button', f); b.disabled = true; err.hidden = true;
-    try { await POST('/api/login', { email: f.email.value, password: f.password.value }); await loadMe(); location.hash = '#/'; go(); }
+    try { await POST('/api/login', { email: f.email.value, password: f.password.value, as: kind || '' }); await loadMe(); location.hash = '#/'; go(); }
     catch (ex) { err.hidden = false; err.textContent = ex.message; b.disabled = false; }
   };
 }, { public: true });
