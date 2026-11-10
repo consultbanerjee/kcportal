@@ -6,7 +6,7 @@ const mail = require('./aimail');
 const { db, audit } = L;
 
 const TOG = ['drafting', 'email', 'chat'];
-const TXT = { ai_model: 60, ai_drafting_rules: 6000, mail_imap_host: 120, mail_imap_user: 200, mail_smtp_host: 120, mail_smtp_user: 200, mail_from_name: 100, mail_signature: 800,
+const TXT = { ai_model: 60, ai_draft_model: 60, ai_drafting_rules: 6000, mail_imap_host: 120, mail_imap_user: 200, mail_smtp_host: 120, mail_smtp_user: 200, mail_from_name: 100, mail_signature: 800,
   chat_greeting: 400, chat_origins: 600, chat_firm_info: 4000 };
 const NUMS = { mail_imap_port: [1, 65535], mail_smtp_port: [1, 65535], mail_poll_min: [2, 120], mail_auto_delay_min: [1, 1440], chat_daily_cap: [10, 5000] };
 const SECRETS = ['ai_key', 'mail_imap_pass', 'mail_smtp_pass'];

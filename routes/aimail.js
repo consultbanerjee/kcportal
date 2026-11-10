@@ -43,7 +43,7 @@ async function realFetch(c, sinceUid, firstRun) {
 async function realSend(c, m) {
   const nm = require('nodemailer');
   const tr = nm.createTransport({ host: c.smtp.host, port: c.smtp.port, secure: c.smtp.port === 465, auth: { user: c.smtp.user, pass: c.smtp.pass } });
-  await tr.sendMail({ from: c.fromName ? `"${c.fromName.replace(/"/g, '')}" <${c.smtp.user}>` : c.smtp.user, to: m.to, subject: m.subject, text: m.text, inReplyTo: m.inReplyTo || undefined, references: m.references || undefined });
+  await tr.sendMail({ from: c.fromName ? `"${c.fromName.replace(/"/g, '')}" <${c.smtp.user}>` : c.smtp.user, to: m.to, subject: m.subject, text: m.text, attachments: m.attachments || undefined, inReplyTo: m.inReplyTo || undefined, references: m.references || undefined });
 }
 async function realVerify(c) {
   const out = {};

@@ -285,12 +285,13 @@ async function setup(c, invite, pw) { const tok = invite.split('/').pop(); retur
   const fdA = new FormData(); fdA.append('kind', 'legal_notice'); fdA.append('instruction', 'cheque bounce notice'); fdA.append('files', new Blob([pngBuf]), 'cheque.png'); fdA.append('files', new Blob(['hello facts']), 'facts.txt');
   r = await staff('POST', '/api/ai/draft', fdA); ok(r.s === 200 && r.j.id, 'staff drafts from image + text ' + JSON.stringify(r.j));
   ok(lastBody && JSON.stringify(lastBody.messages).includes('"type":"image"') && JSON.stringify(lastBody.messages).includes('hello facts') && /Never invent facts/.test(lastBody.system), 'image and text reached Claude with rules');
-  const dftId = r.j.id; r = await staff('GET', '/api/ai/drafts/' + dftId); ok(r.s === 200 && r.j.output.startsWith('LEGAL NOTICE') && r.j.notes.includes('fill'), 'draft and notes split');
+  const waitDraft = async (id) => { let x; for (let i = 0; i < 60; i++) { x = await staff('GET', '/api/ai/drafts/' + id); if (x.j && x.j.status !== 'working') return x; await new Promise((z) => setTimeout(z, 100)); } return x; };
+  const dftId = r.j.id; r = await waitDraft(dftId); ok(r.s === 200 && r.j.output.startsWith('LEGAL NOTICE') && r.j.notes.includes('fill'), 'draft and notes split');
   const badFd = new FormData(); badFd.append('instruction', 'x'); badFd.append('files', new Blob(['not a pdf']), 'x.pdf');
-  r = await staff('POST', '/api/ai/draft', badFd); ok(r.s === 400, 'fake pdf rejected');
+  r = await staff('POST', '/api/ai/draft', badFd); r = await waitDraft(r.j.id); ok(r.j.status === 'ready' && /does not look like a valid PDF/.test(r.j.notes), 'fake pdf skipped and reported');
   r = await adv('GET', '/api/ai/drafts/' + dftId); ok(r.s === 200, 'advocate can open staff draft');
   r = await tele('GET', '/api/ai/drafts'); ok(r.s === 403, 'telecaller no drafting');
-  r = await staff('POST', `/api/ai/drafts/${dftId}/refine`, { instruction: 'add interest 12%' }); ok(r.s === 200 && r.j.output, 'refine');
+  r = await staff('POST', `/api/ai/drafts/${dftId}/refine`, { instruction: 'add interest 12%' }); r = await waitDraft(dftId); ok(r.s === 200 && r.j.output, 'refine');
   r = await staff('PATCH', '/api/ai/drafts/' + dftId, { output: 'edited text' }); r = await staff('GET', '/api/ai/drafts/' + dftId); ok(r.j.output === 'edited text', 'edit saved');
 
   // chat

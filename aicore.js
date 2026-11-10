@@ -41,15 +41,15 @@ const apiKey = (tid) => secret(tid, 'ai_key') || process.env.ANTHROPIC_API_KEY |
 const model = (tid) => getS(tid, 'ai_model') || process.env.AI_MODEL || 'claude-sonnet-5-5';
 const configured = (tid) => !!transport || !!apiKey(tid);
 
-async function call(tid, feature, { system, messages, tools, tool_choice, max_tokens = 4000 }) {
-  const body = { model: model(tid), max_tokens, system, messages };
+async function call(tid, feature, { system, messages, tools, tool_choice, max_tokens = 4000, model: useModel, timeoutMs = 170000 }) {
+  const body = { model: useModel || model(tid), max_tokens, system, messages };
   if (tools) { body.tools = tools; if (tool_choice) body.tool_choice = tool_choice; }
   let res;
   if (transport) res = await transport(body, { tid, feature });
   else {
     const key = apiKey(tid);
     if (!key) throw Object.assign(new Error('AI is not set up yet. The administrator must add the API key in AI Control.'), { status: 503 });
-    const ctl = new AbortController(), timer = setTimeout(() => ctl.abort(), 170000);
+    const ctl = new AbortController(), timer = setTimeout(() => ctl.abort(), timeoutMs);
     let r;
     try {
       r = await fetch((process.env.ANTHROPIC_BASE_URL || 'https://api.anthropic.com') + '/v1/messages', {

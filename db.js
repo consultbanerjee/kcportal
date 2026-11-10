@@ -333,3 +333,19 @@ db.exec(`CREATE TABLE IF NOT EXISTS tickets (
 CREATE INDEX IF NOT EXISTS idx_tk_tenant ON tickets(tenant_id, status, created_at);`);
 
 if (!hasCol('invoices', 'subject')) db.exec('ALTER TABLE invoices ADD COLUMN subject TEXT');
+
+if (!hasCol('invoices', 'share_token')) db.exec('ALTER TABLE invoices ADD COLUMN share_token TEXT');
+if (!hasCol('invoices', 'sent_at')) db.exec('ALTER TABLE invoices ADD COLUMN sent_at TEXT');
+if (!hasCol('invoices', 'recurring_id')) db.exec('ALTER TABLE invoices ADD COLUMN recurring_id INTEGER');
+db.exec(`CREATE TABLE IF NOT EXISTS recurring_invoices (
+  id INTEGER PRIMARY KEY, tenant_id INTEGER NOT NULL, client_id INTEGER NOT NULL, matter_id INTEGER, name TEXT, subject TEXT, notes TEXT,
+  items TEXT NOT NULL, every_n INTEGER NOT NULL DEFAULT 1, unit TEXT NOT NULL DEFAULT 'month', next_date TEXT NOT NULL, end_date TEXT,
+  due_days INTEGER NOT NULL DEFAULT 0, auto_send INTEGER NOT NULL DEFAULT 0, send_email INTEGER NOT NULL DEFAULT 1, send_whatsapp INTEGER NOT NULL DEFAULT 0,
+  status TEXT NOT NULL DEFAULT 'active', last_run TEXT, runs INTEGER NOT NULL DEFAULT 0, last_error TEXT, created_by INTEGER, created_at TEXT DEFAULT CURRENT_TIMESTAMP);
+CREATE TABLE IF NOT EXISTS invoice_send_log (
+  id INTEGER PRIMARY KEY, tenant_id INTEGER NOT NULL, invoice_id INTEGER NOT NULL, channel TEXT NOT NULL, status TEXT NOT NULL, error TEXT, auto INTEGER DEFAULT 0, created_at TEXT DEFAULT CURRENT_TIMESTAMP);
+CREATE UNIQUE INDEX IF NOT EXISTS invoices_share_token ON invoices(share_token) WHERE share_token IS NOT NULL;`);
+
+for (const [col, def] of [['status', "TEXT DEFAULT 'ready'"], ['error', 'TEXT'], ['page', 'TEXT'], ['profile', 'TEXT'], ['doc_ids', 'TEXT'], ['annexures', 'TEXT'], ['built', 'TEXT'], ['share_token', 'TEXT'], ['share_expires', 'TEXT'], ['share_files', 'TEXT'], ['last_number', 'INTEGER']]) {
+  try { db.exec(`ALTER TABLE ai_drafts ADD COLUMN ${col} ${def}`); } catch (e) { /* already there */ }
+}

@@ -82,3 +82,17 @@ route(/^\/pay-us$/, async () => {
   const f = async () => { const p = new URLSearchParams({ firm: q.get('firm') || '', amt: $('#pa').value, note: $('#pn2').value }).toString(); const r = await GET('/api/public/upi?' + p); $('#pg').href = r.link; $('#pq').src = '/api/public/upi-qr?' + p; };
   $('#pa').oninput = f; $('#pn2').oninput = f;
 });
+
+// Private link to a sent invoice (e-mail / WhatsApp) - no sign-in needed
+route(/^\/inv\/([a-f0-9]{20,64})$/, async ([tok]) => {
+  let d; try { d = await GET('/api/public/invoice/' + tok); } catch (e) { pubShell(`<div class="card"><p class="err">${esc(e.message)}</p></div>`); return; }
+  const T = { ...d.tpl, pub: tok };
+  $('#app').innerHTML = `<div class="pubinv"><div class="row sp noprint" style="max-width:210mm;margin:0 auto .6rem;padding:.4rem"><b>${esc(d.firm || '')}</b><button class="btn sm" data-print>Print / Save as PDF</button></div>${sheetFor(T, invoiceSheet(d.invoice, T.settings, T))}</div>`;
+}, { public: true });
+
+// Private link to documents sent from the Drafting Desk (petition + annexures) - no sign-in needed
+route(/^\/pack\/([a-f0-9]{20,64})$/, async ([tok]) => {
+  let d; try { d = await GET('/api/public/pack/' + tok); } catch (e) { pubShell(`<div class="card"><p class="err">${esc(e.message)}</p></div>`); return; }
+  const kbs = (n) => n > 1048576 ? (n / 1048576).toFixed(1) + ' MB' : Math.max(1, Math.round((n || 0) / 1024)) + ' KB';
+  pubShell(`<div class="card"><h2>${esc(d.title)}</h2><p class="mute">Sent by ${esc(d.firm)}. The link is private and valid for 30 days.</p><ul class="list">${d.files.map((f) => `<li class="row sp"><span><b>${esc(f.name)}</b> <span class="mute">${kbs(f.size)}${f.pages ? ' · ' + f.pages + ' pp' : ''}</span></span><span class="row">${/\.pdf$/.test(f.name) ? `<a class="btn ghost sm" target="_blank" href="/api/public/pack/${tok}/${f.n}?inline=1">Open</a>` : ''}<a class="btn sm" href="/api/public/pack/${tok}/${f.n}">Download</a></span></li>`).join('')}</ul></div>`);
+}, { public: true });

@@ -358,7 +358,7 @@ module.exports = (app) => {
 
   // ---------- used by the older Matter > Documents screen ----------
   const matterFolder = (t, m, uid, visible) => { seed(t, m.client_id, uid); return ensurePath(t, m.client_id, ['Uploaded', m.file_no.replace(/\//g, '-')], uid, visible); };
-  app.locals.fsHelpers = { recFolder, inShared, seed, unique, tidy, putFile, matterFolder, ensurePath, ensureInbox, shareUp };
+  app.locals.fsHelpers = { recFolder, inShared, seed, unique, tidy, putFile, matterFolder, ensurePath, ensureInbox, shareUp, readBuffer };
 
   // one-time: bring files uploaded before this version into the new folder tree
   (function migrate() {
