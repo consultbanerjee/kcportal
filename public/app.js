@@ -142,10 +142,12 @@ function navItems() {
   if (pro) n.push(['#/consents', 'Consents', 'CRM']);
   if (mod('accounts') && ['admin', 'advocate', 'accounts'].includes(r)) n.push(['#/accounts', 'Accounts']);
   if (mod('judgments') && r !== 'telecaller' && r !== 'accounts') n.push(['#/judgments', 'Judgments']);
-  if (mod('repository')) n.push(['#/repository', 'Repository']);
+  if (mod('repository')) REPO_CATS.forEach(([sl, nm]) => n.push(['#/repository/' + sl, nm, 'Repository']));
   if (r === 'admin') n.push(['#/ai', 'AI Control', 'Settings'], ['#/template', 'Design', 'Settings'], ['#/team', 'Team', 'Settings'], ['#/settings', 'Firm settings', 'Settings'], ['#/plan', 'Plan and usage', 'Settings']);
   return n;
 }
+const REPO_CATS = [['all', 'All sections'], ['courts', 'Courts'], ['high-courts', 'All High Courts'], ['tribunals', 'Tribunals'], ['forums', 'Forums'], ['authorities', 'Authorities'], ['legislatures', 'Parliament and Assemblies'], ['intl-india', 'International courts (India)'], ['intl-other', 'International courts (other)'], ['elibrary', 'eLibrary & Research'], ['govt-repos', 'Government repositories'], ['news-world', 'Newspapers: world'], ['news-india', 'Newspapers: India'], ['news-legal', 'Legal news'], ['central-services', 'Central Govt Services'], ['wb-services', 'West Bengal Govt Services'], ['bodies', 'Professional bodies']];
+const REPO_MAP = { courts: 'Courts', 'high-courts': 'All High Courts', tribunals: 'Tribunals', forums: 'Forums (consumer, ADR and grievance)', authorities: 'Authorities and commissions', legislatures: 'Parliament and Legislatures', 'intl-india': 'International courts with a link to India', 'intl-other': 'International courts and bodies (no jurisdiction over India)', elibrary: 'eLibrary & Research', 'govt-repos': 'Government repositories (public)', 'news-world': 'Newspapers — world (free to read)', 'news-india': 'Newspapers — India', 'news-legal': 'News and legal updates', 'central-services': 'Central Government Services', 'wb-services': 'West Bengal Government Services', bodies: 'Professional bodies' };
 function navHtml(items, active) {
   let out = '', last = null, gi = 0;
   const store = (k, v) => { try { if (v === undefined) return localStorage.getItem('kc-nav-' + k); localStorage.setItem('kc-nav-' + k, v); } catch (e) {} };
@@ -203,8 +205,7 @@ window.addEventListener('hashchange', go);
 
 /* ===== auth views ===== */
 function authShell(inner) {
-  $('#app').innerHTML = `<div class="login"><div class="pubhead"><h1 style="margin:0">${esc(FIRM)}</h1></div><div class="card">${inner}</div>
-    <p class="mute" style="text-align:center"><a href="#/book${FIRMQ ? '?firm=' + encodeURIComponent(FIRMQ) : ''}">Book a paid online consultation</a></p></div>`;
+  $('#app').innerHTML = `<div class="login"><div class="pubhead"><h1 style="margin:0">${esc(FIRM)}</h1></div><div class="card">${inner}</div></div>`;
 }
 const LOGIN_KINDS = {
   client: { h: 'Client Login', p: 'Clients receive a private invitation link from the office to set their password.' },
@@ -219,8 +220,7 @@ route(/^\/login(?:\/(client|firm|admin))?$/, async ([kind]) => {
   authShell(`<h2>${k.h}</h2><form id="lf"><label>Email</label><input name="email" type="email" autocomplete="username" required>
     <label>Password</label><input name="password" type="password" autocomplete="current-password" required><p class="err" hidden></p>
     <div style="margin-top:1rem"><button class="btn" style="width:100%">Sign in</button></div></form>
-    <p style="margin:.8rem 0 0"><a href="#/forgot${FIRMQ ? '?firm=' + encodeURIComponent(FIRMQ) : ''}">Forgot password?</a></p>
-    <p class="mute" style="margin-top:.6rem">${k.p}</p>`);
+    <p style="margin:.8rem 0 0"><a href="#/forgot${FIRMQ ? '?firm=' + encodeURIComponent(FIRMQ) : ''}">Forgot password?</a></p>`);
   const doLogin = async (f, firm) => { await POST('/api/login', { email: f.email.value, password: f.password.value, as: kind || '', firm: firm || FIRMQ || '' }); await loadMe(); location.hash = '#/'; go(); };
   $('#lf').onsubmit = async (e) => {
     e.preventDefault(); const f = e.target, err = $('.err', f), b = $('button', f); b.disabled = true; err.hidden = true;

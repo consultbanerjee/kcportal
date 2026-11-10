@@ -2,16 +2,18 @@
 /* ===== Repository, consents, follow-ups, limitation calculator, home extras ===== */
 
 /* ---- Repository ---- */
-route(/^\/repository$/, async (_, p) => {
-  const cats = await GET('/api/repository'), q = (p.get('q') || '').toLowerCase(), adm = can('admin'), edit = can('admin', 'advocate', 'staff');
+route(/^\/repository(?:\/([a-z0-9-]+))?$/, async ([sec], p) => {
+  const st = await GET('/api/repository/status').catch(() => ({})), all = await GET('/api/repository'), want = REPO_MAP[sec], cats = want ? all.filter((c) => c.cat === want) : all, q = (p.get('q') || '').toLowerCase(), adm = can('admin'), edit = can('admin', 'advocate', 'staff');
   const match = (l) => !q || (l.title + ' ' + (l.note || '') + ' ' + l.url).toLowerCase().includes(q);
-  view(`<div class="row sp"><h1>Repository</h1>${edit ? '<button class="btn" id="al">Add a link</button>' : ''}</div>
+  view(`<div class="row sp"><h1>${esc(want || 'Repository')}</h1>${edit ? '<button class="btn" id="al">Add a link</button>' : ''}</div>
     <p class="mute">Official courts, tribunals, free libraries, news and government services in one place. Links open in a new tab. ${adm ? 'You can hide any standard link and add your own.' : ''}</p>
+    <p class="mute noprint" style="margin:.2rem 0">Links are checked automatically every 7 days${st.last_run ? '. Last check: ' + dtm(st.last_run) + (st.down ? ' (' + st.down + ' may be down)' : ' (all reachable)') : '. First check runs shortly after the portal starts'}.${adm ? ' <button class="btn sm ghost" id="chk">Check now</button>' : ''}</p>
     <div class="row noprint" style="margin-bottom:.8rem"><input id="q" placeholder="Search the repository" value="${esc(p.get('q') || '')}" style="flex:1;min-width:180px"></div>
-    ${cats.map((c) => { const ls = c.links.filter((l) => (adm || !l.hidden) && match(l)); return ls.length ? `<div class="card"><h2>${esc(c.cat)}</h2><ul class="list">${ls.map((l) => `<li><span style="${l.hidden ? 'opacity:.5' : ''}"><a href="${esc(l.url)}" target="_blank" rel="noopener noreferrer"><b>${esc(l.title)}</b></a>${l.std ? '' : ' ' + pill('yours')}${l.hidden ? ' ' + pill('hidden') : ''}<div class="mute">${esc(l.note || '')}</div></span>
+    ${cats.map((c) => { const ls = c.links.filter((l) => (adm || !l.hidden) && match(l)); return ls.length ? `<div class="card"><h2>${esc(c.cat)}</h2><ul class="list">${ls.map((l) => `<li><span style="${l.hidden ? 'opacity:.5' : ''}"><a href="${esc(l.url)}" target="_blank" rel="noopener noreferrer"><b>${esc(l.title)}</b></a>${l.std ? '' : ' ' + pill('yours')}${l.down ? ' ' + pill('link may be down', 'bad') : ''}${l.moved ? ' ' + pill('address updated automatically', 'ok') : ''}${l.hidden ? ' ' + pill('hidden') : ''}<div class="mute">${esc(l.note || '')}</div></span>
       <span class="row">${l.std ? (adm ? `<button class="btn sm ghost" data-h="${esc(l.key)}" data-v="${l.hidden ? 0 : 1}">${l.hidden ? 'Show' : 'Hide'}</button>` : '') : (edit ? `<button class="btn sm ghost" data-rm="${l.id}">Remove</button>` : '')}</span></li>`).join('')}</ul></div>` : ''; }).join('') || '<div class="card mute">Nothing matches.</div>'}`);
-  let t; $('#q').addEventListener('input', (e) => { clearTimeout(t); t = setTimeout(() => { location.hash = '#/repository' + (e.target.value ? '?q=' + encodeURIComponent(e.target.value) : ''); }, 300); });
-  const al = $('#al'); if (al) al.onclick = () => ask('Add a link', [{ name: 'cat', label: 'Category', required: true, list: cats.map((c) => c.cat), value: cats[0] && cats[0].cat }, { name: 'title', label: 'Title', required: true }, { name: 'url', label: 'Web address', required: true, ph: 'https://' }, { name: 'note', label: 'Note (optional)' }], 'Add', async (v) => { await POST('/api/repository', v); go(); });
+  let t; $('#q').addEventListener('input', (e) => { clearTimeout(t); t = setTimeout(() => { location.hash = '#/repository' + (sec ? '/' + sec : '') + (e.target.value ? '?q=' + encodeURIComponent(e.target.value) : ''); }, 300); });
+  const ck = $('#chk'); if (ck) ck.onclick = async () => { const r = await POST('/api/repository/check', {}); toast(r.message); };
+  const al = $('#al'); if (al) al.onclick = () => ask('Add a link', [{ name: 'cat', label: 'Category', required: true, list: all.map((c) => c.cat), value: cats[0] && cats[0].cat }, { name: 'title', label: 'Title', required: true }, { name: 'url', label: 'Web address', required: true, ph: 'https://' }, { name: 'note', label: 'Note (optional)' }], 'Add', async (v) => { await POST('/api/repository', v); go(); });
   $$('[data-h]').forEach((b) => (b.onclick = async () => { await POST('/api/repository/hide', { key: b.dataset.h, hidden: b.dataset.v === '1' }); go(); }));
   $$('[data-rm]').forEach((b) => (b.onclick = async () => { if (sure('Remove this link?')) { await DEL('/api/repository/' + b.dataset.rm); go(); } }));
 }, { office: true });

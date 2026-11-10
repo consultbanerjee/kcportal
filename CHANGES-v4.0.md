@@ -14,3 +14,11 @@ Tests: node test/v4.js (61 checks) plus all earlier suites.
 - If one email belongs to more than one firm, the user is asked which firm to open.
 - "Forgot password": emailed link valid 30 minutes (uses the firm's own mailbox); same reply for known and unknown emails; resetting also clears lockouts.
 - Service worker cache bumped to kc-shell-v27.
+
+## v4.3 — Repository and login page
+- Repository is now a dropdown group (orange heading, white items) with one page per section; "All sections" shows everything with search.
+- New sections: All High Courts (25 + judgment search), Forums (consumer, ADR, ombudsman, grievance), Authorities and commissions, Parliament and Legislatures, International courts (with / without link to India), Government repositories, Newspapers (world, India).
+- Tribunals now include CGIT-cum-Labour Courts, West Bengal Industrial Tribunals and Labour Courts, WB Administrative Tribunal, WBREAT, Armed Forces Tribunal, Railway Claims Tribunal. Courts section unchanged.
+- "Free eLibrary and research" renamed "eLibrary & Research"; "Government services" split into Central Government Services and West Bengal Government Services (firm-hidden links carried over).
+- Login page: explanatory paragraph and booking link removed.
+- Repository self-checks: every 7 days the server visits each link (and each firm's own links). A link that fails twice in a row is flagged "link may be down"; a permanent redirect to a new address is followed and the new address is used automatically. Sites that block automatic visitors are treated as alive. The Admin can press "Check now"; the last check date shows on every Repository page. New list entries still arrive with portal releases.

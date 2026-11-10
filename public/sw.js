@@ -1,5 +1,5 @@
 // Minimal service worker: lets the app shell open offline; all data always comes from the server.
-const C = 'kc-shell-v27';
+const C = 'kc-shell-v31';
 const SHELL = ['/', '/style.css', '/app.js', '/views-office.js', '/views-billing.js', '/views-ai.js', '/views-cal.js', '/views-sa.js', '/views-acc.js', '/views-repo.js', '/views-files.js', '/views-client.js', '/views-public.js', '/boot.js', '/icon.svg'];
 self.addEventListener('install', (e) => e.waitUntil(caches.open(C).then((c) => c.addAll(SHELL)).then(() => self.skipWaiting())));
 self.addEventListener('activate', (e) => e.waitUntil(caches.keys().then((k) => Promise.all(k.filter((x) => x !== C).map((x) => caches.delete(x)))).then(() => self.clients.claim())));

@@ -137,5 +137,6 @@ if (require.main === module) {
   require('./routes/contacts').startWorker();
   require('./routes/news').startWorker();
   require('./routes/superadmin').startWorker();
+  require('./routes/extras').startWorker();
 }
 module.exports = app;
