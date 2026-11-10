@@ -307,16 +307,17 @@ module.exports = (app, limiter) => {
     i.firm = db.prepare('SELECT name FROM tenants WHERE id=?').get(T(req)).name;
     res.json(i);
   });
-  app.post('/api/invoices', BILL, (req, res) => {
-    const client = db.prepare('SELECT id FROM clients WHERE id=? AND tenant_id=?').get(L.int(req.body.client_id), T(req));
-    const items = (Array.isArray(req.body.items) ? req.body.items : []).map((x) => ({ d: L.str(x.description, 250), q: Number(x.qty) || 1, r: L.paise(x.rate) }))
+  // create one invoice (used by the New invoice form, Clone and the recurring-invoice runner)
+  function createInvoice(t, userId, ip, d) {
+    const client = db.prepare('SELECT id FROM clients WHERE id=? AND tenant_id=?').get(L.int(d.client_id), t);
+    const items = (Array.isArray(d.items) ? d.items : []).map((x) => ({ d: L.str(x.description, 250), q: Number(x.qty) || 1, r: x.rate_paise != null ? Math.round(Number(x.rate_paise)) : L.paise(x.rate) }))
       .filter((x) => x.d && x.r > 0 && x.q > 0);
-    if (!L.must(res, client && items.length, 'Choose a client and add at least one line with an amount.')) return;
-    const date = L.isDate(req.body.inv_date) ? req.body.inv_date : todayStr();
+    if (!client || !items.length) return null;
+    const date = L.isDate(d.inv_date) ? d.inv_date : todayStr();
     const total = items.reduce((s, x) => s + Math.round(x.q * x.r), 0);
     // one running series with no year in it: KC/INV/000101, KC/INV/000102 ... (first number is the firm's 'inv_start' setting, default 101)
     const no = (() => {
-      const t = T(req), AIc = require('../aicore');
+      const AIc = require('../aicore');
       return db.transaction(() => {
         db.prepare("INSERT OR IGNORE INTO counters(tenant_id,kind,year,n) VALUES (?,'invseq',0,?)").run(t, Math.max(0, (parseInt(AIc.getS(t, 'inv_start'), 10) || 101) - 1));
         for (;;) {
@@ -328,14 +329,20 @@ module.exports = (app, limiter) => {
       })();
     })();
     const id = db.transaction(() => {
-      const r = db.prepare('INSERT INTO invoices(tenant_id,client_id,matter_id,inv_no,inv_date,due_date,notes,total_paise,subject) VALUES (?,?,?,?,?,?,?,?,?)')
-        .run(T(req), client.id, L.int(req.body.matter_id), no, date, L.isDate(req.body.due_date) ? req.body.due_date : null, L.str(req.body.notes, 800), total, L.str(req.body.subject, 200));
+      const r = db.prepare('INSERT INTO invoices(tenant_id,client_id,matter_id,inv_no,inv_date,due_date,notes,total_paise,subject,recurring_id) VALUES (?,?,?,?,?,?,?,?,?,?)')
+        .run(t, client.id, L.int(d.matter_id), no, date, L.isDate(d.due_date) ? d.due_date : null, L.str(d.notes, 800), total, L.str(d.subject, 200), L.int(d.recurring_id) || null);
       const ins = db.prepare('INSERT INTO invoice_items(tenant_id,invoice_id,description,qty,rate_paise) VALUES (?,?,?,?,?)');
-      items.forEach((x) => ins.run(T(req), r.lastInsertRowid, x.d, x.q, x.r));
+      items.forEach((x) => ins.run(t, r.lastInsertRowid, x.d, x.q, x.r));
       return r.lastInsertRowid;
     })();
-    audit(T(req), req.user.id, 'invoice_created', 'invoice', id, no, L.ip(req));
-    res.json({ id, inv_no: no, total_paise: total });
+    audit(t, userId, 'invoice_created', 'invoice', id, no, ip);
+    return { id, inv_no: no, total_paise: total };
+  }
+  module.exports.createInvoice = createInvoice;
+  app.post('/api/invoices', BILL, (req, res) => {
+    const out = createInvoice(T(req), req.user.id, L.ip(req), req.body || {});
+    if (!L.must(res, out, 'Choose a client and add at least one line with an amount.')) return;
+    res.json(out);
   });
   const invAction = (path, from, to) => app.post(`/api/invoices/:id/${path}`, BILL, (req, res) => {
     const i = db.prepare('SELECT * FROM invoices WHERE id=? AND tenant_id=?').get(req.params.id, T(req));

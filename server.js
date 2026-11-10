@@ -100,6 +100,7 @@ require('./routes/upi')(app);
 require('./routes/payees')(app);
 require('./routes/bankstmt')(app);
 require('./routes/reminders')(app);
+require('./routes/invsend')(app);
 require('./routes/contacts')(app);
 require('./routes/drive')(app);
 require('./routes/files')(app);
@@ -126,6 +127,7 @@ if (require.main === module) {
   require('./routes/meet').startWorker();
   require('./routes/payees').startWorker();
   require('./routes/reminders').startWorker();
+  require('./routes/invsend').startWorker();
   require('./routes/contacts').startWorker();
   require('./routes/news').startWorker();
 }

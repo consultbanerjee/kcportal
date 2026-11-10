@@ -9,7 +9,7 @@ const { DATA_DIR } = require('../db');
 
 const KC = {
   header_name: 'KC LEGAL', tagline: 'Advocates, Solicitors, Consultants', address: 'Olisa House, 10th Floor, 4, Government Place, Kolkata 700001, WB.',
-  phone: '+91 98311 90819', email: 'info@kclegal.us', website: 'www.kclegal.us', signatory_name: 'Krishnika Chatterjee', signatory_title: 'Advocate',
+  phone: '+91 98311 90819', email: 'info@kclegal.us', website: 'www.kclegal.us', signatory_name: 'Krishnika Chatterjee', signatory_title: 'Advocate', top_mm: 58, bottom_mm: 14, primary: '#14388c', accent: '#ffad33',
 };
 const KC_TERMS = ['Payment shall be paid in favour of KC LEGAL through account payee cheque or demand draft or online bank transfer only.',
   'Payment shall be made within the due date, failing which a simple interest of 6% will be levied up to one month, and thereafter the firm reserve right to initiate appropriate legal action to recover the dues.',
@@ -28,7 +28,8 @@ const STR = { header_name: 80, tagline: 120, address: 240, phone: 60, email: 120
 const NUM = { top_mm: [0, 120], bottom_mm: [0, 80], left_mm: [5, 60], right_mm: [5, 60] };
 const COL = ['primary', 'accent', 'title_color'];
 
-const sigFile = (tid) => { try { return fs.readdirSync(dir(tid)).find((f) => f.startsWith('signature.')) || null; } catch (e) { return null; } };
+const assetFile = (tid, kind) => { try { return fs.readdirSync(dir(tid)).find((f) => f.startsWith(kind + '.')) || null; } catch (e) { return null; } };
+const sigFile = (tid) => assetFile(tid, 'signature');
 const dir = (tid) => path.resolve(DATA_DIR, 'templates', String(tid));
 function read(tid) {
   const r = db.prepare('SELECT * FROM tenant_templates WHERE tenant_id=?').get(tid);
@@ -39,8 +40,12 @@ function read(tid) {
 function ensureTemplate(firm, isKC) {
   if (db.prepare('SELECT 1 FROM tenant_templates WHERE tenant_id=?').get(firm.id)) return;
   let lh = null; const s = isKC ? { ...KC } : { header_name: firm.name };
-  const src = path.join(__dirname, '..', 'assets', 'kc-letterhead.jpg');
-  if (isKC && fs.existsSync(src)) { fs.mkdirSync(dir(firm.id), { recursive: true }); fs.copyFileSync(src, path.join(dir(firm.id), 'letterhead.jpg')); lh = 'letterhead.jpg'; }
+  const A = path.join(__dirname, '..', 'assets');
+  if (isKC && fs.existsSync(path.join(A, 'kc-letterhead.jpg'))) {
+    fs.mkdirSync(dir(firm.id), { recursive: true });
+    fs.copyFileSync(path.join(A, 'kc-letterhead.jpg'), path.join(dir(firm.id), 'letterhead.jpg')); lh = 'letterhead.jpg';
+    for (const [f, to] of [['kc-logo.png', 'logo.png'], ['kc-signature.png', 'signature.png']]) if (fs.existsSync(path.join(A, f))) fs.copyFileSync(path.join(A, f), path.join(dir(firm.id), to));
+  }
   db.prepare('INSERT INTO tenant_templates(tenant_id,settings,letterhead) VALUES (?,?,?)').run(firm.id, JSON.stringify(s), lh);
 }
 function clean(body, cur) {
@@ -55,14 +60,21 @@ function clean(body, cur) {
   return out;
 }
 
+function tplInfo(tid) {
+  const r = read(tid), sg = sigFile(tid), lg = assetFile(tid, 'logo'), m = (f) => fs.statSync(path.join(dir(tid), f)).mtimeMs;
+  return { settings: r.settings, has_letterhead: !!r.letterhead, v: r.letterhead ? m(r.letterhead) : 0, has_signature: !!sg, sv: sg ? m(sg) : 0, has_logo: !!lg, lv: lg ? m(lg) : 0 };
+}
+function publicAsset(tid, kind) {
+  const f = kind === 'letterhead' ? read(tid).letterhead : ['logo', 'signature'].includes(kind) ? assetFile(tid, kind) : null;
+  return f && fs.existsSync(path.join(dir(tid), f)) ? path.join(dir(tid), f) : null;
+}
 module.exports = (app) => {
   const up = multer({ storage: multer.memoryStorage(), limits: { fileSize: 4 * 1024 * 1024 } });
   const T = (req) => req.user.tenant_id;
 
   app.get('/api/template', L.requireLogin, (req, res) => {
     const r = read(T(req));
-    const sg = sigFile(T(req));
-    res.json({ settings: r.settings, has_letterhead: !!r.letterhead, v: r.letterhead ? fs.statSync(path.join(dir(T(req)), r.letterhead)).mtimeMs : 0, has_signature: !!sg, sv: sg ? fs.statSync(path.join(dir(T(req)), sg)).mtimeMs : 0 });
+    res.json(tplInfo(T(req)));
   });
   app.put('/api/template', L.need('admin'), (req, res) => {
     const cur = read(T(req)).settings;
@@ -108,6 +120,26 @@ module.exports = (app) => {
     res.set('Cache-Control', 'private, max-age=300');
     res.sendFile(path.join(dir(T(req)), f));
   });
+  app.post('/api/template/logo', L.need('admin'), up.single('file'), (req, res) => {
+    const b = req.file && req.file.buffer;
+    if (!L.must(res, b && b.length <= 1024 * 1024, 'Logo picture must be under 1 MB.')) return;
+    const ext = b && b[0] === 0xff && b[1] === 0xd8 && b[2] === 0xff ? 'jpg' : b && b[0] === 0x89 && b.slice(1, 4).toString() === 'PNG' ? 'png' : null;
+    if (!L.must(res, ext, 'Please upload a JPG or PNG picture of the logo (a transparent PNG looks best).')) return;
+    fs.mkdirSync(dir(T(req)), { recursive: true });
+    for (const f of fs.readdirSync(dir(T(req)))) if (f.startsWith('logo.')) fs.unlinkSync(path.join(dir(T(req)), f));
+    fs.writeFileSync(path.join(dir(T(req)), 'logo.' + ext), b, { mode: 0o600 });
+    audit(T(req), req.user.id, 'logo_uploaded', 'template', T(req), null, L.ip(req));
+    res.json({ ok: true });
+  });
+  app.delete('/api/template/logo', L.need('admin'), (req, res) => {
+    const f = assetFile(T(req), 'logo'); if (f) { try { fs.unlinkSync(path.join(dir(T(req)), f)); } catch (e) {} }
+    res.json({ ok: true });
+  });
+  app.get('/api/template/logo', L.requireLogin, (req, res) => {
+    const f = assetFile(T(req), 'logo'); if (!f) return res.status(404).end();
+    res.set('Cache-Control', 'private, max-age=300');
+    res.sendFile(path.join(dir(T(req)), f));
+  });
   app.get('/api/template/letterhead', L.requireLogin, (req, res) => {
     const r = read(T(req));
     if (!r.letterhead) return res.status(404).end();
@@ -116,3 +148,6 @@ module.exports = (app) => {
   });
 };
 module.exports.ensureTemplate = ensureTemplate;
+
+module.exports.tplInfo = tplInfo;
+module.exports.publicAsset = publicAsset;

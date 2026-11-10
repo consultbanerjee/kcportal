@@ -7,6 +7,47 @@ route(/^\/invoices$/, async () => {
 }, { client: true });
 
 
+const itemsToLines = (items) => (items || []).map((x) => `${String(x.description).replace(/\n/g, ' // ')} | ${x.qty} | ${(x.rate_paise / 100).toFixed(2).replace(/\.00$/, '')}`).join('\n');
+const linesToItems = (txt) => String(txt || '').split('\n').map((s) => s.trim()).filter(Boolean).map((s) => { const [d, q, r] = s.split('|').map((x) => x.trim()); if (!d || !(+r > 0)) throw new Error('Check this line: ' + s); return { description: d.replace(/\s*\/\/\s*/g, '\n'), qty: +q || 1, rate: +r }; });
+const LINES_LABEL = 'Items — one per line: Description | Qty | Rate (₹)   (use // for a new line inside a description)';
+const UNIT_OPTS = [['week', 'week(s)'], ['month', 'month(s)'], ['quarter', 'quarter(s)'], ['year', 'year(s)'], ['day', 'day(s)']];
+
+// Clone: the New-invoice form, pre-filled from an existing invoice, for quick editing
+async function cloneInvoice(i) {
+  ask('Clone invoice ' + i.inv_no, [{ name: 'client_id', label: 'Client', type: 'select', options: await clientOpts(), value: i.client_id, required: true }, { name: 'inv_date', label: 'Date', type: 'date', value: today() }, { name: 'due_date', label: 'Due date', type: 'date' }, { name: 'subject', label: 'Subject (printed on the invoice)', value: i.subject || '' },
+    { name: 'lines', label: LINES_LABEL, type: 'textarea', required: true, value: itemsToLines(i.items) }, { name: 'notes', label: 'Notes on invoice', value: i.notes || '' }], 'Create draft copy', async (v) => {
+    const r = await POST('/api/invoices', { ...v, items: linesToItems(v.lines), matter_id: i.matter_id || null }); toast('Copy created as ' + r.inv_no); location.hash = '#/invoice/' + r.id; }, true);
+}
+// Recurring-invoice form (new, from an invoice, or edit)
+async function recurringForm(p, onDone) {
+  const nextMonth = (() => { const d = new Date(); d.setMonth(d.getMonth() + 1); return d.toISOString().slice(0, 10); })();
+  ask(p.id ? 'Edit recurring invoice' : 'New recurring invoice', [{ name: 'client_id', label: 'Client', type: 'select', options: await clientOpts(), value: p.client_id, required: true }, { name: 'name', label: 'Profile name (for you)', value: p.name || '' },
+    { name: 'subject', label: 'Subject (printed on each invoice)', value: p.subject || '' }, { name: 'lines', label: LINES_LABEL, type: 'textarea', required: true, value: itemsToLines(p.items) },
+    { name: 'every_n', label: 'Repeat every', type: 'number', value: p.every_n || 1 }, { name: 'unit', label: 'Unit', type: 'select', options: UNIT_OPTS, value: p.unit || 'month' },
+    { name: 'next_date', label: 'First / next invoice date', type: 'date', value: p.next_date || nextMonth, required: true }, { name: 'end_date', label: 'Stop after (optional)', type: 'date', value: p.end_date || '' },
+    { name: 'due_days', label: 'Due in how many days (0 = on receipt)', type: 'number', value: p.due_days ?? 0 }, { name: 'notes', label: 'Notes on invoice', value: p.notes || '' },
+    { name: 'auto_send', label: 'Send each invoice to the client automatically (otherwise it is kept as a draft for you to review)', type: 'checkbox', value: p.auto_send },
+    { name: 'send_email', label: 'Send by e-mail', type: 'checkbox', value: p.id ? p.send_email : 1 }, { name: 'send_whatsapp', label: 'Send by WhatsApp (only works when the WhatsApp Business API is connected)', type: 'checkbox', value: p.send_whatsapp }], p.id ? 'Save' : 'Schedule', async (v) => {
+    const body = { ...v, items: linesToItems(v.lines), matter_id: p.matter_id || null };
+    if (p.id) await PUT('/api/recurring/' + p.id, body); else await POST('/api/recurring', body);
+    toast('Recurring invoice saved'); if (onDone) onDone(); }, true);
+}
+// Send by e-mail / WhatsApp
+async function sendInvoiceModal(i) {
+  const info = await GET(`/api/invoices/${i.id}/send-info`);
+  ask('Send invoice ' + i.inv_no, [
+    { name: 'email', label: 'E-mail' + (info.email ? ' to the client' : ' (no e-mail address on the client page)') + (info.email_ready ? '' : ' — mailbox not set up yet'), type: 'checkbox', value: !!(info.email && info.email_ready) },
+    { name: 'to', label: 'E-mail address', value: info.email || '', hint: 'Change this to send to a different address.' },
+    { name: 'whatsapp', label: 'WhatsApp' + (info.phone ? ' to ' + info.phone : ' (no mobile number on the client page)') + (info.wa_api ? '' : ' — opens WhatsApp for you to press Send'), type: 'checkbox', value: !!info.phone },
+    { name: 'message', label: 'Short message to add (optional)', type: 'textarea' }], 'Send', async (v) => {
+    if (!v.email && !v.whatsapp) throw new Error('Choose e-mail or WhatsApp.');
+    const r = await POST(`/api/invoices/${i.id}/send`, v);
+    if (r.failed && r.failed.length) toast(r.failed.join(' · '), true);
+    if (r.sent && r.sent.length) toast('Sent by ' + r.sent.join(' and ') + '.');
+    if (r.wa_link) show('WhatsApp is ready', `<p>Press the button, check the message in WhatsApp and tap Send.</p><p><a class="btn gold" target="_blank" rel="noopener" href="${esc(r.wa_link)}" style="display:block;text-align:center">Open WhatsApp</a></p>`);
+    else go(); }, true);
+}
+
 function invoiceSheet(i, S, T) {
   const lines = (t) => esc(t).replace(/\n/g, '<br>');
   const terms = (() => { if (!i.due_date || i.due_date <= i.inv_date) return 'Due on Receipt'; const n = Math.round((new Date(i.due_date) - new Date(i.inv_date)) / 864e5); return 'Due in ' + n + ' day' + (n === 1 ? '' : 's'); })();
@@ -22,7 +63,7 @@ function invoiceSheet(i, S, T) {
     <table class="vi-items"><tr><th class="c">#</th><th>Item &amp; Description</th><th class="n">Qty</th><th class="n">Rate</th><th class="n">Amount</th></tr>${i.items.map((x, k) => { const [h, ...r] = String(x.description).split('\n'); return `<tr><td class="c">${k + 1}</td><td><b>${esc(h)}</b>${r.length ? `<div class="d">${lines(r.join('\n'))}</div>` : ''}</td><td class="n">${Number(x.qty).toFixed(2)}</td><td class="n">${inr(x.rate_paise).slice(1)}</td><td class="n">${inr(Math.round(x.qty * x.rate_paise)).slice(1)}</td></tr>`; }).join('')}</table>
     <div class="vi-tot"><div class="w"><span>Total In Words</span><em>${inWords(i.total_paise).replace(/^Rupees/, 'Indian Rupee')}</em></div>
       <table><tr><td>Sub Total</td><td class="n">${inr(i.total_paise).slice(1)}</td></tr><tr class="t"><td>Total</td><td class="n">${inr(i.total_paise)}</td></tr>${i.paid_paise ? `<tr><td>Payment Received</td><td class="n">(−) ${inr(i.paid_paise)}</td></tr>` : ''}${closed ? '' : `<tr class="due"><td>Balance Due</td><td class="n">${inr(due)}</td></tr>`}</table></div>
-    ${i.notes || S.pan || S.payment_details || S.invoice_footer || i.payments.length ? `<div class="vi-notes"><div class="nl">${S.payment_details ? `<p class="bk"><u>BANK DETAILS</u><br>${lines(String(S.payment_details).replace(/(IFSC[^\n(]*?)\s*\(([^)\n]+)\)/i, '$1\nBranch: $2'))}</p>` : ''}${S.pan ? `<p>PAN: ${esc(S.pan)}</p>` : ''}${i.notes ? `<p>${lines(i.notes)}</p>` : ''}${S.invoice_footer ? `<p class="ft">${esc(S.invoice_footer)}</p>` : ''}</div><div class="vi-sign"><div class="gap">${T && T.has_signature ? `<img src="/api/template/signature?v=${T.sv}" alt="">` : ''}</div><div>Authorised Signatory</div></div>${i.payments.length ? `<p class="ft"><b>Receipts:</b> ${i.payments.map((p) => `${esc(p.rec_no)} (${inr(p.amount_paise)}, ${dt(p.pay_date)})`).join('; ')}</p>` : ''}</div>` : `<div class="vi-sign"><div class="gap">${T && T.has_signature ? `<img src="/api/template/signature?v=${T.sv}" alt="">` : ''}</div><div>Authorised Signatory</div></div>`}
+    ${i.notes || S.pan || S.payment_details || S.invoice_footer || i.payments.length ? `<div class="vi-notes"><div class="nl">${S.payment_details ? `<p class="bk"><u>BANK DETAILS</u><br>${lines(String(S.payment_details).replace(/(IFSC[^\n(]*?)\s*\(([^)\n]+)\)/i, '$1\nBranch: $2'))}</p>` : ''}${S.pan ? `<p>PAN: ${esc(S.pan)}</p>` : ''}${i.notes ? `<p>${lines(i.notes)}</p>` : ''}${S.invoice_footer ? `<p class="ft">${esc(S.invoice_footer)}</p>` : ''}</div><div class="vi-sign"><div class="gap">${T && T.has_signature ? `<img src="${tplUrl(T, 'signature')}" alt="">` : ''}</div><div>Authorised Signatory</div></div>${i.payments.length ? `<p class="ft"><b>Receipts:</b> ${i.payments.map((p) => `${esc(p.rec_no)} (${inr(p.amount_paise)}, ${dt(p.pay_date)})`).join('; ')}</p>` : ''}</div>` : `<div class="vi-sign"><div class="gap">${T && T.has_signature ? `<img src="${tplUrl(T, 'signature')}" alt="">` : ''}</div><div>Authorised Signatory</div></div>`}
     ${tc.length ? `<div class="vi-terms"><span>Terms &amp; Conditions</span><ol>${tc.map((x) => `<li>${esc(x)}</li>`).join('')}</ol></div>` : ''}
   </div>`;
 }
@@ -32,13 +73,17 @@ route(/^\/invoice\/(\d+)$/, async ([id]) => {
   view(`<div class="row sp noprint"><a class="btn ghost sm" href="#/" data-back>← Back</a><div class="row">
     ${billing && i.status === 'draft' ? '<button class="btn gold sm" id="iss">Issue to client</button>' : ''}
     ${billing && ['sent', 'part_paid'].includes(i.status) ? '<button class="btn sm" id="rcv">Record payment</button><button class="btn sm ghost" id="rmd">Send reminder with pay link</button>' : ''}
-    ${billing && ['draft', 'sent'].includes(i.status) ? '<button class="btn red sm" id="cxl">Cancel</button>' : ''}<button class="btn sm" data-print>Print</button></div></div>
+    ${billing && ['draft', 'sent'].includes(i.status) ? '<button class="btn red sm" id="cxl">Cancel</button>' : ''}${billing && i.status !== 'cancelled' ? '<button class="btn sm gold" id="snd">Send</button>' : ''}${billing ? '<button class="btn sm ghost" id="cln">Clone</button><button class="btn sm ghost" id="rcr">Make recurring</button>' : ''}${billing && i.share_token ? '<button class="btn sm ghost" id="cpl">Copy link</button>' : ''}<button class="btn sm" data-print>Print</button></div></div>
     ${sheetFor(T, invoiceSheet(i, S, T))}`);
   const act = (sel, fn) => { const b = $(sel); if (b) b.onclick = fn; };
   act('#iss', async () => { await POST(`/api/invoices/${id}/issue`); go(); });
   act('#cxl', async () => { if (sure('Cancel this invoice?')) { await POST(`/api/invoices/${id}/cancel`); go(); } });
   act('#rmd', async () => { try { const r = await POST(`/api/invoices/${id}/remind`); toast('Reminder sent by ' + r.sent.join(' and ') + '.'); } catch (x) { toast(x.message, true); } });
   act('#rcv', () => recordPaymentModal(i.client_id, i.id, i.total_paise - i.paid_paise));
+  act('#snd', () => sendInvoiceModal(i));
+  act('#cln', () => cloneInvoice(i));
+  act('#rcr', () => recurringForm({ client_id: i.client_id, subject: i.subject, notes: i.notes, items: i.items, matter_id: i.matter_id }, () => { location.hash = '#/accounts/recurring'; }));
+  act('#cpl', async () => { try { await navigator.clipboard.writeText(`${location.origin}/#/inv/${i.share_token}`); toast('Invoice link copied'); } catch (e) { toast(`${location.origin}/#/inv/${i.share_token}`); } });
 });
 
 route(/^\/receipt\/(\d+)$/, async ([id]) => {
@@ -58,7 +103,7 @@ async function recordPaymentModal(clientId, invoiceId, amountPaise) {
 }
 
 /* ===== billing hub (office) ===== */
-const BTABS = [['invoices', 'Invoices'], ['payments', 'Receipts'], ['payouts', 'Payments'], ['sched', 'Scheduled payments'], ['payees', 'Payees'], ['ledgers', 'Ledgers'], ['cash', 'Cash book'], ['bank', 'Bank reconciliation'], ['reports', 'Final accounts']];
+const BTABS = [['invoices', 'Invoices'], ['recurring', 'Recurring'], ['payments', 'Receipts'], ['payouts', 'Payments'], ['sched', 'Scheduled payments'], ['payees', 'Payees'], ['ledgers', 'Ledgers'], ['cash', 'Cash book'], ['bank', 'Bank reconciliation'], ['reports', 'Final accounts']];
 route(/^\/(?:billing|accounts)(?:\/(\w+))?$/, async ([tab = 'invoices'], p) => {
   const head = `<h1>Accounts</h1><div class="tabs">${BTABS.map(([k, l]) => `<a href="#/accounts/${k}" class="${tab === k ? 'on' : ''}">${l}</a>`).join('')}</div>`;
   if (tab === 'invoices') {
@@ -71,6 +116,16 @@ route(/^\/(?:billing|accounts)(?:\/(\w+))?$/, async ([tab = 'invoices'], p) => {
       { name: 'lines', label: 'Items — one per line: Description | Qty | Rate (₹)', type: 'textarea', required: true, ph: 'Professional fee — hearing | 1 | 15000\nDrafting of reply | 1 | 5000' }, { name: 'notes', label: 'Notes on invoice' }], 'Create draft', async (v) => {
       const items = v.lines.split('\n').map((s) => s.trim()).filter(Boolean).map((s) => { const [d, q, r] = s.split('|').map((x) => x.trim()); if (!d || !(+r > 0)) throw new Error('Check this line: ' + s); return { description: d, qty: +q || 1, rate: +r }; });
       const r = await POST('/api/invoices', { ...v, items, matter_id: v.matter_id || null }); location.hash = '#/invoice/' + r.id; }, true);
+  } else if (tab === 'recurring') {
+    const rows = await GET('/api/recurring'), unitTxt = (p) => `every ${p.every_n > 1 ? p.every_n + ' ' : ''}${p.unit}${p.every_n > 1 ? 's' : ''}`;
+    view(`${head}<div class="row sp" style="margin-bottom:.8rem"><span class="mute">${rows.length} recurring invoice${rows.length === 1 ? '' : 's'} — created automatically on the date; sent to the client too if you tick "send automatically".</span><button class="btn" id="add">New recurring invoice</button></div>
+      <div class="card"><div class="tw">${rows.length ? `<table><tr><th>Client</th><th>What</th><th>Repeats</th><th>Next invoice</th><th class="n">Amount</th><th>Sending</th><th>Status</th><th></th></tr>${rows.map((p) => `<tr><td>${esc(p.client_name || '')}</td><td>${esc(p.name || p.subject || (p.items[0] && p.items[0].description.split('\n')[0]) || '')}</td><td>${unitTxt(p)}</td><td>${dt(p.next_date)}</td><td class="n">${inr(p.items.reduce((a, x) => a + Math.round(x.qty * x.rate_paise), 0))}</td><td>${p.auto_send ? ['email', 'whatsapp'].filter((c) => p['send_' + c]).join(' + ') || 'auto' : 'draft for review'}</td><td>${sp(p.status)}${p.last_error ? `<div class="err" style="font-size:.75rem">${esc(p.last_error)}</div>` : ''}</td><td class="row" style="gap:.3rem"><button class="btn sm ghost" data-ed="${p.id}">Edit</button><button class="btn sm ghost" data-run="${p.id}">Create now</button><button class="btn sm ghost" data-tg="${p.id}">${p.status === 'active' ? 'Pause' : 'Resume'}</button><button class="btn sm red" data-del="${p.id}">Delete</button></td></tr>`).join('')}</table>` : '<p class="mute">No recurring invoices yet. Open any invoice and press "Make recurring", or use the button above.</p>'}</div></div>`);
+    const by = (id) => rows.find((p) => String(p.id) === String(id));
+    $('#add').onclick = () => recurringForm({}, go);
+    document.querySelectorAll('[data-ed]').forEach((b) => (b.onclick = () => recurringForm(by(b.dataset.ed), go)));
+    document.querySelectorAll('[data-tg]').forEach((b) => (b.onclick = async () => { await POST(`/api/recurring/${b.dataset.tg}/toggle`); go(); }));
+    document.querySelectorAll('[data-run]').forEach((b) => (b.onclick = async () => { if (!sure('Create the next invoice from this profile right now (as a draft)?')) return; try { const r = await POST(`/api/recurring/${b.dataset.run}/run`); toast('Created ' + r.inv_no); location.hash = '#/invoice/' + r.id; } catch (e) { toast(e.message, true); } }));
+    document.querySelectorAll('[data-del]').forEach((b) => (b.onclick = async () => { if (!sure('Delete this recurring invoice? Invoices already created are kept.')) return; await DEL('/api/recurring/' + b.dataset.del); go(); }));
   } else if (tab === 'payments') {
     const rows = await GET('/api/payments');
     view(`${head}<div class="row sp" style="margin-bottom:.8rem"><span class="mute">${rows.length} receipts</span><button class="btn" id="add">Record payment</button></div><div class="card"><div class="tw"><table><tr><th>Receipt</th><th>Client</th><th>Date</th><th>Mode</th><th class="n">Amount</th></tr>${rows.map((p) => `<tr><td><a href="#/receipt/${p.id}">${esc(p.rec_no)}</a></td><td>${esc(p.client_name)}</td><td>${dt(p.pay_date)}</td><td>${esc(p.mode)}</td><td class="n">${inr(p.amount_paise)}</td></tr>`).join('')}</table></div></div>`);

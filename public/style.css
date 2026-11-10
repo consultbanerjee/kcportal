@@ -217,3 +217,7 @@ input[type=color]{width:64px;height:38px;padding:2px}
 .vi-sign .gap{position:relative;height:11mm}.vi-sign .gap img{position:absolute;bottom:0;left:50%;transform:translateX(-50%);max-height:12mm;max-width:100%;mix-blend-mode:multiply}
 .vi-notes .vi-sign{border-top:0}.vi-notes .vi-sign .gap{margin-bottom:.8mm}
 .vi-stamp{color:var(--acc);border-color:var(--acc)}
+.blogo{display:block;max-width:150px;max-height:64px;margin:0 0 .3rem;background:#fff;border-radius:6px;padding:4px 6px}
+.sheet .tlogo{display:block;max-height:22mm;max-width:60mm;margin:0 auto 1mm}
+.docs3{display:grid;grid-template-columns:repeat(auto-fit,minmax(190px,1fr));gap:.8rem}.docbox{border:1px solid var(--line,#d9dce6);border-radius:10px;padding:.7rem;background:#fff}.docbox h4{margin:.1rem 0 .3rem;font-size:.95rem}.docbox .thumb{height:92px;display:flex;align-items:center;justify-content:center;background:repeating-conic-gradient(#f3f4f8 0 25%,#fff 0 50%) 0 0/14px 14px;border-radius:6px;margin:.3rem 0;overflow:hidden}.docbox .thumb img{max-width:100%;max-height:100%}.docbox .thumb span{color:#8a92a8;font-size:.8rem}.docbox .row{gap:.3rem}.docbox input[type=file]{font-size:.78rem;max-width:100%}
+.pubinv{padding:.6rem;background:#e8ebf2;min-height:100vh}.pubinv .sheet{margin:0 auto}@media print{.pubinv{padding:0;background:#fff}}
