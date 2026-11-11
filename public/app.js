@@ -127,7 +127,7 @@ function navItems() {
   n.push(['#/clients', 'Clients', LG]);
   if (pro) n.push(['#/matters', 'Cases', LG]);
   if (pro && FEAT.courtdata) n.push(['#/ecourts', 'Court search', LG], ['#/causelist', 'Cause list', LG]);
-  n.push(['#/tasks', 'Tasks', LG]);
+  n.push(['#/tasks', 'Tasks', LG], ['#/moves', 'File movement', LG]);
   if (mod('calendar')) n.push(['#/calendar', 'Calendar', LG]);
   if (pro || r === 'accounts') n.push(['#/files', 'Files', LG]);
   if (pro) n.push(['#/letters', 'Letters', LG], ['#/register', 'In-Out Register', LG]);

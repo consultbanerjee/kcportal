@@ -90,6 +90,8 @@ bootstrap();
 
 require('./routes/auth')(app, limiter);
 require('./routes/core')(app);
+require('./routes/team')(app);
+require('./routes/moves')(app);
 require('./routes/business')(app, limiter);
 require('./routes/template')(app);
 require('./routes/platform')(app);
@@ -140,6 +142,7 @@ if (require.main === module) {
   require('./routes/meet').startWorker();
   require('./routes/payees').startWorker();
   require('./routes/reminders').startWorker();
+  require('./routes/moves').startWorker();
   require('./routes/invsend').startWorker();
   require('./routes/calendar').startWorker();
   require('./routes/contacts').startWorker();

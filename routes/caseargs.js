@@ -247,7 +247,7 @@ module.exports = (app) => {
   APP = app;
   const T = (req) => req.user.tenant_id;
   const gate = [L.need('admin', 'advocate', 'staff'), (req, res, next) => (AI.svc(T(req), 'args') ? next() : res.status(403).json({ error: 'This service is not active for your firm. Please contact the portal provider.' }))];
-  const matterOf = (req) => db.prepare('SELECT * FROM matters WHERE id=? AND tenant_id=?').get(L.int(req.params.id), T(req));
+  const matterOf = (req) => { const m = db.prepare('SELECT * FROM matters WHERE id=? AND tenant_id=?').get(L.int(req.params.id), T(req)); return m && (!app.locals.matterLevel || app.locals.matterLevel(req, m)) ? m : undefined; };
   try { db.prepare("UPDATE case_args SET status=CASE WHEN output IS NULL OR output='' THEN 'failed' ELSE 'ready' END, error='The server restarted while this was being prepared. Press Prepare again.' WHERE status='working'").run(); } catch (e) {}
 
   app.get('/api/matters/:id/args', gate, (req, res) => {

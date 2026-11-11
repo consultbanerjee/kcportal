@@ -121,6 +121,7 @@ module.exports = (app) => {
       clientId = raw === undefined || raw === '' || raw === '0' || raw === 'null' ? null : L.int(raw);
       if (clientId && !db.prepare('SELECT 1 FROM clients WHERE id=? AND tenant_id=?').get(clientId, t)) { res.status(404).json({ error: 'Client not found.' }); return null; }
     }
+    if (clientId && role !== 'client' && app.locals.clientLevel) { const lv = app.locals.clientLevel(req, clientId); if (!lv || (write && lv === 'view')) { res.status(403).json({ error: 'You are not on a case for this client' + (lv === 'view' ? ' with rights to change files.' : '.') }); return null; } }
     if (write === 'edit' && !WRITE.includes(role)) { res.status(403).json({ error: 'Only advocates and staff can change files.' }); return null; }
     if (write === 'add' && !ADD.includes(role) && role !== 'client') { res.status(403).json({ error: 'You cannot add files.' }); return null; }
     return { t, clientId, role };

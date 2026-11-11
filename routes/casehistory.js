@@ -70,7 +70,7 @@ const startWorker = () => {
 module.exports = (app) => {
   APP = app;
   const T = (req) => req.user.tenant_id, OFF = L.need('admin', 'advocate', 'staff');
-  const matterOf = (req) => db.prepare('SELECT * FROM matters WHERE id=? AND tenant_id=?').get(L.int(req.params.id), T(req));
+  const matterOf = (req) => { const m = db.prepare('SELECT * FROM matters WHERE id=? AND tenant_id=?').get(L.int(req.params.id), T(req)); return m && (!app.locals.matterLevel || app.locals.matterLevel(req, m)) ? m : undefined; };
   app.get('/api/matters/:id/history/info', OFF, (req, res) => { const m = matterOf(req); if (!m) return res.status(404).json({ error: 'Not found.' }); const r = db.prepare('SELECT MAX(saved_at) at, MAX(name) name FROM case_history_files WHERE matter_id=?').get(m.id); res.json({ saved: !!(r && r.at), saved_at: r && r.at }); });
   app.get('/api/matters/:id/history/:fmt', OFF, async (req, res) => {
     const m = matterOf(req), f = req.params.fmt; if (!m || !['docx', 'pdf'].includes(f)) return res.status(404).json({ error: 'Not found.' });

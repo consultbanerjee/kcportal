@@ -100,29 +100,39 @@ route(/^\/matters$/, async () => {
 });
 
 route(/^\/matter\/(\d+)$/, async ([id]) => {
-  const m = await GET('/api/matters/' + id), cli = isClient(), edit = can('admin', 'advocate', 'staff');
-  view(`<div class="row sp"><div><h1 style="margin-bottom:0">${esc(m.title)}</h1><div class="mute">${esc(m.file_no)} · ${esc(m.client_name)} · ${sp(m.status)}</div></div>
-    <a class="btn ghost sm" href="#/matters">← ${cli ? 'My cases' : 'Cases'}</a></div>
-    <div class="card"><div class="row sp"><h2>Case details</h2>${edit ? '<button class="btn sm ghost" id="em">Edit</button>' : ''}</div>
-    <p><b>Forum:</b> ${esc(m.forum || '—')}<br><b>Case no.:</b> ${esc(m.case_no || '—')}<br><b>Stage:</b> ${esc(m.stage || '—')}${cli ? '' : `<br><b>Opposite party:</b> ${esc(m.opposite_party || '—')}`}</p>
-    ${cli ? (m.client_visible_note ? `<p><b>Update from the office:</b><br>${esc(m.client_visible_note)}</p>` : '') : (m.summary ? `<p><b>Internal summary:</b><br>${esc(m.summary)}</p>` : '')}</div>
-    ${cli ? '' : '<div class="card" id="ecard"></div><div class="card" id="acard"></div>'}
-    <div class="card"><div class="row sp"><h2>Hearings & dates</h2>${edit ? '<button class="btn sm" id="ah">Add hearing</button>' : ''}</div>
-    ${m.hearings.length ? `<div class="tw"><table><tr><th>Date</th><th>Purpose</th><th>Outcome</th><th>Next date</th></tr>${m.hearings.map((h) => `<tr><td>${dt(h.hearing_date)}</td><td>${esc(h.purpose || '')}</td><td>${esc(h.outcome || '')}</td><td><b>${h.next_date ? dt(h.next_date) : '—'}</b></td></tr>`).join('')}</table></div>` : '<p class="mute">No hearings recorded.</p>'}</div>
-    <div class="card"><div class="row sp"><h2>Documents</h2><button class="btn sm" id="ud">${cli ? 'Upload a document' : 'Upload'}</button></div>
-    ${cli ? '<p class="mute">You can add documents here. For safety, they cannot be changed or removed once uploaded.</p>' : ''}
-    ${m.documents.length ? `<ul class="list">${m.documents.map((d) => `<li><span><a href="/api/fs/${d.id}/download">${esc(d.name)}</a><div class="mute">${d.by_client ? 'Uploaded by client · ' : ''}${dt(d.created_at)} · ${Math.ceil((d.size || 0) / 1024)} KB</div></span>${edit ? `<label class="chk" style="margin:0"><input type="checkbox" data-vis="${d.id}" ${d.client_visible ? 'checked' : ''}> client sees</label>` : ''}</li>`).join('')}</ul>` : '<p class="mute">No documents.</p>'}</div>
+  const m = await GET('/api/matters/' + id), cli = isClient(), lvl = m.my_level || 'full', edit = can('admin', 'advocate', 'staff') && lvl !== 'view', canF = can('admin', 'advocate', 'staff') && lvl === 'full';
+view(`<div class="row sp"><div><h1 style="margin-bottom:.1rem">${esc(m.title)}</h1><div class="mute">${esc(m.forum || '')}</div>
+      <div class="row" style="gap:.5rem;margin-top:.35rem"><span class="mute">File No. ${esc(m.file_no)} · ${esc(m.client_name)}</span> ${sp(m.status)}</div></div>
+      <div class="row">${canF ? '<button class="btn sm ghost" id="em">Edit</button>' : ''}<a class="btn ghost sm" href="#/matters">← ${cli ? 'My cases' : 'Cases'}</a></div></div>
+    ${cli ? '' : '<div class="card" id="tcard" style="padding:10px 16px"></div><div class="card" id="mvcard" style="padding:10px 16px"></div>'}
+    ${cli ? '' : '<div class="card" id="ecard" style="padding:10px 16px"></div>'}
+    ${(() => { const I = m.ident || {}, cn = I.case_no || m.case_no || '', d1 = (x) => (x ? ' <span class="mute" style="white-space:nowrap">dated ' + esc(dt(x)) + '</span>' : ''), kv = (k, v) => (v ? `<div style="display:flex;gap:.6rem;padding:.18rem 0"><span class="mute" style="min-width:7.5rem">${k}</span><b>${esc(v)}</b></div>` : ''), day = I.next_date ? new Date(I.next_date + 'T00:00:00').toLocaleDateString('en-IN', { weekday: 'short' }) : '';
+      const side = (t, a) => `<div class="card" style="margin:0"><div class="row sp"><b>${t}</b><span class="chip" style="padding:.05rem .5rem">${a.length}</span></div>${a.length ? a.map((x) => `<div style="padding:.3rem 0;border-top:1px solid var(--line);margin-top:.3rem">${esc(x)}</div>`).join('') : '<div class="mute" style="margin-top:.4rem">—</div>'}</div>`;
+      return `<div class="grid2" style="align-items:stretch;margin-bottom:1rem"><div class="card" style="margin:0"><div style="font-size:1.12rem;line-height:1.7"><b>Case No.:</b> <b style="color:#c00000">${esc(cn || '—')}</b>${cn && I.case_date ? d1(I.case_date) : ''}${I.reg_no ? `<br><b>Registration No.:</b> ${esc(I.reg_no)}${d1(I.reg_date)}` : ''}</div>
+          <div style="margin-top:.5rem">${kv('Filing No.', (I.filing_no || '').replace('Filing No: ', ''))}${kv('Stage', I.stage || m.stage)}${kv('CNR No.', I.cnr)}${kv('Act', I.act)}${cli ? '' : kv('Opposite party', m.opposite_party)}</div></div>
+        <div class="card" style="margin:0;text-align:center"><div class="mute">Next hearing</div><div style="font:700 1.5rem Georgia,serif;color:var(--navy);margin:.25rem 0">${I.next_date ? esc(dt(I.next_date)) + ' <span class="mute" style="font-size:1rem">(' + day + ')</span>' : '—'}</div><div class="mute">${I.next_date ? 'From the court record' : 'Not available — add a hearing or link the court record'}</div>
+          <div style="display:flex;justify-content:center;gap:2.2rem;margin-top:.8rem;border-top:1px solid var(--line);padding-top:.6rem"><div><div class="mute">Court</div><b>${esc(I.court_no || '—')}</b></div><div><div class="mute">Item No.</div><b>${esc(I.item_no || '—')}</b></div></div></div></div>
+        ${cli || !m.ident ? '' : `<div style="display:grid;grid-template-columns:repeat(auto-fit,minmax(220px,1fr));gap:1rem;margin-bottom:1rem">${side('Advocates (petitioner side)', I.adv_p || [])}${side('Advocates (respondent side)', I.adv_r || [])}${side('Judges', I.judges || [])}</div>`}`; })()}
+    ${cli ? (m.client_visible_note ? `<div class="card"><p><b>Update from the office:</b><br>${esc(m.client_visible_note)}</p></div>` : '') : (m.summary ? `<div class="card"><p><b>Internal summary:</b><br>${esc(m.summary)}</p></div>` : '')}
+    <div class="card"><div class="tabs" id="mtabs" style="margin-bottom:.8rem">${[['listings', 'Listings'], ...(cli ? [] : [['orders', 'Orders'], ['ia', 'IA'], ['history', 'History']])].map(([k, l]) => `<a href="javascript:void(0)" data-mt="${k}">${l}</a>`).join('')}</div>
+    <div data-mp="listings"><div><div class="row sp"><h2>Hearings & dates</h2>${edit ? '<button class="btn sm" id="ah">Add hearing</button>' : ''}</div>
+    ${m.hearings.length ? `<div class="tw"><table><tr><th>Date</th><th>Purpose</th><th>Outcome</th><th>Next date</th></tr>${m.hearings.map((h) => `<tr><td>${dt(h.hearing_date)}</td><td>${esc(h.purpose || '')}</td><td>${esc(h.outcome || '')}</td><td><b>${h.next_date ? dt(h.next_date) : '—'}</b></td></tr>`).join('')}</table></div>` : '<p class="mute">No hearings recorded.</p>'}</div></div>
+    ${cli ? '' : '<div data-mp="orders" hidden><p class="mute">Loading…</p></div><div data-mp="ia" hidden></div><div data-mp="history" hidden></div>'}
+    </div>
+    ${cli ? '' : '<div class="card" id="acard"></div>'}
     ${m.letters.length ? `<div class="card"><h2>Letters</h2><ul class="list">${m.letters.map((l) => `<li><a href="#/letter/${l.id}">${esc(l.subject)}</a><span class="mute">${esc(l.ref_no || 'draft')}</span></li>`).join('')}</ul></div>` : ''}
     ${m.invoices.length ? `<div class="card"><h2>Fees</h2><ul class="list">${m.invoices.map((i) => `<li><a href="#/invoice/${i.id}">${esc(i.inv_no)}</a><span>${inr(i.total_paise)} ${sp(i.status)}</span></li>`).join('')}</ul></div>` : ''}
-    ${cli ? '' : `<div class="card"><div class="row sp"><h2>Tasks</h2><button class="btn sm" id="at">Assign task</button></div>${m.tasks.length ? `<ul class="list">${m.tasks.map((t) => `<li><span>${esc(t.title)}<div class="mute">${esc(t.assignee || '')} · due ${dt(t.due_date)}</div></span>${sp(t.status)}</li>`).join('')}</ul>` : '<p class="mute">No tasks.</p>'}</div>
-    <div class="card"><div class="row sp"><h2>File notings</h2><button class="btn sm" id="an">Add noting</button></div>${m.notings.length ? `<ul class="list">${m.notings.map((n) => `<li><span>${esc(n.note)}<div class="mute">${esc(n.user_name || '')} · ${dtm(n.created_at)}</div></span></li>`).join('')}</ul>` : '<p class="mute">No notings.</p>'}</div>`}`);
+    ${cli ? '' : `<div class="card"><div class="row sp"><h2>Tasks</h2>${edit ? '<button class="btn sm" id="at">Assign task</button>' : ''}</div>${m.tasks.length ? `<ul class="list">${m.tasks.map((t) => `<li><span>${esc(t.title)}<div class="mute">${esc(t.assignee || '')} · due ${dt(t.due_date)}</div></span>${sp(t.status)}</li>`).join('')}</ul>` : '<p class="mute">No tasks.</p>'}</div>`}
+    ${cli ? '' : `<div class="card"><div class="row sp"><h2>File notings</h2>${edit ? '<button class="btn sm" id="an">Add noting</button>' : ''}</div>${m.notings.length ? `<ul class="list">${m.notings.map((n) => `<li><span>${esc(n.note)}<div class="mute">${esc(n.user_name || '')} · ${dtm(n.created_at)}</div></span></li>`).join('')}</ul>` : '<p class="mute">No notings.</p>'}</div></div>`}
+    <div class="card"><div class="row sp"><h2>Files</h2><span class="mute">${esc(m.client_name)}</span></div><div id="fx"></div></div>`);
+  { const tabs = $$('[data-mt]'), show = (k) => { tabs.forEach((a) => a.classList.toggle('on', a.dataset.mt === k)); $$('[data-mp]').forEach((d) => (d.hidden = d.dataset.mp !== k)); }; tabs.forEach((a) => (a.onclick = () => show(a.dataset.mt))); show(cli ? 'listings' : 'orders'); }
   const upd = () => go();
-  if (!cli && typeof courtCard === 'function') courtCard(id, edit);
+  if (!cli) { teamCard(id, m); moveCard(id, m); }
+  if (!cli && typeof courtCard === 'function') courtCard(id, edit, m);
   if (!cli && typeof argCard === 'function') argCard(id);
   const em = $('#em'); if (em) em.onclick = () => ask('Edit case', [{ name: 'title', label: 'Title', value: m.title, required: true }, { name: 'forum', label: 'Forum', value: m.forum }, { name: 'case_no', label: 'Case number', value: m.case_no }, { name: 'opposite_party', label: 'Opposite party', value: m.opposite_party }, { name: 'stage', label: 'Stage', value: m.stage }, { name: 'status', label: 'Status', type: 'select', value: m.status, options: ['open', 'on_hold', 'closed'] }, { name: 'summary', label: 'Internal summary', type: 'textarea', value: m.summary }, { name: 'client_visible_note', label: 'Update the client can see', type: 'textarea', value: m.client_visible_note }], 'Save', async (v) => { await PUT('/api/matters/' + id, v); upd(); });
   const ah = $('#ah'); if (ah) ah.onclick = () => ask('Record hearing', [{ name: 'hearing_date', label: 'Hearing date', type: 'date', value: today(), required: true }, { name: 'purpose', label: 'Purpose' }, { name: 'outcome', label: 'Outcome / order' }, { name: 'next_date', label: 'Next date', type: 'date' }], 'Save', async (v) => { await POST(`/api/matters/${id}/hearings`, v); upd(); });
-  $('#ud').onclick = () => ask('Upload document', [{ name: 'file', label: 'File', type: 'file', required: true, hint: 'PDF, Word, Excel, JPG/PNG, ZIP — up to 25 MB.' }, ...(cli ? [] : [{ name: 'category', label: 'Category', ph: 'Pleading, Order, Notice…' }, { name: 'client_visible', label: 'Client can see this', type: 'checkbox' }])], 'Upload', async (v) => {
-    const fd = new FormData(); fd.append('matter_id', id); fd.append('file', v.file); if (!cli) { fd.append('category', v.category || ''); fd.append('client_visible', v.client_visible ? '1' : '0'); } await POST('/api/documents', fd); toast('Uploaded.'); upd(); });
+  if (typeof explorer === 'function' && $('#fx')) explorer($('#fx'), { client: m.client_id, scopeName: m.client_name, cli });
   $$('[data-vis]').forEach((cb) => (cb.onchange = async () => { try { await PATCH('/api/documents/' + cb.dataset.vis, { client_visible: cb.checked }); toast('Saved.'); } catch (e) { toast(e.message, true); } }));
   const at = $('#at'); if (at) at.onclick = async () => newTask(id);
   const an = $('#an'); if (an) an.onclick = () => ask('File noting', [{ name: 'note', label: 'Noting', type: 'textarea', required: true }], 'Add', async (v) => { await POST(`/api/matters/${id}/notings`, v); upd(); });
@@ -478,3 +488,70 @@ route(/^\/meeting\/(\d+)$/, async ([id]) => {
   };
   $('#rx').onclick = () => { if (mr && mr.state !== 'inactive') mr.stop(); $('#rx').hidden = true; };
 }, { roles: ['admin', 'advocate'] });
+
+
+/* ===== Case team: who is on this case, with what rights; health chips; quick actions (works as an installed app) ===== */
+const LVL = { view: ['View only', 'Can read the case, nothing else'], work: ['Work', 'Can add hearings, notings, tasks and files'], full: ['Full', 'Everything, including editing details, fees and the team'] };
+async function teamCard(id, m) {
+  const host = $('#tcard'); if (!host) return;
+  let T; try { T = await GET(`/api/matters/${id}/team`); } catch (e) { host.remove(); return; }
+  const I = m.ident || {}, nd = I.next_date || (m.hearings.find((h) => h.next_date && h.next_date >= today()) || {}).next_date;
+  const days = nd ? Math.round((new Date(nd) - new Date(today())) / 864e5) : null;
+  const due = (m.invoices || []).filter((i) => !['paid', 'cancelled', 'draft'].includes(i.status)).length;
+  const chips = [
+    days === null ? '<span class="chip" style="background:#fdecec">No next date set</span>' : `<span class="chip" style="background:${days <= 2 ? '#fdecec' : '#eef3ea'}">${days < 0 ? 'Date passed ' + (-days) + 'd ago' : days === 0 ? 'Hearing TODAY' : 'Hearing in ' + days + ' day' + (days > 1 ? 's' : '')}</span>`,
+    due ? `<span class="chip" style="background:#fff4d6">${due} fee bill${due > 1 ? 's' : ''} unpaid</span>` : '',
+    m.documents.length ? '' : '<span class="chip" style="background:#fff4d6">No documents yet</span>',
+    (m.tasks || []).filter((t) => t.status !== 'done').length ? `<span class="chip">${(m.tasks || []).filter((t) => t.status !== 'done').length} open task(s)</span>` : '',
+    `<span class="chip" title="${esc(LVL[m.my_level || 'full'][1])}">My access: ${LVL[m.my_level || 'full'][0]}</span>`,
+  ].join(' ');
+  host.innerHTML = `<div class="row sp" style="gap:.6rem"><div class="row" style="gap:.4rem;flex-wrap:wrap">${chips}</div></div>
+    <div class="row sp" style="margin-top:.6rem;gap:.6rem;flex-wrap:wrap"><div><b>Case team</b> ${T.members.length ? T.members.map((x) => `<span class="chip" title="${esc(LVL[x.level][1])}">${esc(x.name)} · ${LVL[x.level][0]}</span>`).join(' ') : '<span class="mute">Not assigned to anyone yet' + (T.restrict ? '' : ' — everyone in the office can see this case') + '</span>'}</div>
+    ${T.can_manage ? '<button class="btn sm ghost" id="tm">Assign advocates</button>' : ''}</div>
+    ${can('admin') ? `<label class="mute" style="display:flex;gap:.4rem;align-items:center;margin-top:.5rem;font-size:.85rem"><input type="checkbox" id="trs" ${T.restrict ? 'checked' : ''}> Firm setting: advocates and staff see only the cases they are assigned to</label>` : ''}`;
+  const trs = $('#trs'); if (trs) trs.onchange = async () => { try { await PUT('/api/team/settings', { restrict: trs.checked }); toast(trs.checked ? 'Restriction ON — staff now see only their cases.' : 'Restriction OFF — everyone in the office sees all cases.'); } catch (e) { toast(e.message, true); } };
+  const tm = $('#tm'); if (tm) tm.onclick = () => {
+    const cur = Object.fromEntries(T.members.map((x) => [x.user_id, x.level]));
+    const rows = T.people.map((u) => `<div class="row sp" style="padding:.35rem 0;border-bottom:1px solid var(--line)"><span>${esc(u.name)} <span class="mute">(${esc(u.role)})</span></span><select data-tu="${u.id}" style="width:auto"><option value="">Not on case</option>${['view', 'work', 'full'].map((l) => `<option value="${l}" ${cur[u.id] === l ? 'selected' : ''}>${LVL[l][0]}</option>`).join('')}</select></div>`).join('');
+    const d = document.createElement('div'); d.className = 'modal-bg'; d.style.cssText = 'position:fixed;inset:0;background:#0008;z-index:99;display:flex;align-items:flex-end;justify-content:center';
+    d.innerHTML = `<div class="card" style="max-width:520px;width:100%;max-height:85vh;overflow:auto;margin:0;border-radius:14px 14px 0 0"><h2>Assign advocates</h2><p class="mute" style="font-size:.85rem">View: read only · Work: add hearings, notings, tasks, files · Full: also edit details, fees and team.</p>${rows}<div class="row" style="justify-content:flex-end;margin-top:.8rem"><button class="btn ghost" id="tx">Cancel</button><button class="btn" id="ts">Save team</button></div></div>`;
+    document.body.appendChild(d); $('#tx').onclick = () => d.remove();
+    $('#ts').onclick = async () => { const members = [...d.querySelectorAll('[data-tu]')].filter((x) => x.value).map((x) => ({ user_id: +x.dataset.tu, level: x.value })); try { await PUT(`/api/matters/${id}/team`, { members }); d.remove(); toast('Team saved.'); go(); } catch (e) { toast(e.message, true); } };
+  };
+  // thumb-reach action bar for the installed app (phones only, via CSS)
+  const bar = document.createElement('div'); bar.className = 'qbar noprint';
+  const ph = (m.client_phone || '').replace(/\D/g, '');
+  bar.innerHTML = `${ph ? `<a href="tel:+${ph.length === 10 ? '91' + ph : ph}">📞<span>Call</span></a><a target="_blank" rel="noopener" href="https://wa.me/${ph.length === 10 ? '91' + ph : ph}">💬<span>WhatsApp</span></a>` : ''}${m.my_level !== 'view' ? '<a href="javascript:void(0)" id="qh">📅<span>Hearing</span></a><a href="javascript:void(0)" id="qn">📝<span>Noting</span></a>' : ''}<a href="javascript:void(0)" id="qt">⬆<span>Top</span></a>`;
+  document.body.appendChild(bar);
+  const clean = () => { if (!location.hash.startsWith('#/matter/')) { bar.remove(); window.removeEventListener('hashchange', clean); } }; window.addEventListener('hashchange', clean);
+  const fire = (sel) => { const b = $(sel); if (b) b.click(); };
+  const qh = $('#qh'); if (qh) qh.onclick = () => fire('#ah'); const qn = $('#qn'); if (qn) qn.onclick = () => { const b = $('#an'); if (b) { b.scrollIntoView({ behavior: 'smooth', block: 'center' }); b.click(); } };
+  $('#qt').onclick = () => window.scrollTo({ top: 0, behavior: 'smooth' });
+}
+
+
+/* ===== File movement: hand a case to another person, returnable by a date ===== */
+const fdt = (iso) => new Date(iso).toLocaleString('en-IN', { timeZone: 'Asia/Kolkata', day: '2-digit', month: 'short', hour: '2-digit', minute: '2-digit' });
+async function moveCard(id, m) {
+  const host = $('#mvcard'); if (!host) return;
+  let V; try { V = await GET(`/api/matters/${id}/moves`); } catch (e) { host.remove(); return; }
+  const o = V.open;
+  host.innerHTML = `<div class="row sp" style="gap:.6rem;flex-wrap:wrap"><div><b>File is with</b> <span class="chip">${esc(V.holder ? V.holder.name : 'nobody yet')}</span>
+    ${o ? `<span class="chip" style="background:${o.overdue ? '#fdecec' : '#eef3ea'}">${o.overdue ? 'OVERDUE — was due ' : 'Return by '}${esc(fdt(o.due_at))}</span> <span class="mute">moved by ${esc(o.from_name || '')}${o.note ? ' — ' + esc(o.note) : ''}</span>` : ''}</div>
+    <div class="row" style="gap:.4rem">${o ? '<button class="btn sm gold" id="mr">Return file</button>' : ''}${V.can_move ? '<button class="btn sm" id="mm">Move file</button>' : ''}</div></div>
+    ${V.history.length > 1 || (V.history.length === 1 && !o) ? `<details style="margin-top:.4rem"><summary class="mute" style="cursor:pointer">Movement history (${V.history.length})</summary><ul class="list">${V.history.map((h) => `<li><span>${esc(h.from_name || '—')} → <b>${esc(h.to_name)}</b><div class="mute">${esc(fdt(h.created_at + 'Z'))} · due ${esc(fdt(h.due_at))}${h.note ? ' · ' + esc(h.note) : ''}</div></span><span class="chip">${esc(h.status)}</span></li>`).join('')}</ul></details>` : ''}`;
+  const mr = $('#mr'); if (mr) mr.onclick = async () => { try { await POST(`/api/moves/${o.id}/return`); toast('File returned.'); go(); } catch (e) { toast(e.message, true); } };
+  const mm = $('#mm'); if (mm) mm.onclick = () => ask('Move this file to…', [{ name: 'to_user', label: 'Move to', type: 'select', options: V.people.map((u) => [u.id, `${u.name} (${u.role})`]), required: true },
+    { name: 'due_date', label: `Return by (leave blank = ${V.cfg.hours} hours from now)`, type: 'date' }, { name: 'note', label: 'Instruction / note' }], 'Move file',
+    async (v) => { await POST(`/api/matters/${id}/move`, { ...v, to_user: +v.to_user }); toast('File moved. They have been notified.'); go(); });
+}
+route(/^\/moves$/, async (_, p) => {
+  const vw = p.get('view') || 'mine', D = await GET('/api/moves?view=' + vw);
+  view(`<h1>File movement</h1><p class="mute">Files are handed from one person to another and must come back by the return date (${D.cfg.hours} hours if none is set). If a file is not returned, the person is reminded on WhatsApp and e-mail, again after ${D.cfg.remind_days} days, and after ${D.cfg.final_days} more day(s) it goes back to the firm for fresh allocation.</p>
+    <div class="tabs">${[['mine', 'With me'], ['out', 'Given by me'], ['hist', 'My history'], ...(can('admin') ? [['all', 'All files']] : [])].map(([k, l]) => `<a href="#/moves?view=${k}" class="${vw === k ? 'on' : ''}">${l}</a>`).join('')}</div>
+    <div class="card">${D.rows.length ? `<ul class="list">${D.rows.map((r) => `<li><span><a href="#/matter/${r.matter_id}"><b>${esc(r.file_no)}</b> ${esc(r.title)}</a><div class="mute">${esc(r.client_name)} · ${esc(r.from_name || '—')} → <b>${esc(r.to_name)}</b> · return by ${esc(fdt(r.due_at))}${r.note ? ' · ' + esc(r.note) : ''}</div></span>
+      <span class="row" style="gap:.4rem">${r.overdue ? '<span class="chip" style="background:#fdecec">Overdue</span>' : `<span class="chip">${esc(r.status)}</span>`}${r.status === 'open' ? `<button class="btn sm gold" data-ret="${r.id}">Return</button>` : ''}</span></li>`).join('')}</ul>` : '<p class="mute">Nothing here.</p>'}</div>
+    ${can('admin') ? `<div class="card"><b>Firm rules</b><div class="row" style="gap:.6rem;flex-wrap:wrap;margin-top:.4rem"><label>Default return (hours) <input type="number" id="mh" value="${D.cfg.hours}" style="width:80px"></label><label>Reminder after (days) <input type="number" id="md" value="${D.cfg.remind_days}" style="width:70px"></label><label>Take back after (more days) <input type="number" id="mf" value="${D.cfg.final_days}" style="width:70px"></label><button class="btn sm" id="ms">Save</button></div></div>` : ''}`);
+  $$('[data-ret]').forEach((b) => (b.onclick = async () => { try { await POST(`/api/moves/${b.dataset.ret}/return`); toast('File returned.'); go(); } catch (e) { toast(e.message, true); } }));
+  const ms = $('#ms'); if (ms) ms.onclick = async () => { try { await PUT('/api/moves/settings', { hours: +$('#mh').value, remind_days: +$('#md').value, final_days: +$('#mf').value }); toast('Saved.'); } catch (e) { toast(e.message, true); } };
+}, { office: true });

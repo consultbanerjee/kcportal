@@ -51,8 +51,34 @@ function brief(d) {
     next_date: dateOnly(c.nextHearingDate), last_date: dateOnly(c.lastHearingDate), decision_date: dateOnly(c.decisionDate), filing_date: dateOnly(c.filingDate), purpose: c.purpose || '',
     order_count: (c.orderCount || 0) + (c.judgmentCount || 0) || (Array.isArray(c.judgmentOrders) ? c.judgmentOrders.length : 0) + (Array.isArray(c.interimOrders) ? c.interimOrders.length : 0) };
 }
+const bullets = (v) => (Array.isArray(v) ? v.map((x) => (typeof x === 'string' ? x : Object.values(x || {}).filter((y) => typeof y === 'string').join(' '))) : String(v || '').split(/\n+|(?<=[.;])\s+(?=[A-Z])/)).map((x) => String(x).replace(/^[\s•\-*]+/, '').trim()).filter(Boolean).slice(0, 12);
 const orderList = (d) => { const c = (d && d.courtCaseData) || {}; return [...(c.judgmentOrders || []).map((o) => ({ ...o, kind: 'Judgment / final order' })), ...(c.interimOrders || []).map((o) => ({ ...o, kind: 'Interim order' }))]
-  .map((o) => ({ date: dateOnly(pick(o, 'orderDate', 'date')), type: pick(o, 'orderType', 'type', 'kind'), kind: o.kind, url: pick(o, 'orderUrl', 'url', 'pdfUrl'), file: String(pick(o, 'filename', 'fileName', 'orderUrl', 'url') || '').split('/').pop().split('?')[0] })).filter((o) => o.url || o.file); };
+  .map((o) => ({ next: dateOnly(pick(o, 'nextHearingDate', 'nextDate', 'nextDateOfHearing')), summary: bullets(pick(o, 'aiSummary', 'summary', 'ai_summary', 'orderSummary')), date: dateOnly(pick(o, 'orderDate', 'date')), type: pick(o, 'orderType', 'type', 'kind'), kind: o.kind, url: pick(o, 'orderUrl', 'url', 'pdfUrl'), file: String(pick(o, 'filename', 'fileName', 'orderUrl', 'url') || '').split('/').pop().split('?')[0] })).filter((o) => o.url || o.file); };
+
+// Case identity as the court writes it: "Complaint Case No. 44 of 2019" (dated filing date) and "Reg no. 44 of 2019" (dated registration date).
+// Court codes come as "44/2019", "44 of 2019", or a 15-digit code (4-digit type + 7-digit number + year); all are read.
+function splitNo(s) {
+  s = String(s == null ? '' : s).trim(); if (!s) return null;
+  let m = s.match(/(\d+)\s*(?:\/|-|of)\s*(\d{4})\b/i); if (m) return { n: parseInt(m[1], 10), y: m[2] };
+  m = s.match(/^\d{4}(\d{7})(\d{4})$/); if (m) return { n: parseInt(m[1], 10), y: m[2] };
+  return null;
+}
+function identity(d) {
+  const c = (d && d.courtCaseData) || {};
+  let type = String(pick(c, 'caseType', 'caseTypeRaw') || '').replace(/\s+/g, ' ').trim().replace(/\s+No\.?$/i, '');
+  const cn = splitNo(pick(c, 'caseNumber', 'registrationNumber', 'filingNumber')), rg = splitNo(c.registrationNumber), fl = splitNo(c.filingNumber);
+  const out = { case_no: '', case_date: dateOnly(c.filingDate), reg_no: '', reg_date: dateOnly(c.registrationDate), filing_no: '', cnr: c.cnr || '' };
+  if (cn) out.case_no = (type ? type + ' ' : '') + 'No. ' + cn.n + ' of ' + cn.y;
+  if (rg) out.reg_no = 'Reg no. ' + rg.n + ' of ' + rg.y;
+  if (fl) out.filing_no = 'Filing No: ' + fl.n + '/' + fl.y;
+  // the rest of the Mercury-style header: stage, act/section, next hearing, court, advocates, judges
+  const b = brief(d), flat = (x) => (typeof x === 'string' ? x : Object.values(x || {}).filter((v) => v && typeof v !== 'object').join(' · '));
+  Object.assign(out, { stage: pick(c, 'caseStage', 'stage') || c.caseStatus || '', act: typeof c.actsAndSections === 'string' ? c.actsAndSections : (Array.isArray(c.actsAndSections) ? c.actsAndSections.map(flat).join('; ') : ''),
+    next_date: b.next_date, court: b.court, court_no: c.courtNo || '', item_no: pick(c, 'itemNo', 'itemNumber', 'serialNumber'), adv_p: b.petitioner_advocates, adv_r: b.respondent_advocates, judges: b.judges,
+    ias: (Array.isArray(c.interlocutoryApplications) ? c.interlocutoryApplications : []).slice(0, 80).map(flat).filter(Boolean), business: (Array.isArray(c.businessOnDateEntries) ? c.businessOnDateEntries : []).slice(0, 120).map(flat).filter(Boolean),
+    filed: (Array.isArray(c.filedDocuments) ? c.filedDocuments : []).slice(0, 80).map(flat).filter(Boolean) });
+  return out;
+}
 
 function applyToMatter(t, m, d, prev) {
   const b = brief(d), set = [], args = [];
@@ -110,7 +136,7 @@ function recordSpec(t, m, d, ol, saved, fetchedAt) {
   const hs = (c.historyOfCaseHearings || []).map((x) => [pick(x, 'businessOnDate', 'hearingDate', 'date'), pick(x, 'purposeOfHearing', 'purpose'), x.nextHearingDate || '']).filter((r) => r[0]).sort((a, z) => dateOnly(z[0]).localeCompare(dateOnly(a[0]))).map((r) => [dmy(dateOnly(r[0])), r[1], r[2] ? dmy(dateOnly(r[2])) : '']);
   return { firm: (db.prepare('SELECT name FROM tenants WHERE id=?').get(t) || {}).name || '', title: 'Court Record', subtitle: `${(b.petitioners || []).join(', ')} vs ${(b.respondents || []).join(', ')}. Copied from the eCourts system on ${dmy(String(fetchedAt || '').slice(0, 10))}; check the official site or certified copy before relying on it in court.`, sections: [
     { heading: 'Our file', kv: [['File no.', m.file_no], ['Client', cl.name], ['Matter', m.title]] },
-    { heading: 'Case', kv: [['CNR', b.cnr], ['Case type / no.', [b.case_type, b.case_number].filter(Boolean).join(' ')], ['Court', [b.court, b.district, b.state].filter(Boolean).join(', ')], ['Status', b.status], ['Next hearing', dmy(b.next_date)], ['Last hearing', dmy(b.last_date)], ['Purpose', b.purpose], ['Filing date', dmy(b.filing_date)], ['Decision date', dmy(b.decision_date)], ['Judge(s)', (b.judges || []).join('; ')], ['Acts and sections', typeof c.actsAndSections === 'string' ? c.actsAndSections : ''] ] },
+    { heading: 'Case', kv: [['CNR', b.cnr], ['Case no.', (identity(d).case_no || [b.case_type, b.case_number].filter(Boolean).join(' ')) + (identity(d).case_date ? ' dated ' + dmy(identity(d).case_date) : '')], ['Registration no.', identity(d).reg_no ? identity(d).reg_no + (identity(d).reg_date ? ' dated ' + dmy(identity(d).reg_date) : '') : '—'], ['Court', [b.court, b.district, b.state].filter(Boolean).join(', ')], ['Status', b.status], ['Next hearing', dmy(b.next_date)], ['Last hearing', dmy(b.last_date)], ['Purpose', b.purpose], ['Filing date', dmy(b.filing_date)], ['Decision date', dmy(b.decision_date)], ['Judge(s)', (b.judges || []).join('; ')], ['Acts and sections', typeof c.actsAndSections === 'string' ? c.actsAndSections : ''] ] },
     { heading: 'Parties and advocates', kv: [['Petitioner(s)', (b.petitioners || []).join('; ')], ['Advocate(s)', (b.petitioner_advocates || []).join('; ')], ['Respondent(s)', (b.respondents || []).join('; ')], ['Advocate(s)', (b.respondent_advocates || []).join('; ')]] },
     { heading: `History of hearings (${hs.length})`, cols: [{ h: 'Date', w: 1 }, { h: 'Purpose / business', w: 4 }, { h: 'Next date', w: 1 }], rows: hs },
     { heading: `Orders and judgments (${ol.length})`, cols: [{ h: 'Date', w: 1 }, { h: 'Kind', w: 2.5 }, { h: 'Saved in Files as', w: 3 }], rows: ol.map((o) => [dmy(o.date), [o.kind, o.type].filter(Boolean).join(' — '), saved[key(o)] || '(not downloaded yet)']) } ] };
@@ -212,7 +238,7 @@ module.exports = (app) => {
   const gate = [OFF, (req, res, next) => (!allowed(T(req)) ? res.status(403).json({ error: 'This service is not active for your firm. Please contact the portal provider.' }) : AI.getS(T(req), 'ecourts_on', '1') !== '1' ? res.status(403).json({ error: 'This service is not active for your firm. Please contact the portal provider.' }) : !keyOf(T(req)) ? res.status(409).json({ error: 'Court data is not set up for your firm yet. Please contact the portal provider.', setup: true }) : next())];
   const wrap = (fn) => async (req, res) => { try { await fn(req, res); } catch (e) { if (e.status && e.status < 500 || e.status === 502) return res.status(e.status === 502 ? 502 : e.status).json({ error: e.message }); console.error('ecourts', e.message); res.status(502).json({ error: 'The court-data service could not be reached. Please try again.' }); } };
   const month = () => new Date().toISOString().slice(0, 7);
-  const matterOf = (req, id) => db.prepare('SELECT * FROM matters WHERE id=? AND tenant_id=?').get(L.int(id), T(req));
+  const matterOf = (req, id) => { const m = db.prepare('SELECT * FROM matters WHERE id=? AND tenant_id=?').get(L.int(id), T(req)); return m && (!app.locals.matterLevel || app.locals.matterLevel(req, m)) ? m : undefined; };
 
   // ---- settings ----
   app.get('/api/ecourts/config', L.need('admin', 'advocate', 'staff'), (req, res) => {
@@ -348,7 +374,7 @@ module.exports = (app) => {
     const d = await call(t, 'GET', '/api/partner/case/' + cnr); meter(t, 'case', cnr); const bf = brief(d);
     const { n, year } = L.nextNumber ? L.nextNumber(t, 'matter') : require('../db').nextNumber(t, 'matter');
     const pfx = (db.prepare('SELECT prefix FROM tenants WHERE id=?').get(t) || {}).prefix || 'KC', file_no = `${pfx}/M/${String(n).padStart(4, '0')}/${year}`;
-    const title = L.str(b.title, 250) || L.str(`${bf.petitioners[0] || client.name} v. ${bf.respondents[0] || 'Respondent'}${bf.case_number ? ' — ' + bf.case_number : ''}`, 250);
+    const title = L.str(b.title, 250) || L.str(`${bf.petitioners[0] || client.name} v. ${bf.respondents[0] || 'Respondent'}${(identity(d).case_no || bf.case_number) ? ' — ' + (identity(d).case_no || bf.case_number) : ''}`, 250);
     const r = db.prepare('INSERT INTO matters(tenant_id,client_id,file_no,title,forum,case_no,opposite_party,stage,assigned_to) VALUES (?,?,?,?,?,?,?,?,?)').run(t, client.id, file_no, title, L.str(bf.court, 200), L.str(bf.case_number, 100), L.str((bf.respondents[0] ? bf.respondents : bf.petitioners).join('; '), 250), L.str(bf.status, 100), L.int(b.assigned_to));
     const m = db.prepare('SELECT * FROM matters WHERE id=?').get(r.lastInsertRowid); store(t, m, cnr, d); try { await archiveMatter(t, m); } catch (e) { console.error('ecourts archive', e.message); }
     audit(t, req.user.id, 'ecourts_case_imported', 'matter', m.id, cnr, L.ip(req)); res.json({ id: m.id, file_no });
@@ -367,4 +393,4 @@ module.exports = (app) => {
     res.json({ status: s.status, stage: s.current_stage || '', progress: s.progress || null, error: s.error || null });
   }));
 };
-Object.assign(module.exports, { setTransport, archiveMatter, syncMatter, call, brief, orderList, syncAll, startWorker, on, allowed, store });
+Object.assign(module.exports, { identity, splitNo, setTransport, archiveMatter, syncMatter, call, brief, orderList, syncAll, startWorker, on, allowed, store });

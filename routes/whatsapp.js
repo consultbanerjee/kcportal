@@ -19,6 +19,7 @@ const DEFAULT_TEMPLATES = [
   { name: 'kc_payment_link', label: 'Payment reminder with link', text: 'Dear {{1}}, invoice {{2}} for {{3}} is pending. You can pay by Google Pay / any UPI app here: {{4}} — {{5}}', vars: ['Client name', 'Invoice no.', 'Amount', 'Payment link', 'Firm'] },
   { name: 'kc_birthday', label: 'Birthday greeting', text: 'Dear {{1}}, warm birthday greetings from {{2}}! Wishing you good health and happiness in the year ahead.', vars: ['Name', 'Firm'] },
   { name: 'kc_welcome', label: 'Welcome greeting', text: 'Welcome to {{1}}! Dear {{2}}, thank you for choosing us. We will keep you informed about your matters here. For any query, just reply to this message. — {{1}}', vars: ['Firm', 'Client name'] },
+  { name: 'kc_file_alert', label: 'Internal file movement alert (to staff)', text: 'Dear {{1}}, {{2}} — {{3}}', vars: ['Staff name', 'Message', 'Firm'] },
   { name: 'kc_general_update', label: 'General update', text: 'Dear {{1}}, {{2}} — {{3}}', vars: ['Client name', 'Message', 'Firm'] },
 ];
 const S = (t, k, d = '') => AI.getS(t, k, d);
@@ -68,6 +69,12 @@ async function sendToClient(t, clientId, opts, userId) {
   const ins = db.prepare("INSERT INTO wa_messages(tenant_id,client_id,phone,direction,kind,template,body,status,created_by) VALUES (?,?,?,'out',?,?,?,'queued',?)").run(t, clientId, to, row.kind, row.template, body, userId || null);
   try { const wid = await graph(t, payload); db.prepare("UPDATE wa_messages SET wa_id=?, status='sent' WHERE id=?").run(wid || null, ins.lastInsertRowid); return { id: ins.lastInsertRowid, status: 'sent' }; }
   catch (e) { db.prepare("UPDATE wa_messages SET status='failed', error=? WHERE id=?").run(String(e.message).slice(0, 300), ins.lastInsertRowid); throw Object.assign(e, { status: 502, rowId: ins.lastInsertRowid }); }
+}
+
+// Internal notice to a staff member's mobile (file movement). Needs the 'kc_file_alert' template approved in Meta; does nothing without the API set up.
+async function sendToStaff(t, phone, vars) {
+  const to = normPhone(phone); if (!to || !configured(t)) return null;
+  return graph(t, { to, type: 'template', template: { name: 'kc_file_alert', language: { code: cfg(t).lang }, components: [{ type: 'body', parameters: vars.map((v) => ({ type: 'text', text: String(v == null ? '-' : v).replace(/\s+/g, ' ').trim().slice(0, 300) || '-' })) }] } });
 }
 
 // First time a client has a WhatsApp number in the portal: send one welcome greeting (only when the API is set up, switch in Settings).
@@ -156,4 +163,4 @@ module.exports = (app) => {
     res.sendStatus(200);
   });
 };
-Object.assign(module.exports, { welcomePending, setTransport, sendToClient, normPhone, configured, templates });
+Object.assign(module.exports, { sendToStaff, welcomePending, setTransport, sendToClient, normPhone, configured, templates });

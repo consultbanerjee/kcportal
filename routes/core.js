@@ -21,8 +21,8 @@ module.exports = (app) => {
     const q = '%' + L.str(req.query.q, 80) + '%';
     res.json(db.prepare(`SELECT c.*, (SELECT COUNT(*) FROM matters m WHERE m.client_id=c.id) AS matters,
       (SELECT COUNT(*) FROM users u WHERE u.client_id=c.id AND u.pass_hash IS NOT NULL) AS has_login
-      FROM clients c WHERE c.tenant_id=? AND (c.name LIKE ? OR c.phone LIKE ? OR c.email LIKE ? OR c.reference LIKE ?) ORDER BY c.name LIMIT 300`)
-      .all(T(req), q, q, q, q));
+      FROM clients c WHERE c.tenant_id=? AND (c.name LIKE ? OR c.phone LIKE ? OR c.email LIKE ? OR c.reference LIKE ?)${app.locals.teamRestricted(req) ? ' AND c.id IN (SELECT m.client_id FROM matters m WHERE 1=1' + app.locals.teamSql(req).sql + ')' : ''} ORDER BY c.name LIMIT 300`)
+      .all(T(req), q, q, q, q, ...(app.locals.teamRestricted(req) ? app.locals.teamSql(req).args : [])));
   });
 
   app.post('/api/clients', L.need('admin', 'advocate', 'staff', 'telecaller'), (req, res) => {
@@ -36,8 +36,8 @@ module.exports = (app) => {
 
   app.get('/api/clients/:id', L.office, (req, res) => {
     const c = db.prepare('SELECT * FROM clients WHERE id=? AND tenant_id=?').get(req.params.id, T(req));
-    if (!c) return res.status(404).json({ error: 'Not found.' });
-    c.matters = db.prepare('SELECT id,file_no,title,forum,status FROM matters WHERE client_id=? ORDER BY id DESC').all(c.id);
+    if (!c || (app.locals.teamRestricted(req) && !app.locals.clientLevel(req, c.id))) return res.status(404).json({ error: 'Not found.' });
+    c.matters = db.prepare('SELECT id,file_no,title,forum,status,assigned_to FROM matters WHERE client_id=? ORDER BY id DESC').all(c.id).filter((x) => app.locals.matterLevel(req, { ...x, client_id: c.id, tenant_id: c.tenant_id }));
     c.login = db.prepare('SELECT id,email,active,(pass_hash IS NOT NULL) AS set_up FROM users WHERE client_id=?').get(c.id) || null;
     const inv = db.prepare('SELECT COALESCE(SUM(total_paise),0) t FROM invoices WHERE client_id=? AND status<>\'draft\' AND status<>\'cancelled\'').get(c.id).t;
     const paid = db.prepare('SELECT COALESCE(SUM(amount_paise),0) t FROM payments WHERE client_id=?').get(c.id).t;
@@ -81,10 +81,11 @@ module.exports = (app) => {
     const q = '%' + L.str(req.query.q, 80) + '%';
     const sc = matterScope(req);
     const params = [T(req), q, q, q]; if (sc.arg) params.push(sc.arg);
+    const tm = app.locals.teamSql ? app.locals.teamSql(req) : { sql: '', args: [] }; params.push(...tm.args);
     const rows = db.prepare(`SELECT m.id,m.file_no,m.title,m.forum,m.case_no,m.stage,m.status,m.client_id,c.name AS client_name,
       (SELECT MIN(next_date) FROM hearings h WHERE h.matter_id=m.id AND h.next_date>=date('now')) AS next_date
       FROM matters m JOIN clients c ON c.id=m.client_id
-      WHERE m.tenant_id=? AND (m.title LIKE ? OR m.file_no LIKE ? OR c.name LIKE ?)${sc.sql} ORDER BY m.id DESC LIMIT 300`).all(...params);
+      WHERE m.tenant_id=? AND (m.title LIKE ? OR m.file_no LIKE ? OR c.name LIKE ?)${sc.sql}${tm.sql} ORDER BY m.id DESC LIMIT 300`).all(...params);
     res.json(rows);
   });
 
@@ -101,9 +102,14 @@ module.exports = (app) => {
     res.json({ id: r.lastInsertRowid, file_no });
   });
 
-  const loadMatter = (req, res) => {
+  const loadMatter = (req, res, need) => {
     const m = db.prepare(`SELECT m.*, c.name AS client_name FROM matters m JOIN clients c ON c.id=m.client_id WHERE m.id=? AND m.tenant_id=?`).get(req.params.id, T(req));
     if (!m || (isClient(req.user) && m.client_id !== req.user.client_id)) { res.status(404).json({ error: 'Not found.' }); return null; }
+    const lv = app.locals.matterLevel ? app.locals.matterLevel(req, m) : 'full';
+    if (!lv) { res.status(404).json({ error: 'Not found.' }); return null; }
+    if (need && !app.locals.matterAtLeast(req, m, need)) { res.status(403).json({ error: 'You have view-only access to this case.' }); return null; }
+    m.my_level = lv;
+    if (!isClient(req.user)) m.client_phone = (db.prepare('SELECT phone FROM clients WHERE id=?').get(m.client_id) || {}).phone || '';
     return m;
   };
 
@@ -118,13 +124,14 @@ module.exports = (app) => {
       m.tasks = db.prepare(`SELECT t.id,t.title,t.status,t.due_date,u.name AS assignee FROM tasks t LEFT JOIN users u ON u.id=t.assigned_to WHERE t.matter_id=? ORDER BY t.id DESC`).all(m.id);
       m.notings = db.prepare(`SELECT n.*, u.name AS user_name FROM notings n LEFT JOIN users u ON u.id=n.user_id WHERE n.matter_id=? ORDER BY n.id DESC`).all(m.id);
     } else { delete m.summary; delete m.opposite_party; }
-    m.invoices = (cli ? db.prepare(`SELECT id,inv_no,inv_date,status,total_paise FROM invoices WHERE matter_id=? AND status NOT IN ('draft','cancelled')`) :
+    try { const e = db.prepare('SELECT snapshot FROM matter_ecourt WHERE matter_id=?').get(m.id); m.ident = e && e.snapshot ? require('./ecourts').identity(JSON.parse(e.snapshot)) : null; } catch (x) { m.ident = null; }
+    m.invoices = (!cli && m.my_level !== 'full') ? [] : (cli ? db.prepare(`SELECT id,inv_no,inv_date,status,total_paise FROM invoices WHERE matter_id=? AND status NOT IN ('draft','cancelled')`) :
       db.prepare('SELECT id,inv_no,inv_date,status,total_paise FROM invoices WHERE matter_id=?')).all(m.id);
     res.json(m);
   });
 
   app.put('/api/matters/:id', L.need('admin', 'advocate', 'staff'), (req, res) => {
-    const m = loadMatter(req, res); if (!m) return;
+    const m = loadMatter(req, res, 'full'); if (!m) return;
     const b = req.body;
     db.prepare(`UPDATE matters SET title=?,forum=?,case_no=?,opposite_party=?,stage=?,status=?,assigned_to=?,summary=?,client_visible_note=? WHERE id=?`).run(
       L.str(b.title || m.title, 250), L.str(b.forum ?? m.forum, 200), L.str(b.case_no ?? m.case_no, 100), L.str(b.opposite_party ?? m.opposite_party, 250),
@@ -135,7 +142,7 @@ module.exports = (app) => {
   });
 
   app.post('/api/matters/:id/hearings', L.need('admin', 'advocate', 'staff'), (req, res) => {
-    const m = loadMatter(req, res); if (!m) return;
+    const m = loadMatter(req, res, 'work'); if (!m) return;
     if (!L.must(res, L.isDate(req.body.hearing_date), 'Enter the hearing date.')) return;
     if (req.body.next_date && !L.must(res, L.isDate(req.body.next_date), 'Next date is not valid.')) return;
     db.prepare('INSERT INTO hearings(tenant_id,matter_id,hearing_date,purpose,outcome,next_date) VALUES (?,?,?,?,?,?)')
@@ -144,7 +151,7 @@ module.exports = (app) => {
   });
 
   app.post('/api/matters/:id/notings', L.office, (req, res) => {
-    const m = loadMatter(req, res); if (!m) return;
+    const m = loadMatter(req, res, 'work'); if (!m) return;
     if (!L.must(res, L.str(req.body.note), 'Write the noting.')) return;
     db.prepare('INSERT INTO notings(tenant_id,matter_id,user_id,note) VALUES (?,?,?,?)').run(T(req), m.id, req.user.id, L.str(req.body.note, 2000));
     res.json({ ok: true });
@@ -209,6 +216,7 @@ module.exports = (app) => {
   app.post('/api/tasks', L.office, (req, res) => {
     const title = L.str(req.body.title, 250);
     if (!L.must(res, title, 'Describe the task.')) return;
+    if (req.body.matter_id) { const mm = db.prepare('SELECT * FROM matters WHERE id=? AND tenant_id=?').get(L.int(req.body.matter_id), T(req)); if (!mm || !app.locals.matterAtLeast(req, mm, 'work')) return res.status(403).json({ error: 'You do not have access to add work on that case.' }); }
     const assignee = L.int(req.body.assigned_to, req.user.id);
     if (!L.must(res, db.prepare('SELECT 1 FROM users WHERE id=? AND tenant_id=? AND role<>\'client\' AND active=1').get(assignee, T(req)), 'Choose who the task is for.')) return;
     if (req.body.due_date && !L.must(res, L.isDate(req.body.due_date), 'Due date is not valid.')) return;

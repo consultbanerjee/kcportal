@@ -28,6 +28,32 @@ with sync_playwright() as p:
         ad.goto(base+'#/'+h); ad.wait_for_timeout(450)
         t = ad.inner_text('body'); bad = 'Something went wrong' in t
         print(('FAIL ' if bad else 'ok   ')+'firm #/'+h, '|', (ad.inner_text('h1')[:34] if ad.query_selector('h1') else '(no h1)'))
+    # Mercury-style case page: red case number, registration line, next hearing, side cards, tabs, orders table
+    import json
+    ident = {'case_no':'Complaint Case No. 44 of 2019','case_date':'2019-02-05','reg_no':'Reg no. 44 of 2019','reg_date':'2019-02-11','filing_no':'Filing No: 330/2019','cnr':'WBPU030047982019','stage':'EVIDENCE','act':'IPC 138','next_date':'2027-03-25','court':'CJM Purulia','court_no':'16','item_no':'7','adv_p':['Krishnika Chatterjee'],'adv_r':['Opp Advocate'],'judges':['J.M. 1st Court'],'ias':['IA 1 of 2024 - stay'],'business':['24-10-2024 Evidence']}
+    def mat(route):
+        r = route.fetch(); d = r.json(); d['ident'] = ident; route.fulfill(response=r, body=json.dumps(d), content_type='application/json')
+    def eco(route):
+        route.fulfill(content_type='application/json', body=json.dumps({'linked':True,'ready':True,'cnr':'WBPU030047982019','fetched_at':'2026-11-11 10:00:00','fails':0,'brief':{},'archive':None,'orders':[{'date':'2024-10-24','next':'2025-02-13','summary':['Evidence fixed','Complainant absent'],'type':'Order','kind':'Interim order','file':'o4.pdf','url':'x'}]}))
+    ad.route('**/api/matters/*/ecourt', eco)
+    mid = ad.evaluate("(async()=>{const h={'Content-Type':'application/json','X-Requested-With':'kcportal'};const c=await fetch('/api/clients',{method:'POST',headers:h,body:JSON.stringify({name:'UI Test Client',phone:'9000000001'})}).then(r=>r.json());const m=await fetch('/api/matters',{method:'POST',headers:h,body:JSON.stringify({client_id:c.id,title:'Raja v. Badal',forum:'Chief Judicial Magistrate'})}).then(r=>r.json());return m.id})()")
+    if mid:
+        ad.route('**/api/matters/'+str(mid), mat)
+        ad.goto(base+'#/matter/'+str(mid)); ad.wait_for_timeout(1200); t = ad.inner_text('body')
+        red = ad.evaluate("getComputedStyle(document.querySelector('#view b[style*=c00000], main b[style*=c00000], b[style*=c00000]')).color")
+        for need in ['Complaint Case No. 44 of 2019','Reg no. 44 of 2019','Listings','Orders','Evidence fixed','Krishnika Chatterjee','16']:
+            ok_ = need in t; print(('ok   ' if ok_ else 'FAIL ')+'case page shows', repr(need)); (not ok_) and errors.append('casepage '+need)
+        print(('ok   ' if red == 'rgb(192, 0, 0)' else 'FAIL ')+'case no colour', red)
+        ntabs = ad.evaluate("Array.from(document.querySelectorAll('[data-mt]')).map(a=>a.textContent).join(',')")
+        print(('ok   ' if ntabs == 'Listings,Orders,IA,History' else 'FAIL ')+'case tabs', ntabs); ntabs != 'Listings,Orders,IA,History' and errors.append('tabs '+ntabs)
+        pos = ad.evaluate("(()=>{const h=[...document.querySelectorAll('h2')].map(x=>x.textContent.trim());return h.slice(-3).join('|')})()")
+        print(('ok   ' if pos == 'Tasks|File notings|Files' else 'FAIL ')+'page ends with', pos); pos != 'Tasks|File notings|Files' and errors.append('order '+pos)
+        ad.wait_for_selector('#fx .fx', timeout=8000); print('ok   files explorer present:', ad.evaluate("!!document.querySelector('#fx .fx-body')"))
+        ad.wait_for_selector('#mvcard .chip', timeout=8000); mt = ad.inner_text('#mvcard'); print(('ok   ' if 'File is with' in mt and ad.is_visible('#mm') else 'FAIL ')+'move card:', mt.replace(chr(10),' | ')[:80]); ('File is with' in mt) or errors.append('move card')
+        ad.wait_for_selector('#tcard .chip', timeout=8000); txt = ad.inner_text('#tcard'); print(('ok   ' if 'My access: Full' in txt and 'Case team' in txt else 'FAIL ')+'team card:', txt.replace(chr(10),' | ')[:120]); ('My access: Full' in txt and 'Case team' in txt) or errors.append('team card')
+        ad.click('#tm'); ad.wait_for_selector('[data-tu]', timeout=5000); n = ad.evaluate("document.querySelectorAll('[data-tu]').length"); print(('ok   ' if n >= 1 else 'FAIL ')+'assign dialog lists people:', n); n >= 1 or errors.append('assign dialog'); ad.click('#tx')
+        ad.set_viewport_size({'width': 390, 'height': 800}); ad.wait_for_timeout(300); qb = ad.evaluate("getComputedStyle(document.querySelector('.qbar')).display"); print(('ok   ' if qb == 'flex' else 'FAIL ')+'phone action bar shown:', qb); qb == 'flex' or errors.append('qbar'); ad.set_viewport_size({'width': 1280, 'height': 800})
+        ad.screenshot(path='/tmp/ui5_case.png', full_page=True)
     ad.goto(base+'#/settings'); ad.wait_for_timeout(500); t = ad.inner_text('body')
     print('settings: access card', 'Who can use what' in t, '| whatsapp card', 'WhatsApp to clients' in t, '| reminders card', 'Automatic payment reminders' in t)
     ad.screenshot(path='/tmp/ui5_settings.png', full_page=True)
