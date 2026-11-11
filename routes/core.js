@@ -19,10 +19,10 @@ module.exports = (app) => {
   // ---------- Clients ----------
   app.get('/api/clients', L.office, (req, res) => {
     const q = '%' + L.str(req.query.q, 80) + '%';
-    res.json(db.prepare(`SELECT c.*, (SELECT COUNT(*) FROM matters m WHERE m.client_id=c.id) AS matters,
+    res.json(db.prepare(`SELECT c.*, (SELECT COUNT(*) FROM matters m WHERE m.client_id=c.id AND m.status<>'deleted') AS matters,
       (SELECT COUNT(*) FROM users u WHERE u.client_id=c.id AND u.pass_hash IS NOT NULL) AS has_login
-      FROM clients c WHERE c.tenant_id=? AND (c.name LIKE ? OR c.phone LIKE ? OR c.email LIKE ? OR c.reference LIKE ?)${app.locals.teamRestricted(req) ? ' AND c.id IN (SELECT m.client_id FROM matters m WHERE 1=1' + app.locals.teamSql(req).sql + ')' : ''} ORDER BY c.name LIMIT 300`)
-      .all(T(req), q, q, q, q, ...(app.locals.teamRestricted(req) ? app.locals.teamSql(req).args : [])));
+      FROM clients c WHERE c.tenant_id=? AND (c.name LIKE ? OR c.phone LIKE ? OR c.email LIKE ? OR c.reference LIKE ?)${app.locals.clientRestricted(req) ? ' AND c.id IN (SELECT m.client_id FROM matters m WHERE 1=1' + app.locals.teamSql(req).sql + ')' : ''} ORDER BY c.name LIMIT 300`)
+      .all(T(req), q, q, q, q, ...(app.locals.clientRestricted(req) ? app.locals.teamSql(req).args : [])));
   });
 
   app.post('/api/clients', L.need('admin', 'advocate', 'staff', 'telecaller'), (req, res) => {
@@ -36,8 +36,8 @@ module.exports = (app) => {
 
   app.get('/api/clients/:id', L.office, (req, res) => {
     const c = db.prepare('SELECT * FROM clients WHERE id=? AND tenant_id=?').get(req.params.id, T(req));
-    if (!c || (app.locals.teamRestricted(req) && !app.locals.clientLevel(req, c.id))) return res.status(404).json({ error: 'Not found.' });
-    c.matters = db.prepare('SELECT id,file_no,title,forum,status,assigned_to FROM matters WHERE client_id=? ORDER BY id DESC').all(c.id).filter((x) => app.locals.matterLevel(req, { ...x, client_id: c.id, tenant_id: c.tenant_id }));
+    if (!c || (app.locals.clientRestricted(req) && !app.locals.clientLevel(req, c.id))) return res.status(404).json({ error: 'Not found.' });
+    c.matters = db.prepare('SELECT id,file_no,title,forum,status,assigned_to FROM matters WHERE client_id=? AND status<>\'deleted\' ORDER BY id DESC').all(c.id).filter((x) => app.locals.matterLevel(req, { ...x, client_id: c.id, tenant_id: c.tenant_id }));
     c.login = db.prepare('SELECT id,email,active,(pass_hash IS NOT NULL) AS set_up FROM users WHERE client_id=?').get(c.id) || null;
     const inv = db.prepare('SELECT COALESCE(SUM(total_paise),0) t FROM invoices WHERE client_id=? AND status<>\'draft\' AND status<>\'cancelled\'').get(c.id).t;
     const paid = db.prepare('SELECT COALESCE(SUM(amount_paise),0) t FROM payments WHERE client_id=?').get(c.id).t;
@@ -84,7 +84,7 @@ module.exports = (app) => {
     const tm = app.locals.teamSql ? app.locals.teamSql(req) : { sql: '', args: [] }; params.push(...tm.args);
     const rows = db.prepare(`SELECT m.id,m.file_no,m.title,m.forum,m.case_no,m.stage,m.status,m.client_id,c.name AS client_name,
       (SELECT MIN(next_date) FROM hearings h WHERE h.matter_id=m.id AND h.next_date>=date('now')) AS next_date
-      FROM matters m JOIN clients c ON c.id=m.client_id
+      FROM matters m JOIN clients c ON c.id=m.client_id AND m.status<>'deleted'
       WHERE m.tenant_id=? AND (m.title LIKE ? OR m.file_no LIKE ? OR c.name LIKE ?)${sc.sql}${tm.sql} ORDER BY m.id DESC LIMIT 300`).all(...params);
     res.json(rows);
   });
@@ -95,9 +95,9 @@ module.exports = (app) => {
     if (!L.must(res, client && title, 'Choose a client and enter the matter title.')) return;
     const { n, year } = nextNumber(T(req), 'matter');
     const file_no = `${(db.prepare('SELECT prefix FROM tenants WHERE id=?').get(T(req)) || {}).prefix || 'KC'}/M/${pad(n)}/${year}`;
-    const r = db.prepare(`INSERT INTO matters(tenant_id,client_id,file_no,title,forum,case_no,opposite_party,stage,assigned_to,summary)
-      VALUES (?,?,?,?,?,?,?,?,?,?)`).run(T(req), client.id, file_no, title, L.str(req.body.forum, 200), L.str(req.body.case_no, 100),
-      L.str(req.body.opposite_party, 250), L.str(req.body.stage, 100), L.int(req.body.assigned_to), L.str(req.body.summary, 3000));
+    const r = db.prepare(`INSERT INTO matters(tenant_id,client_id,file_no,title,forum,case_no,opposite_party,stage,assigned_to,summary,created_by)
+      VALUES (?,?,?,?,?,?,?,?,?,?,?)`).run(T(req), client.id, file_no, title, L.str(req.body.forum, 200), L.str(req.body.case_no, 100),
+      L.str(req.body.opposite_party, 250), L.str(req.body.stage, 100), L.int(req.body.assigned_to), L.str(req.body.summary, 3000), req.user.id);
     audit(T(req), req.user.id, 'matter_created', 'matter', r.lastInsertRowid, file_no, L.ip(req));
     res.json({ id: r.lastInsertRowid, file_no });
   });
@@ -161,7 +161,7 @@ module.exports = (app) => {
   app.get('/api/dates', L.office, (req, res) => {
     const days = L.int(req.query.days, 30);
     res.json(db.prepare(`SELECT h.next_date AS date, m.id AS matter_id, m.file_no, m.title, m.forum, c.name AS client_name
-      FROM hearings h JOIN matters m ON m.id=h.matter_id JOIN clients c ON c.id=m.client_id
+      FROM hearings h JOIN matters m ON m.id=h.matter_id AND m.status<>'deleted' JOIN clients c ON c.id=m.client_id
       WHERE h.tenant_id=? AND h.next_date>=date('now') AND h.next_date<=date('now','+'||?||' days') AND m.status='open'
       AND h.id=(SELECT id FROM hearings h2 WHERE h2.matter_id=h.matter_id ORDER BY hearing_date DESC, id DESC LIMIT 1)
       ORDER BY h.next_date`).all(T(req), days));
@@ -204,7 +204,7 @@ module.exports = (app) => {
   // ---------- Tasks & assignments ----------
   app.get('/api/tasks', L.office, (req, res) => {
     const view = req.query.view; let where = 't.tenant_id=?'; const p = [T(req)];
-    if (view === 'mine') { where += ' AND t.assigned_to=?'; p.push(req.user.id); }
+    if (view === 'mine' || req.tasksMine) { where += ' AND t.assigned_to=?'; p.push(req.user.id); }
     else if (view === 'assigned') { where += ' AND t.assigned_by=?'; p.push(req.user.id); }
     else if (view === 'overdue') where += " AND t.status<>'done' AND t.due_date<date('now')";
     if (L.int(req.query.client_id)) { where += ' AND m.client_id=?'; p.push(L.int(req.query.client_id)); }
@@ -369,7 +369,7 @@ module.exports = (app) => {
         due_paise: Math.max(0, billed - paid),
         unread_letters: one("SELECT COUNT(*) v FROM letters WHERE client_id=? AND client_visible=1 AND status='sent' AND read_at IS NULL", cid).v,
         unread_messages: one(`SELECT COUNT(*) v FROM messages m JOIN users u ON u.id=m.from_user WHERE m.client_id=? AND u.role<>'client' AND m.read_at IS NULL`, cid).v,
-        next_dates: db.prepare(`SELECT m.id AS matter_id, m.title, h.next_date AS date FROM hearings h JOIN matters m ON m.id=h.matter_id
+        next_dates: db.prepare(`SELECT m.id AS matter_id, m.title, h.next_date AS date FROM hearings h JOIN matters m ON m.id=h.matter_id AND m.status<>'deleted'
           WHERE m.client_id=? AND h.next_date>=date('now') AND h.id=(SELECT id FROM hearings h2 WHERE h2.matter_id=h.matter_id ORDER BY hearing_date DESC,id DESC LIMIT 1)
           ORDER BY h.next_date LIMIT 5`).all(cid),
         appointments: db.prepare(`SELECT id,start_at,status,meet_link FROM appointments WHERE client_id=? AND start_at>=? AND status IN ('confirmed','awaiting_payment') ORDER BY start_at LIMIT 5`).all(cid, L.nowIso()),
@@ -377,7 +377,7 @@ module.exports = (app) => {
     }
     const c = (sql, ...a) => db.prepare(sql).get(t, ...a).v;
     res.json({
-      open_matters: c("SELECT COUNT(*) v FROM matters WHERE tenant_id=? AND status='open'"),
+      open_matters: (() => { const f = app.locals.teamSql(req); return db.prepare("SELECT COUNT(*) v FROM matters m WHERE m.tenant_id=? AND m.status='open'" + f.sql).get(t, ...f.args).v; })(),
       clients: c('SELECT COUNT(*) v FROM clients WHERE tenant_id=?'),
       my_tasks: c("SELECT COUNT(*) v FROM tasks WHERE tenant_id=? AND assigned_to=? AND status<>'done'", req.user.id),
       overdue_tasks: c("SELECT COUNT(*) v FROM tasks WHERE tenant_id=? AND status<>'done' AND due_date<date('now')"),
@@ -385,7 +385,7 @@ module.exports = (app) => {
       appointments_today: c("SELECT COUNT(*) v FROM appointments WHERE tenant_id=? AND date(start_at,'+5 hours','+30 minutes')=date('now','+5 hours','+30 minutes') AND status='confirmed'"),
       unread_messages: c("SELECT COUNT(*) v FROM messages m JOIN users u ON u.id=m.from_user WHERE m.tenant_id=? AND u.role='client' AND m.read_at IS NULL"),
       drafts_to_approve: c("SELECT COUNT(*) v FROM letters WHERE tenant_id=? AND status='draft'"),
-      dates: db.prepare(`SELECT h.next_date AS date, m.id AS matter_id, m.file_no, m.title, m.forum FROM hearings h JOIN matters m ON m.id=h.matter_id
+      dates: db.prepare(`SELECT h.next_date AS date, m.id AS matter_id, m.file_no, m.title, m.forum FROM hearings h JOIN matters m ON m.id=h.matter_id AND m.status<>'deleted'
         WHERE h.tenant_id=? AND m.status='open' AND h.next_date>=date('now') AND h.next_date<=date('now','+7 days')
         AND h.id=(SELECT id FROM hearings h2 WHERE h2.matter_id=h.matter_id ORDER BY hearing_date DESC,id DESC LIMIT 1) ORDER BY h.next_date LIMIT 15`).all(t),
     });
@@ -395,8 +395,8 @@ module.exports = (app) => {
     const q = '%' + L.str(req.query.q, 80) + '%';
     if (q.length < 4) return res.json({ matters: [], clients: [] });
     res.json({
-      matters: db.prepare('SELECT m.id,m.file_no,m.title,c.name AS client_name FROM matters m JOIN clients c ON c.id=m.client_id WHERE m.tenant_id=? AND (m.title LIKE ? OR m.file_no LIKE ? OR m.case_no LIKE ?) LIMIT 10').all(T(req), q, q, q),
-      clients: db.prepare('SELECT id,name,phone FROM clients WHERE tenant_id=? AND (name LIKE ? OR phone LIKE ?) LIMIT 10').all(T(req), q, q),
+      matters: db.prepare('SELECT m.id,m.file_no,m.title,c.name AS client_name FROM matters m JOIN clients c ON c.id=m.client_id WHERE m.status<>\'deleted\' AND m.tenant_id=? AND (m.title LIKE ? OR m.file_no LIKE ? OR m.case_no LIKE ?)' + app.locals.teamSql(req).sql + ' LIMIT 10').all(T(req), q, q, q, ...app.locals.teamSql(req).args),
+      clients: db.prepare('SELECT id,name,phone FROM clients c WHERE tenant_id=? AND (name LIKE ? OR phone LIKE ?)' + (app.locals.clientRestricted(req) ? ' AND c.id IN (SELECT m.client_id FROM matters m WHERE 1=1' + app.locals.teamSql(req).sql + ')' : '') + ' LIMIT 10').all(T(req), q, q, ...(app.locals.clientRestricted(req) ? app.locals.teamSql(req).args : [])),
     });
   });
 };

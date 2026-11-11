@@ -74,7 +74,7 @@ const signup = async (c, email, pw) => { const row = db.prepare("SELECT invite_t
   ok((await sa('GET', '/api/access')).s === 403, 'access screen is the firm administrator\'s');
 
   // --- journal ---
-  r = await sa('GET', '/api/platform/journal'); ok(r.s === 200 && r.j.version === '5.0.4' && r.j.modules.length > 10 && r.j.security.length > 3 && r.j.live.firms === 2, 'journal data');
+  r = await sa('GET', '/api/platform/journal'); ok(r.s === 200 && r.j.version === '5.0.6' && r.j.modules.length > 10 && r.j.security.length > 3 && r.j.live.firms === 2, 'journal data');
   ok((await ad('GET', '/api/platform/journal')).s === 403, 'journal is owner only');
   r = await sa('POST', '/api/platform/journal/notes', { title: 'Test note', body: 'Decided X' }); ok(r.s === 200, 'note added');
   r = await sa('POST', '/api/platform/journal/cost', { name: 'Test host', kind: 'fixed', amount: 1200, cycle: 'yearly', notes: 'n' }); ok(r.s === 200, 'cost item added');

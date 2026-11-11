@@ -190,7 +190,7 @@ function build(t, role, from, to, inc) {
   if (inc.bday) for (const b of db.prepare('SELECT * FROM cal_birthdays WHERE tenant_id=? AND active=1 ORDER BY name').all(t))
     for (let y = y0; y <= y1; y++) { const d = bdayDate(b, y); if (d >= from && d <= to) out.birthdays.push({ id: b.id, name: b.name, date: d, age: b.year ? y - b.year : null, email: !!b.email, phone: !!WA.normPhone(b.phone || ''), sent: d === today ? ['email', 'whatsapp'].filter((c) => sentThisYear(t, b.id, y, c)) : [] }); }
   if (inc.cases && ['admin', 'advocate', 'staff'].includes(role)) {
-    const sel = 'm.file_no, m.title, m.forum, m.case_no, c.name client FROM hearings h JOIN matters m ON m.id=h.matter_id JOIN clients c ON c.id=m.client_id';
+    const sel = 'm.file_no, m.title, m.forum, m.case_no, c.name client FROM hearings h JOIN matters m ON m.id=h.matter_id AND m.status<>\'deleted\' JOIN clients c ON c.id=m.client_id';
     // next date = the next date recorded on the latest hearing of each open case; earlier hearings show as history
     const rows = db.prepare(`SELECT h.matter_id, h.next_date d, h.purpose, 'next' kind, ${sel} WHERE h.tenant_id=? AND m.status<>'closed' AND h.next_date BETWEEN ? AND ?
       AND h.id=(SELECT id FROM hearings h2 WHERE h2.matter_id=h.matter_id ORDER BY hearing_date DESC, id DESC LIMIT 1)

@@ -97,9 +97,9 @@ module.exports = (app) => {
     } catch (e) { console.error(e); res.status(500).json({ error: 'Could not make the file: ' + String(e.message).slice(0, 150) }); }
   });
   // generic Word / PDF export of a table the person is looking at (registers, chat and activity records)
-  app.post('/api/export/:fmt', OFF, async (req, res) => {
+  app.post('/api/export/:fmt', L.need('admin', 'advocate', 'staff', 'superadmin'), async (req, res) => {
     const f = req.params.fmt, b = req.body || {}; if (!['docx', 'pdf'].includes(f)) return res.status(400).json({ error: 'Choose docx or pdf.' });
-    if (['chat', 'activity'].includes(b.restricted) && req.user.role !== 'admin') return res.status(403).json({ error: 'Only the Admin may save this record.' });
+    if (['chat', 'activity'].includes(b.restricted) && !['admin', 'superadmin'].includes(req.user.role)) return res.status(403).json({ error: 'Only the Admin may save this record.' });
     const cols = (Array.isArray(b.cols) ? b.cols : []).slice(0, 14).map((c) => ({ h: L.str(c && c.h != null ? c.h : c, 80), w: Number(c && c.w) || 1 })), rows = (Array.isArray(b.rows) ? b.rows : []).slice(0, 3000).map((r) => cols.map((_, i) => L.str((Array.isArray(r) ? r[i] : '') == null ? '' : (Array.isArray(r) ? r[i] : ''), 1500)));
     if (!cols.length) return res.status(400).json({ error: 'Nothing to export.' });
     try {

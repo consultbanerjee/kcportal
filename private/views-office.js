@@ -82,10 +82,10 @@ async function addClient() {
 
 async function newMatter(clientId) {
   const fields = [];
-  if (!clientId) fields.push({ name: 'client_id', label: 'Client', type: 'select', options: await clientOpts(), required: true });
+  if (!clientId) fields.push({ name: 'client_id', label: 'Client', type: 'select', options: [['', '— choose —'], ...await clientOpts(), NEW_CLIENT], required: true }, ...newClientFields());
   fields.push({ name: 'title', label: 'Case title', required: true, ph: 'e.g. Ramesh Sharma v. State Bank of India' }, { name: 'forum', label: 'Court / forum' }, { name: 'case_no', label: 'Case number' },
     { name: 'opposite_party', label: 'Opposite party' }, { name: 'stage', label: 'Stage' }, { name: 'assigned_to', label: 'Handled by', type: 'select', options: await teamOpts('— unassigned —') });
-  ask('New case', fields, 'Create', async (v) => { const r = await POST('/api/matters', { ...v, client_id: clientId || v.client_id }); location.hash = '#/matter/' + r.id; });
+  ask('New case', fields, 'Create', async (v) => { const cid = clientId || await resolveClient(v); const r = await POST('/api/matters', { ...v, client_id: cid }); location.hash = '#/matter/' + r.id; }); if (!clientId) wireNewClient();
 }
 
 /* ===== matters ===== */
@@ -94,7 +94,7 @@ route(/^\/matters$/, async () => {
     const rows = await GET('/api/matters?' + qs({ q }));
     $('#res').innerHTML = rows.length ? `<div class="tw"><table><tr><th>File</th><th>Case</th>${isClient() ? '' : '<th>Client</th>'}<th>Forum</th><th>Next date</th><th></th></tr>${rows.map((m) => `<tr><td>${esc(m.file_no)}</td><td><a href="#/matter/${m.id}">${esc(m.title)}</a></td>${isClient() ? '' : `<td>${esc(m.client_name)}</td>`}<td>${esc(m.forum || '')}</td><td>${m.next_date ? dt(m.next_date) : '—'}</td><td>${sp(m.status)}</td></tr>`).join('')}</table></div>` : '<p class="mute">No cases found.</p>';
   };
-  view(`<div class="row sp"><h1>${isClient() ? 'My cases' : 'Cases'}</h1>${can('admin', 'advocate', 'staff') ? '<button class="btn" id="add">New case</button>' : ''}</div>${searchBar('Search title, file number or client')}<div class="card" id="res"></div>`);
+  view(`<div class="row sp"><h1>${isClient() ? 'My cases' : 'Cases'}</h1><span class="row" style="gap:.4rem">${can('admin') ? '<a class="btn ghost sm" href="#/deleted-cases">Recycle Bin</a>' : ''}${can('admin', 'advocate', 'staff') ? '<button class="btn" id="add">New case</button>' : ''}</span></div>${searchBar('Search title, file number or client')}<div class="card" id="res"></div>`);
   liveSearch(draw); draw('');
   const add = $('#add'); if (add) add.onclick = () => newMatter();
 });
@@ -103,7 +103,7 @@ route(/^\/matter\/(\d+)$/, async ([id]) => {
   const m = await GET('/api/matters/' + id), cli = isClient(), lvl = m.my_level || 'full', edit = can('admin', 'advocate', 'staff') && lvl !== 'view', canF = can('admin', 'advocate', 'staff') && lvl === 'full';
 view(`<div class="row sp"><div><h1 style="margin-bottom:.1rem">${esc(m.title)}</h1><div class="mute">${esc(m.forum || '')}</div>
       <div class="row" style="gap:.5rem;margin-top:.35rem"><span class="mute">File No. ${esc(m.file_no)} · ${esc(m.client_name)}</span> ${sp(m.status)}</div></div>
-      <div class="row">${canF ? '<button class="btn sm ghost" id="em">Edit</button>' : ''}<a class="btn ghost sm" href="#/matters">← ${cli ? 'My cases' : 'Cases'}</a></div></div>
+      <div class="row">${canF ? '<button class="btn sm ghost" id="em">Edit</button>' : ''}${canF && can('admin', 'advocate') ? '<button class="btn sm ghost" id="dm" style="color:var(--bad,#b00020)">Delete</button>' : ''}<a class="btn ghost sm" href="#/matters">← ${cli ? 'My cases' : 'Cases'}</a></div></div>
     ${cli ? '' : '<div class="card" id="tcard" style="padding:10px 16px"></div><div class="card" id="mvcard" style="padding:10px 16px"></div>'}
     ${cli ? '' : '<div class="card" id="ecard" style="padding:10px 16px"></div>'}
     ${(() => { const I = m.ident || {}, cn = I.case_no || m.case_no || '', d1 = (x) => (x ? ' <span class="mute" style="white-space:nowrap">dated ' + esc(dt(x)) + '</span>' : ''), kv = (k, v) => (v ? `<div style="display:flex;gap:.6rem;padding:.18rem 0"><span class="mute" style="min-width:7.5rem">${k}</span><b>${esc(v)}</b></div>` : ''), day = I.next_date ? new Date(I.next_date + 'T00:00:00').toLocaleDateString('en-IN', { weekday: 'short' }) : '';
@@ -114,6 +114,7 @@ view(`<div class="row sp"><div><h1 style="margin-bottom:.1rem">${esc(m.title)}</
           <div style="display:flex;justify-content:center;gap:2.2rem;margin-top:.8rem;border-top:1px solid var(--line);padding-top:.6rem"><div><div class="mute">Court</div><b>${esc(I.court_no || '—')}</b></div><div><div class="mute">Item No.</div><b>${esc(I.item_no || '—')}</b></div></div></div></div>
         ${cli || !m.ident ? '' : `<div style="display:grid;grid-template-columns:repeat(auto-fit,minmax(220px,1fr));gap:1rem;margin-bottom:1rem">${side('Advocates (petitioner side)', I.adv_p || [])}${side('Advocates (respondent side)', I.adv_r || [])}${side('Judges', I.judges || [])}</div>`}`; })()}
     ${cli ? (m.client_visible_note ? `<div class="card"><p><b>Update from the office:</b><br>${esc(m.client_visible_note)}</p></div>` : '') : (m.summary ? `<div class="card"><p><b>Internal summary:</b><br>${esc(m.summary)}</p></div>` : '')}
+ <div class="card" id="dcard"></div>
     <div class="card"><div class="tabs" id="mtabs" style="margin-bottom:.8rem">${[['listings', 'Listings'], ...(cli ? [] : [['orders', 'Orders'], ['ia', 'IA'], ['history', 'History']])].map(([k, l]) => `<a href="javascript:void(0)" data-mt="${k}">${l}</a>`).join('')}</div>
     <div data-mp="listings"><div><div class="row sp"><h2>Hearings & dates</h2>${edit ? '<button class="btn sm" id="ah">Add hearing</button>' : ''}</div>
     ${m.hearings.length ? `<div class="tw"><table><tr><th>Date</th><th>Purpose</th><th>Outcome</th><th>Next date</th></tr>${m.hearings.map((h) => `<tr><td>${dt(h.hearing_date)}</td><td>${esc(h.purpose || '')}</td><td>${esc(h.outcome || '')}</td><td><b>${h.next_date ? dt(h.next_date) : '—'}</b></td></tr>`).join('')}</table></div>` : '<p class="mute">No hearings recorded.</p>'}</div></div>
@@ -128,8 +129,10 @@ view(`<div class="row sp"><div><h1 style="margin-bottom:.1rem">${esc(m.title)}</
   { const tabs = $$('[data-mt]'), show = (k) => { tabs.forEach((a) => a.classList.toggle('on', a.dataset.mt === k)); $$('[data-mp]').forEach((d) => (d.hidden = d.dataset.mp !== k)); }; tabs.forEach((a) => (a.onclick = () => show(a.dataset.mt))); show(cli ? 'listings' : 'orders'); }
   const upd = () => go();
   if (!cli) { teamCard(id, m); moveCard(id, m); }
+  diaryCard(id, m, cli);
   if (!cli && typeof courtCard === 'function') courtCard(id, edit, m);
   if (!cli && typeof argCard === 'function') argCard(id);
+  const dm = $('#dm'); if (dm) dm.onclick = () => ask('Delete this case?', [{ name: 'confirm', label: `It moves to the Recycle Bin, not deleted for good: its papers stay in Google Drive and the firm administrator can restore it at any time. Type ${m.file_no} to confirm`, required: true }], 'Delete case', async (v) => { await api('DELETE', '/api/matters/' + id, { confirm: v.confirm }); toast('Case deleted.'); location.hash = '#/matters'; });
   const em = $('#em'); if (em) em.onclick = () => ask('Edit case', [{ name: 'title', label: 'Title', value: m.title, required: true }, { name: 'forum', label: 'Forum', value: m.forum }, { name: 'case_no', label: 'Case number', value: m.case_no }, { name: 'opposite_party', label: 'Opposite party', value: m.opposite_party }, { name: 'stage', label: 'Stage', value: m.stage }, { name: 'status', label: 'Status', type: 'select', value: m.status, options: ['open', 'on_hold', 'closed'] }, { name: 'summary', label: 'Internal summary', type: 'textarea', value: m.summary }, { name: 'client_visible_note', label: 'Update the client can see', type: 'textarea', value: m.client_visible_note }], 'Save', async (v) => { await PUT('/api/matters/' + id, v); upd(); });
   const ah = $('#ah'); if (ah) ah.onclick = () => ask('Record hearing', [{ name: 'hearing_date', label: 'Hearing date', type: 'date', value: today(), required: true }, { name: 'purpose', label: 'Purpose' }, { name: 'outcome', label: 'Outcome / order' }, { name: 'next_date', label: 'Next date', type: 'date' }], 'Save', async (v) => { await POST(`/api/matters/${id}/hearings`, v); upd(); });
   if (typeof explorer === 'function' && $('#fx')) explorer($('#fx'), { client: m.client_id, scopeName: m.client_name, cli });
@@ -316,6 +319,13 @@ route(/^\/team$/, async () => {
     <div class="card"><h2>Recent activity</h2><div class="tw"><table><tr><th>When</th><th>Action</th><th>Detail</th></tr>${audit.slice(0, 60).map((a) => `<tr><td>${dtm(a.created_at)}</td><td>${esc(a.action.replace(/_/g, ' '))}</td><td>${esc(a.detail || '')}</td></tr>`).join('')}</table></div></div>`);
   const link = (p) => show('Invitation link', `<p>Send this private link to the person. It works once and expires in 7 days.</p><input readonly value="${esc(location.origin + '/' + p)}">`);
   $('#add').onclick = () => ask('Add team member', [{ name: 'name', label: 'Full name', required: true }, { name: 'email', label: 'Email', type: 'email', required: true }, { name: 'phone', label: 'Phone', type: 'tel' }, { name: 'role', label: 'Role', type: 'select', options: [['advocate', 'Advocate'], ['staff', 'Office staff'], ['telecaller', 'Telecaller'], ['accounts', 'Accounts']] }], 'Create', async (v) => { const r = await POST('/api/users', v); TEAM = null; setTimeout(() => link(r.invite_path), 50); go(); });
+  try {
+    const st = await GET('/api/team/settings'), box = document.createElement('div'); box.className = 'card';
+    box.innerHTML = `<h2>What advocates and staff can see</h2><p class="mute">An advocate or staff member always sees the cases allotted to him (or created by him) and the tasks given to him. Everything else stays hidden until you switch it on. Accountants see only Accounts, and telecallers only calling and CRM.</p>
+      <div class="tw"><table><tr><th>Part of the portal</th><th>Advocates</th><th>Staff</th></tr>${st.keys.map((k) => `<tr><td>${esc(k.label)}</td><td><input type="checkbox" data-adv="${esc(k.key)}" ${k.on ? 'checked' : ''}></td><td><input type="checkbox" data-stf="${esc(k.key)}" ${k.staff ? 'checked' : ''}></td></tr>`).join('')}</table></div>`;
+    $('#view').insertBefore(box, $('#view').children[2] || null);
+    box.onchange = async () => { await PUT('/api/team/settings', { advocate: $$('[data-adv]', box).filter((x) => x.checked).map((x) => x.dataset.adv), staff: $$('[data-stf]', box).filter((x) => x.checked).map((x) => x.dataset.stf) }); toast('Saved.'); };
+  } catch (e) {}
   $$('[data-inv]').forEach((b) => (b.onclick = async () => link((await POST(`/api/users/${b.dataset.inv}/invite`)).invite_path)));
   $$('[data-tg]').forEach((b) => (b.onclick = async () => { await PATCH('/api/users/' + b.dataset.tg, { active: b.dataset.a === '1' ? 1 : 0 }); TEAM = null; go(); }));
 }, { roles: ['admin'] });
@@ -507,9 +517,7 @@ async function teamCard(id, m) {
   ].join(' ');
   host.innerHTML = `<div class="row sp" style="gap:.6rem"><div class="row" style="gap:.4rem;flex-wrap:wrap">${chips}</div></div>
     <div class="row sp" style="margin-top:.6rem;gap:.6rem;flex-wrap:wrap"><div><b>Case team</b> ${T.members.length ? T.members.map((x) => `<span class="chip" title="${esc(LVL[x.level][1])}">${esc(x.name)} · ${LVL[x.level][0]}</span>`).join(' ') : '<span class="mute">Not assigned to anyone yet' + (T.restrict ? '' : ' — everyone in the office can see this case') + '</span>'}</div>
-    ${T.can_manage ? '<button class="btn sm ghost" id="tm">Assign advocates</button>' : ''}</div>
-    ${can('admin') ? `<label class="mute" style="display:flex;gap:.4rem;align-items:center;margin-top:.5rem;font-size:.85rem"><input type="checkbox" id="trs" ${T.restrict ? 'checked' : ''}> Firm setting: advocates and staff see only the cases they are assigned to</label>` : ''}`;
-  const trs = $('#trs'); if (trs) trs.onchange = async () => { try { await PUT('/api/team/settings', { restrict: trs.checked }); toast(trs.checked ? 'Restriction ON — staff now see only their cases.' : 'Restriction OFF — everyone in the office sees all cases.'); } catch (e) { toast(e.message, true); } };
+    ${T.can_manage ? '<button class="btn sm ghost" id="tm">Assign advocates</button>' : ''}</div>`;
   const tm = $('#tm'); if (tm) tm.onclick = () => {
     const cur = Object.fromEntries(T.members.map((x) => [x.user_id, x.level]));
     const rows = T.people.map((u) => `<div class="row sp" style="padding:.35rem 0;border-bottom:1px solid var(--line)"><span>${esc(u.name)} <span class="mute">(${esc(u.role)})</span></span><select data-tu="${u.id}" style="width:auto"><option value="">Not on case</option>${['view', 'work', 'full'].map((l) => `<option value="${l}" ${cur[u.id] === l ? 'selected' : ''}>${LVL[l][0]}</option>`).join('')}</select></div>`).join('');
@@ -555,3 +563,81 @@ route(/^\/moves$/, async (_, p) => {
   $$('[data-ret]').forEach((b) => (b.onclick = async () => { try { await POST(`/api/moves/${b.dataset.ret}/return`); toast('File returned.'); go(); } catch (e) { toast(e.message, true); } }));
   const ms = $('#ms'); if (ms) ms.onclick = async () => { try { await PUT('/api/moves/settings', { hours: +$('#mh').value, remind_days: +$('#md').value, final_days: +$('#mf').value }); toast('Saved.'); } catch (e) { toast(e.message, true); } };
 }, { office: true });
+
+
+route(/^\/deleted-cases$/, async () => {
+  const rows = await GET('/api/matters-deleted');
+  view(`<div class="row sp"><h1>Recycle Bin</h1><a class="btn ghost sm" href="#/matters">← Cases</a></div><p class="mute">A deleted case is never really removed: it waits here, hidden everywhere, and you can restore it at any time exactly as it was. Its papers stay safe in the client's folder and Google Drive. Only the portal owner can delete a case for good.</p>
+    <div class="card">${rows.length ? `<ul class="list">${rows.map((m) => `<li><span><b>${esc(m.file_no)}</b> ${esc(m.title)}<div class="mute">${esc(m.client_name)} · deleted ${esc(dt(m.deleted_at))}${m.deleted_by_name ? ' by ' + esc(m.deleted_by_name) : ''}</div></span><span class="row" style="gap:.4rem"><button class="btn sm gold" data-rs="${m.id}">Restore</button></span></li>`).join('')}</ul>` : '<p class="mute">The Recycle Bin is empty.</p>'}</div>`);
+  $$('[data-rs]').forEach((b) => (b.onclick = async () => { try { await POST(`/api/matters/${b.dataset.rs}/restore`); toast('Case restored.'); go(); } catch (e) { toast(e.message, true); } }));
+}, { office: true });
+
+
+/* ===== Case diary: step-by-step record, court dates included; add by hand, drag or use arrows to place anywhere ===== */
+async function diaryCard(id, m, cli) {
+  const host = $('#dcard'); if (!host) return;
+  let D, filter = 'all', editId = null, dragId = null;
+  const GL = { office: 'Office', papers: 'Papers', court: 'Court', note: 'Own note' }, GC = { office: 'var(--surface-1);color:var(--text-secondary)', papers: 'var(--bg-success);color:var(--text-success)', court: 'var(--bg-accent);color:var(--text-accent)', note: 'var(--bg-warning);color:var(--text-warning)' };
+  const load = async () => { try { D = await GET(`/api/matters/${id}/diary`); } catch (e) { host.remove(); return; } draw(); };
+  const saveOrder = async (ids) => { try { await PUT(`/api/matters/${id}/diary/order`, { ids }); } catch (e) { toast(e.message, true); } await load(); };
+  const draw = () => {
+    const rows = D.entries.filter((e) => filter === 'all' || e.group === filter), ed = D.can_edit, ids = D.entries.map((e) => e.id);
+    host.innerHTML = `<div class="row sp" style="gap:.5rem;flex-wrap:wrap"><h2 style="margin:0">Case diary</h2><div class="row" style="gap:.3rem;flex-wrap:wrap">
+      ${['all', 'office', 'papers', 'court'].filter((g) => !cli || g === 'all').map((g) => `<button class="btn sm ${filter === g ? '' : 'ghost'}" data-df="${g}">${g === 'all' ? 'All' : GL[g]}</button>`).join('')}
+      ${ed ? `<button class="btn sm ghost" id="dsort">Sort by date</button>` : ''}${ed && m.ident ? '<button class="btn sm ghost" id="dsync">Sync from eCourts</button>' : ''}</div></div>
+    ${D.stage === null ? '' : `<div style="display:flex;gap:4px;margin:.7rem 0;overflow-x:auto">${D.stages.map((x, k) => `<span class="chip" style="flex:0 0 auto;${k < D.stage ? 'background:var(--bg-success)' : k === D.stage ? 'background:var(--bg-accent);font-weight:600' : 'opacity:.6'}">${esc(x)}</span>`).join('')}</div>`}
+    <div id="dlist" style="margin-top:.6rem">${rows.length ? rows.map((e) => `<div class="drow" ${ed ? 'draggable="true"' : ''} data-id="${e.id}" style="display:flex;gap:.5rem;align-items:flex-start;padding:.55rem;border:1px solid var(--line);border-radius:8px;margin-bottom:.4rem;background:#fff">
+        ${ed ? '<span class="dh" title="Drag to move" style="cursor:grab;color:#999;font-size:1.2rem;line-height:1">⋮⋮</span>' : ''}<div style="min-width:84px;font-size:.82rem" class="mute">${esc(dt(e.date))}</div>
+        <div style="flex:1;min-width:0"><div><span style="display:inline-block;font-size:.72rem;padding:1px 7px;border-radius:6px;margin-right:6px;background:${GC[e.group]}">${esc(GL[e.group])}</span><b>${esc(e.title || e.label)}</b>${e.source === 'court' ? ' <span class="mute" style="font-size:.78rem">· eCourts</span>' : ''}${e.edited ? ' <span class="mute" style="font-size:.78rem">· edited</span>' : ''}${!cli && e.visible ? ' <span class="mute" style="font-size:.78rem">· shown to client</span>' : ''}</div>
+          ${e.note ? `<div style="font-size:.92rem;margin-top:.15rem;white-space:pre-wrap">${esc(e.note)}</div>` : ''}
+          ${e.clock ? `<div style="margin-top:.2rem"><span class="chip" style="background:${e.clock.closed ? 'var(--bg-success)' : e.clock.over ? '#fdecec' : '#fff4d6'}">${e.clock.closed ? 'Reply received' : e.clock.over ? 'Reply period over (' + esc(dt(e.clock.due)) + ')' : 'Reply due ' + esc(dt(e.clock.due)) + ' · ' + e.clock.left + ' day(s) left'}</span></div>` : ''}
+          ${e.link ? `<div style="font-size:.82rem"><a href="${esc(e.link)}" target="_blank" rel="noopener">${esc(e.link)}</a></div>` : ''}${e.by ? `<div class="mute" style="font-size:.78rem">by ${esc(e.by)}</div>` : ''}</div>
+        ${ed ? `<div style="display:flex;gap:2px"><button class="btn sm ghost" data-a="up" data-id="${e.id}" aria-label="Move up">▲</button><button class="btn sm ghost" data-a="dn" data-id="${e.id}" aria-label="Move down">▼</button><button class="btn sm ghost" data-a="ed" data-id="${e.id}">Edit</button><button class="btn sm ghost" data-a="rm" data-id="${e.id}" aria-label="Delete">✕</button></div>` : ''}</div>`).join('') : '<p class="mute">No entries yet.</p>'}</div>
+    ${ed ? `<div id="dform" style="display:grid;grid-template-columns:repeat(auto-fit,minmax(170px,1fr));gap:.5rem;margin-top:.7rem;align-items:end;padding-top:.7rem;border-top:1px solid var(--line)">
+      <label>Date<input type="date" id="dd" value="${today()}"></label>
+      <label>Type<select id="dk">${['office', 'papers', 'court', 'note'].map((g) => `<optgroup label="${GL[g]}">${D.kinds.filter((k) => k.group === g && !['no_reply'].includes(k.kind)).map((k) => `<option value="${k.kind}">${esc(k.label)}</option>`).join('')}</optgroup>`).join('')}</select></label>
+      <label id="drw" hidden>Reply period (days)<input type="number" id="dr" value="${D.reply_days}" min="1" max="180"></label>
+      <label style="grid-column:1/-1">Narration<textarea id="dn" rows="2" placeholder="Write the entry, as in a diary"></textarea></label>
+      <label>Link (optional)<input id="dl" placeholder="draft, receipt or order link"></label>
+      <label style="display:flex;gap:.4rem;align-items:center"><input type="checkbox" id="dv"> Show to client</label>
+      <span class="row" style="gap:.4rem"><button class="btn" id="dadd">${editId ? 'Save changes' : 'Add entry'}</button>${editId ? '<button class="btn ghost" id="dcx">Cancel</button>' : ''}</span></div>` : ''}`;
+    $$('[data-df]').forEach((b) => (b.onclick = () => { filter = b.dataset.df; draw(); }));
+    const rw = () => { const k = $('#dk'); if (k && $('#drw')) $('#drw').hidden = k.value !== 'notice_sent' || !!editId; }; if ($('#dk')) { $('#dk').onchange = rw; rw(); }
+    if ($('#dsort')) $('#dsort').onclick = async () => { await POST(`/api/matters/${id}/diary/sort`); toast('Sorted by date.'); load(); };
+    if ($('#dsync')) $('#dsync').onclick = async (x) => { x.target.disabled = true; try { await POST(`/api/matters/${id}/ecourt/sync`, {}); toast('Court data updated.'); } catch (e) { toast(e.message, true); } load(); };
+    $$('#dlist [data-a]').forEach((b) => (b.onclick = async () => {
+      const eid = +b.dataset.id, k = ids.indexOf(eid), a = b.dataset.a;
+      if (a === 'up' && k > 0) { [ids[k - 1], ids[k]] = [ids[k], ids[k - 1]]; return saveOrder(ids); }
+      if (a === 'dn' && k < ids.length - 1) { [ids[k + 1], ids[k]] = [ids[k], ids[k + 1]]; return saveOrder(ids); }
+      if (a === 'rm') { if (!sure('Remove this entry? The old version is kept in the audit trail.')) return; try { await DEL('/api/diary/' + eid); toast('Removed.'); } catch (e) { toast(e.message, true); } return load(); }
+      if (a === 'ed') { const e = D.entries.find((x) => x.id === eid); editId = eid; draw(); $('#dd').value = e.date; $('#dn').value = e.note || ''; $('#dl').value = e.link || ''; $('#dv').checked = e.visible; if (e.source === 'manual') $('#dk').value = e.kind; else { $('#dd').disabled = true; $('#dk').disabled = true; } $('#dform').scrollIntoView({ behavior: 'smooth', block: 'center' }); }
+    }));
+    $$('.drow[draggable]').forEach((r) => { r.ondragstart = () => { dragId = +r.dataset.id; r.style.opacity = '.4'; }; r.ondragend = () => { r.style.opacity = ''; }; r.ondragover = (ev) => { ev.preventDefault(); r.style.borderColor = 'var(--navy)'; }; r.ondragleave = () => { r.style.borderColor = ''; };
+      r.ondrop = (ev) => { ev.preventDefault(); const to = +r.dataset.id; if (!dragId || dragId === to) return; const from = ids.indexOf(dragId); ids.splice(from, 1); ids.splice(ids.indexOf(to), 0, dragId); saveOrder(ids); }; });
+    if ($('#dadd')) $('#dadd').onclick = async () => {
+      const body = { date: $('#dd').value, kind: $('#dk').value, note: $('#dn').value.trim(), link: $('#dl').value.trim(), visible: $('#dv').checked, reply_days: +$('#dr').value };
+      if (!body.date || !body.note) return toast('Enter the date and the narration.', true);
+      try { if (editId) await PUT('/api/diary/' + editId, body); else await POST(`/api/matters/${id}/diary`, body); toast(editId ? 'Saved.' : 'Entry added.'); editId = null; await load(); } catch (e) { toast(e.message, true); }
+    };
+    if ($('#dcx')) $('#dcx').onclick = () => { editId = null; draw(); };
+  };
+  load();
+}
+
+
+/* ===== Activity log (firm administrator): who did what and when, with Word / PDF ===== */
+route(/^\/activity$/, async (_, p) => {
+  const f = { from: p.get('from') || '', to: p.get('to') || '', user: p.get('user') || '', kind: p.get('kind') || '', q: p.get('q') || '' };
+  const D = await GET('/api/activity?' + qs({ ...f, limit: 1500 }));
+  view(`<div class="row sp"><h1>Activity log</h1><span class="row" style="gap:.4rem" id="alx"><button class="btn sm ghost" data-ax="docx">Word</button><button class="btn sm ghost" data-ax="pdf">PDF</button></span></div>
+    <p class="mute">Every sign-in, sign-out, entry, change and deletion by everyone in your firm, with date and time (Indian time). It cannot be edited or deleted.</p>
+    <div class="card"><div style="display:grid;grid-template-columns:repeat(auto-fit,minmax(150px,1fr));gap:.5rem;align-items:end">
+      <label>From<input type="date" id="af" value="${esc(f.from)}"></label><label>To<input type="date" id="at" value="${esc(f.to)}"></label>
+      <label>Person<select id="au"><option value="">Everyone</option>${D.users.map((u) => `<option value="${u.id}" ${String(u.id) === f.user ? 'selected' : ''}>${esc(u.name)} (${esc(u.role)})</option>`).join('')}</select></label>
+      <label>Show<select id="ak">${[['', 'Everything'], ['signin', 'Sign-ins and sign-outs'], ['changes', 'Entries and changes']].map(([v, l]) => `<option value="${v}" ${v === f.kind ? 'selected' : ''}>${l}</option>`).join('')}</select></label>
+      <label>Search<input id="aq" value="${esc(f.q)}" placeholder="name or action"></label><button class="btn" id="ago">Show</button></div></div>
+    ${D.summary.length ? `<div class="card"><h2>Who was in</h2><div class="tw"><table><tr><th>Person</th><th>Role</th><th>Sign-ins</th><th>Last sign-in</th><th>Last sign-out</th><th>Entries / changes</th></tr>${D.summary.map((x) => `<tr><td>${esc(x.user)}</td><td>${esc(x.role)}</td><td>${x.signins}</td><td>${esc(x.first_in)}</td><td>${esc(x.last_out)}</td><td>${x.actions}</td></tr>`).join('')}</table></div></div>` : ''}
+    <div class="card"><h2>${D.rows.length} record(s)</h2>${D.rows.length ? `<div class="tw"><table><tr><th>When</th><th>Person</th><th>Role</th><th>What</th><th>Detail</th><th>IP</th></tr>${D.rows.map((r) => `<tr><td style="white-space:nowrap">${esc(r.at)}</td><td>${esc(r.user)}</td><td>${esc(r.role)}</td><td>${esc(r.what)}</td><td>${esc(r.detail)}</td><td class="mute">${esc(r.ip)}</td></tr>`).join('')}</table></div>` : '<p class="mute">Nothing in this period.</p>'}</div>`);
+  $('#ago').onclick = () => { location.hash = '#/activity?' + qs({ from: $('#af').value, to: $('#at').value, user: $('#au').value, kind: $('#ak').value, q: $('#aq').value }); };
+  $$('[data-ax]').forEach((b) => (b.onclick = () => dlTable(b.dataset.ax, 'Activity log', `${f.from || 'start'} to ${f.to || 'today'}${f.q ? ' · ' + f.q : ''}`, [{ h: 'When', w: 1.5 }, { h: 'Person', w: 1.3 }, { h: 'Role', w: .8 }, { h: 'What', w: 2 }, { h: 'Detail', w: 1.6 }, { h: 'IP', w: 1 }], D.rows.map((r) => [r.at, r.user, r.role, r.what, r.detail, r.ip]), 'activity')));
+}, { admin: true });

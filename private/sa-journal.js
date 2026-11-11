@@ -31,3 +31,26 @@ route(/^\/journal$/, async (_, p) => {
   if ($('#na')) $('#na').onclick = () => ask('New note', [{ name: 'title', label: 'Title', required: true }, { name: 'body', label: 'Note', type: 'textarea' }], 'Save', async (v) => { await POST('/api/platform/journal/notes', v); go(); }, true);
   $$('[data-nd]').forEach((b) => (b.onclick = async () => { if (sure('Delete this note?')) { await DEL('/api/platform/journal/notes/' + b.dataset.nd); go(); } }));
 });
+
+
+/* ===== Activity log (Super Admin): every firm and the platform ===== */
+route(/^\/activity$/, async (_, p) => {
+  const f = { firm: p.get('firm') || '', from: p.get('from') || '', to: p.get('to') || '', user: p.get('user') || '', kind: p.get('kind') || '', q: p.get('q') || '' };
+  const D = await GET('/api/platform/activity?' + qs({ ...f, limit: 1500 }));
+  const cols = [{ h: 'When', w: 1.5 }, { h: 'Firm', w: 1.2 }, { h: 'Person', w: 1.3 }, { h: 'Role', w: .8 }, { h: 'What', w: 2 }, { h: 'Detail', w: 1.5 }, { h: 'IP', w: 1 }], body = () => D.rows.map((r) => [r.at, r.firm, r.user, r.role, r.what, r.detail, r.ip]);
+  view(`<div class="row sp"><h1>Activity log</h1><span class="row" style="gap:.4rem"><button class="btn sm ghost" data-ax="docx">Word</button><button class="btn sm ghost" data-ax="pdf">PDF</button></span></div>
+    <p class="mute">What every law firm and the platform are doing: sign-ins, sign-outs, entries, changes and deletions, with date and time (Indian time). Read-only.</p>
+    <div class="card"><div style="display:grid;grid-template-columns:repeat(auto-fit,minmax(150px,1fr));gap:.5rem;align-items:end">
+      <label>Law firm<select id="afm"><option value="">All firms and platform</option>${D.firms.map((x) => `<option value="${x.id}" ${String(x.id) === f.firm ? 'selected' : ''}>${esc(x.name)}</option>`).join('')}</select></label>
+      <label>From<input type="date" id="af" value="${esc(f.from)}"></label><label>To<input type="date" id="at" value="${esc(f.to)}"></label>
+      ${D.users.length ? `<label>Person<select id="au"><option value="">Everyone</option>${D.users.map((u) => `<option value="${u.id}" ${String(u.id) === f.user ? 'selected' : ''}>${esc(u.name)}</option>`).join('')}</select></label>` : ''}
+      <label>Show<select id="ak">${[['', 'Everything'], ['signin', 'Sign-ins and sign-outs'], ['changes', 'Entries and changes']].map(([v, l]) => `<option value="${v}" ${v === f.kind ? 'selected' : ''}>${l}</option>`).join('')}</select></label>
+      <label>Search<input id="aq" value="${esc(f.q)}"></label><button class="btn" id="ago">Show</button></div></div>
+    ${D.summary.length ? `<div class="card"><h2>Who was in</h2><div class="tw"><table><tr><th>Person</th><th>Firm</th><th>Role</th><th>Sign-ins</th><th>Last sign-in</th><th>Last sign-out</th><th>Entries / changes</th></tr>${D.summary.map((x) => `<tr><td>${esc(x.user)}</td><td>${esc(x.firm)}</td><td>${esc(x.role)}</td><td>${x.signins}</td><td>${esc(x.first_in)}</td><td>${esc(x.last_out)}</td><td>${x.actions}</td></tr>`).join('')}</table></div></div>` : ''}
+    <div class="card"><h2>${D.rows.length} record(s)</h2>${D.rows.length ? `<div class="tw"><table><tr><th>When</th><th>Firm</th><th>Person</th><th>Role</th><th>What</th><th>Detail</th><th>IP</th></tr>${D.rows.map((r) => `<tr><td style="white-space:nowrap">${esc(r.at)}</td><td>${esc(r.firm)}</td><td>${esc(r.user)}</td><td>${esc(r.role)}</td><td>${esc(r.what)}</td><td>${esc(r.detail)}</td><td class="mute">${esc(r.ip)}</td></tr>`).join('')}</table></div>` : '<p class="mute">Nothing in this period.</p>'}</div>`);
+  $('#ago').onclick = () => { location.hash = '#/activity?' + qs({ firm: $('#afm').value, from: $('#af').value, to: $('#at').value, user: $('#au') ? $('#au').value : '', kind: $('#ak').value, q: $('#aq').value }); };
+  $$('[data-ax]').forEach((b) => (b.onclick = async () => { const fm = b.dataset.ax; try {
+    const r = await fetch('/api/export/' + fm, { method: 'POST', credentials: 'same-origin', headers: { 'Content-Type': 'application/json', 'X-Requested-With': 'kcportal' }, body: JSON.stringify({ title: 'Activity log - all firms', subtitle: `${f.from || 'start'} to ${f.to || 'today'}`, cols, rows: body(), restricted: 'activity' }) });
+    if (!r.ok) throw new Error((await r.json().catch(() => ({}))).error || 'Could not make the file.');
+    const a = document.createElement('a'); a.href = URL.createObjectURL(await r.blob()); a.download = 'Activity log.' + fm; document.body.appendChild(a); a.click(); a.remove(); } catch (e) { toast(e.message, true); } }));
+});

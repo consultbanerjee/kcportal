@@ -84,8 +84,9 @@ module.exports = (app) => {
   });
   app.get('/api/modules', L.requireLogin, (req, res) => {
     const t = req.user.tenant_id, off = req.user.role === 'superadmin' ? [] : offList(t);
+    const advOff = require('./team').offList(t, req.user.role);
     const powered = AI.getS(t, 'sa_powered', '');
-    res.json({ off, claude: AI.allowed(t), powered, product: AI.getS(0, 'sa_product', '') });
+    res.json({ off, advOff, claude: AI.allowed(t), powered, product: AI.getS(0, 'sa_product', '') });
   });
 
   // ---- firms: plan, modules, Claude switch ----

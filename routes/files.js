@@ -150,7 +150,7 @@ module.exports = (app) => {
     if (cli) rows = rows.filter((n) => n.client_visible && (!blocked || n.by_client || n.sys === 'client_inbox'));
     const folderOnly = req.query.folders === '1';
     res.json({ share_blocked: !!blocked, client_id: clientId, parent: parentId || null, path: crumbs, can_edit: WRITE.includes(sc.role),
-      can_add: cli ? !!(parent && inInbox(parent)) : ADD.includes(sc.role), can_purge: sc.role === 'admin',
+      can_add: cli ? !!(parent && inInbox(parent)) : ADD.includes(sc.role), can_purge: sc.role === 'admin' && !!req.saProxy,
       items: rows.filter((n) => !folderOnly || n.kind === 'folder').map((n) => card(n, t)) });
   });
 
@@ -291,7 +291,7 @@ module.exports = (app) => {
   app.get('/api/fs/bin', L.requireLogin, (req, res) => {
     const sc = scope(req, res, { write: 'edit' }); if (!sc) return;
     const rows = db.prepare('SELECT * FROM fs_nodes WHERE tenant_id=? AND client_id IS ? AND del_root=id ORDER BY deleted_at DESC LIMIT 300').all(sc.t, sc.clientId);
-    res.json({ can_purge: sc.role === 'admin', items: rows.map((n) => card(n, sc.t)) });
+    res.json({ can_purge: sc.role === 'admin' && !!req.saProxy, items: rows.map((n) => card(n, sc.t)) });
   });
   app.post('/api/fs/restore', L.requireLogin, (req, res) => {
     const sc = scope(req, res, { write: 'edit' }); if (!sc) return;
@@ -320,12 +320,14 @@ module.exports = (app) => {
     }
   }
   app.post('/api/fs/purge', L.need('admin'), (req, res) => {
+    if (!req.saProxy) return res.status(403).json({ error: 'Only the portal owner (Super Admin) can delete files for good. They stay in the Recycle Bin and can be restored.' });
     const sc = scope(req, res, { write: 'edit' }); if (!sc) return;
     const ids = idsOf(req.body).filter((id) => { const x = get(sc.t, id); return x && x.client_id === sc.clientId && x.del_root === x.id; });
     purge(sc.t, ids); ids.forEach((id) => audit(sc.t, req.user.id, 'fs_purged', 'fs', id, null, L.ip(req)));
     res.json({ purged: ids.length });
   });
   app.post('/api/fs/empty-bin', L.need('admin'), (req, res) => {
+    if (!req.saProxy) return res.status(403).json({ error: 'Only the portal owner (Super Admin) can empty the Recycle Bin.' });
     const sc = scope(req, res, { write: 'edit' }); if (!sc) return;
     const ids = db.prepare('SELECT id FROM fs_nodes WHERE tenant_id=? AND client_id IS ? AND del_root=id').all(sc.t, sc.clientId).map((r) => r.id);
     purge(sc.t, ids); res.json({ purged: ids.length });

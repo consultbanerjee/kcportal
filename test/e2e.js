@@ -58,6 +58,7 @@ async function setup(c, invite, pw) { const tok = invite.split('/').pop(); retur
   // staff users
   const mk = async (role, email) => { const x = await admin('POST', '/api/users', { name: role + ' user', email, role }); ok(x.s === 200, 'create ' + role + JSON.stringify(x.j)); const c = client(); const s = await setup(c, x.j.invite_path, 'Passw0rdPass1'); ok(s.s === 200, 'invite ' + role); await c('POST', '/api/login', { email, password: 'Passw0rdPass1' }); return c; };
   const adv = await mk('advocate', 'adv@x.com'), staff = await mk('staff', 'staff@x.com'), tele = await mk('telecaller', 'tele@x.com'), acct = await mk('accounts', 'acct@x.com');
+  for (const k of ['adv_mods', 'staff_mods']) require('../aicore').setS(1, k, require('../routes/team').ADV_KEYS.map((x) => x[0]).join(','));   // this suite tests the open setting; the strict default has its own tests
   r = await staff('POST', '/api/users', { name: 'x', email: 'x@x.com', role: 'staff' }); ok(r.s === 403, 'staff cannot create users');
   r = await tele('GET', '/api/invoices'); ok(r.s === 403, 'telecaller blocked from invoices');
 

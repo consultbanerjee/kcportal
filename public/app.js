@@ -51,6 +51,21 @@ function fieldHtml(f) {
   else inp = `<input id="${id}" name="${f.name}" type="${f.type || 'text'}" value="${esc(v)}"${req} ${f.step ? `step="${f.step}"` : ''} ${f.accept ? `accept="${f.accept}"` : ''} placeholder="${esc(f.ph || '')}" ${f.type === 'password' ? 'autocomplete="new-password"' : ''} ${f.list ? `list="dl_${f.name}"` : ''}>${f.list ? `<datalist id="dl_${f.name}">${f.list.map((x) => `<option value="${esc(x)}">`).join('')}</datalist>` : ''}`;
   return `<label for="${id}">${esc(f.label)}${f.required ? ' *' : ''}</label>${inp}${f.hint ? `<div class="mute">${esc(f.hint)}</div>` : ''}`;
 }
+/* "+ Add new client…" inside any client drop-down: pick it and two more boxes appear; the client is created when the form is saved */
+const NEW_CLIENT = ['__new', '+ Add new client…'];
+const newClientFields = () => [{ name: 'new_client', label: 'New client — full name' }, { name: 'new_phone', label: 'New client — phone (optional)', type: 'tel' }];
+async function resolveClient(v) {
+  if (v.client_id !== '__new') return v.client_id;
+  if (!v.new_client) throw new Error('Enter the new client\'s name.');
+  return (await POST('/api/clients', { name: v.new_client, phone: v.new_phone || '' })).id;
+}
+function wireNewClient() {
+  setTimeout(() => {
+    const f = document.querySelector('.overlay form'), sel = f && f.elements.client_id; if (!sel || !f.elements.new_client) return;
+    const els = ['new_client', 'new_phone'].flatMap((n) => [f.querySelector('label[for="f_' + n + '"]'), f.elements[n]]).filter(Boolean);
+    const sync = () => els.forEach((e) => (e.style.display = sel.value === '__new' ? '' : 'none')); sel.addEventListener('change', () => { sync(); if (sel.value === '__new') f.elements.new_client.focus(); }); sync();
+  }, 0);
+}
 function ask(title, fields, okLabel, fn, wide) {
   return new Promise((resolve) => {
     const o = document.createElement('div'); o.className = 'overlay';
@@ -121,30 +136,32 @@ function on(root, ev, sel, fn) { root.addEventListener(ev, (e) => { const t = e.
 
 // Each item is [href, label, group]. Items with a group are shown under that group's heading in the left panel.
 function navItems() {
-  if (ME.role === 'superadmin') return [['#/firms', 'Firms and services'], ['#/journal', 'Build Journal'], ['#/account', 'Account']];
+  if (ME.role === 'superadmin') return [['#/firms', 'Firms and services'], ['#/activity', 'Activity log'], ['#/journal', 'Build Journal'], ['#/account', 'Account']];
   if (isClient()) return [['#/', 'Home'], ['#/matters', 'My cases'], ['#/myfiles', 'My files'], ['#/letters', 'Letters'], ['#/messages', 'Messages'], ['#/livechat', 'Live chat'], ['#/invoices', 'Fees'], ['#/book', 'Book']];
-  const r = ME.role, LG = 'Litigation', n = [['#/', 'Home']], pro = ['admin', 'advocate', 'staff'].includes(r), mod = (k) => !(MODS.off || []).includes(k);
-  n.push(['#/clients', 'Clients', LG]);
+  const r = ME.role, LG = 'Litigation', n = [['#/', 'Home']], pro = ['admin', 'advocate', 'staff'].includes(r), mod = (k) => !(MODS.off || []).includes(k) && !(MODS.advOff || []).includes(k);
+  if (mod('clients')) n.push(['#/clients', 'Clients', LG]);
   if (pro) n.push(['#/matters', 'Cases', LG]);
-  if (pro && FEAT.courtdata) n.push(['#/ecourts', 'Court search', LG], ['#/causelist', 'Cause list', LG]);
-  n.push(['#/tasks', 'Tasks', LG], ['#/moves', 'File movement', LG]);
+  if (pro && FEAT.courtdata && mod('ecourts')) n.push(['#/ecourts', 'Court search', LG], ['#/causelist', 'Cause list', LG]);
+  if (mod('tasks')) n.push(['#/tasks', 'Tasks', LG]);
+  if (r !== 'accounts') n.push(['#/moves', 'File movement', LG]);
   if (mod('calendar')) n.push(['#/calendar', 'Calendar', LG]);
-  if (pro || r === 'accounts') n.push(['#/files', 'Files', LG]);
-  if (pro) n.push(['#/letters', 'Letters', LG], ['#/register', 'In-Out Register', LG]);
-  if (FEAT.drafting && pro) n.push(['#/draft', 'AI Drafting', LG]);
-  if (pro) n.push(['#/limitation', 'Limitation', LG]);
-  if (r !== 'accounts') n.push(['#/messages', 'Messages', LG]);
-  if (FEAT.email && pro) n.push(['#/mail', 'Mail', 'CRM']);
-  if (FEAT.chat && [...['admin', 'advocate', 'staff'], 'telecaller'].includes(r)) n.push(['#/chats', 'Chats', 'CRM']);
+  if ((pro || r === 'accounts') && mod('files')) n.push(['#/files', 'Files', LG]);
+  if (pro && mod('letters')) n.push(['#/letters', 'Letters', LG]);
+  if (pro && mod('register')) n.push(['#/register', 'In-Out Register', LG]);
+  if (FEAT.drafting && pro && mod('draft')) n.push(['#/draft', 'AI Drafting', LG]);
+  if (pro && mod('limitation')) n.push(['#/limitation', 'Limitation', LG]);
+  if (r !== 'accounts' && mod('messages')) n.push(['#/messages', 'Messages', LG]);
+  if (FEAT.email && pro && mod('mail')) n.push(['#/mail', 'Mail', 'CRM']);
+  if (FEAT.chat && mod('chats') && [...['admin', 'advocate', 'staff'], 'telecaller'].includes(r)) n.push(['#/chats', 'Chats', 'CRM']);
   if (mod('crm')) {
     if (['admin', 'advocate', 'staff', 'telecaller'].includes(r)) n.push(['#/followups', 'Follow-ups', 'CRM'], ['#/tickets', 'Tickets', 'CRM'], ['#/leads', 'Leads', 'CRM']);
     if (r !== 'accounts') n.push(['#/appointments', 'Calls', 'CRM']);
   }
-  if (pro) n.push(['#/consents', 'Consents', 'CRM']);
-  if (mod('accounts') && ['admin', 'advocate', 'accounts'].includes(r)) n.push(['#/accounts', 'Accounts']);
+  if (pro && mod('consents')) n.push(['#/consents', 'Consents', 'CRM']);
+  if (mod('accounts') && ['admin', 'advocate', 'staff', 'accounts'].includes(r)) n.push(['#/accounts', 'Accounts']);
   if (mod('judgments') && r !== 'telecaller' && r !== 'accounts') n.push(['#/judgments', 'Judgments']);
   if (mod('repository')) REPO_CATS.forEach(([sl, nm]) => n.push(['#/repository/' + sl, nm, 'Repository']));
-  if (r === 'admin') n.push(['#/alerts', 'Alerts', 'Settings'], ['#/template', 'Design', 'Settings'], ['#/team', 'Team', 'Settings'], ['#/settings', 'Firm settings', 'Settings'], ['#/plan', 'Plan and usage', 'Settings']);
+  if (r === 'admin') n.push(['#/alerts', 'Alerts', 'Settings'], ['#/template', 'Design', 'Settings'], ['#/team', 'Team', 'Settings'], ['#/settings', 'Firm settings', 'Settings'], ['#/activity', 'Activity log', 'Settings'], ['#/plan', 'Plan and usage', 'Settings']);
   return n;
 }
 const REPO_CATS = [['all', 'All sections'], ['courts', 'Courts'], ['high-courts', 'All High Courts'], ['tribunals', 'Tribunals'], ['forums', 'Forums'], ['authorities', 'Authorities'], ['legislatures', 'Parliament and Assemblies'], ['intl-india', 'International courts (India)'], ['intl-other', 'International courts (other)'], ['elibrary', 'eLibrary & Research'], ['govt-repos', 'Government repositories'], ['news-world', 'Newspapers: world'], ['news-india', 'Newspapers: India'], ['news-legal', 'Legal news'], ['central-services', 'Central Govt Services'], ['wb-services', 'West Bengal Govt Services'], ['bodies', 'Professional bodies']];
@@ -176,6 +193,8 @@ function layout() {
     <main class="main" id="view"></main>${MODS.powered ? `<div class="mute noprint" style="text-align:center;padding:.6rem;font-size:.78rem">${esc(MODS.powered)}</div>` : ''}</div>
     <nav class="bottom">${items.slice(0, isClient() ? 6 : 14).map(([h, l]) => `<a href="${h}" class="${active(h)}">${l}</a>`).join('')}</nav></div>`;
   $$('.side .tg').forEach((t) => { const tg = () => { const b = t.nextElementSibling, o = b.hidden; b.hidden = !o; t.setAttribute('aria-expanded', o); $('.car', t).textContent = o ? '▾' : '▸'; try { localStorage.setItem('kc-nav-' + t.dataset.g, o ? '1' : '0'); } catch (e) {} }; t.onclick = tg; t.onkeydown = (e) => { if (e.key === 'Enter' || e.key === ' ') { e.preventDefault(); tg(); } }; });
+  if (ME.access_notice) { let seen = false; try { seen = sessionStorage.getItem('kc-acc-notice') === ME.access_notice.until; } catch (e) {}
+    if (!seen) { show('Notice: your access will end', `<p>None of your cases with ${esc(FIRM)} is open at present.</p><p><b>Your access to this portal will end on ${esc(ME.access_notice.date)}.</b> Please download any papers you need before that date.</p><p class="mute">If you have a new matter, please contact the office.</p>`); try { sessionStorage.setItem('kc-acc-notice', ME.access_notice.until); } catch (e) {} } }
   if (ME.role === 'admin') GET('/api/alerts/count').then((c) => { const a = $('.side a[href="#/alerts"]'); if (a && c.open && !$('.abadge', a)) a.insertAdjacentHTML('beforeend', ` <span class="abadge${c.high ? ' hi' : ''}">${c.open}</span>`); }).catch(() => {});
   // firm logo in the side brand (loaded once; harmless if the firm has none)
   getTpl().then((t) => { const b = $('.side .brand'); if (t && t.has_logo && b && !$('.blogo', b)) b.insertAdjacentHTML('afterbegin', `<img class="blogo" src="/api/template/logo?v=${t.lv}" alt="">`); }).catch(() => {});

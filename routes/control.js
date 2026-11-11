@@ -75,7 +75,7 @@ function lock(req, res, next) {
 }
 
 // What the Super Admin may open on a firm's behalf — set-up screens only.
-const PROXY_OK = /^\/(ai-admin(\/test-(mail|ai))?|storage(\/(connect|sync|disconnect))?|ecourts\/(config|test)|reminders(\/run)?|whatsapp|calendar\/(settings|refresh)|contacts(\/sync)?|args-admin|wx)$/;
+const PROXY_OK = /^\/(ai-admin(\/test-(mail|ai))?|storage(\/(connect|sync|disconnect))?|ecourts\/(config|test)|reminders(\/run)?|whatsapp|calendar\/(settings|refresh)|contacts(\/sync)?|args-admin|matters-deleted|matters\/\d+\/(restore|purge)|wx)$/;
 
 // ---- weather (Open-Meteo, no key) ----
 let wxTransport = null; const wxCache = new Map();

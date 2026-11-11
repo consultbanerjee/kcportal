@@ -4,7 +4,7 @@ const { db, audit } = L;
 
 module.exports = (app, limiter) => {
   const tenantOf = (u) => (u ? db.prepare('SELECT id,name,kind,slug FROM tenants WHERE id=?').get(u.tenant_id) : null) || L.defaultFirm();
-  const publicUser = (u) => ({ id: u.id, name: u.name, email: u.email, role: u.role, client_id: u.client_id, phone: u.phone });
+  const publicUser = (u) => ({ id: u.id, name: u.name, email: u.email, role: u.role, client_id: u.client_id, phone: u.phone, access_notice: require('./clientnotice').notice(u) });
 
   app.post('/api/login', limiter, (req, res) => {
     const email = L.str(req.body.email, 200).toLowerCase();
@@ -58,7 +58,7 @@ module.exports = (app, limiter) => {
 
   app.post('/api/logout', (req, res) => {
     const token = req.cookies && req.cookies.kc_session;
-    if (token) { if (req.user && req.user.role === 'client') audit(req.user.tenant_id, req.user.id, 'logout', 'user', req.user.id, null, L.ip(req)); db.prepare('DELETE FROM sessions WHERE token=?').run(token); }
+    if (token) { if (req.user) audit(req.user.tenant_id, req.user.id, 'logout', 'user', req.user.id, null, L.ip(req)); db.prepare('DELETE FROM sessions WHERE token=?').run(token); }
     res.clearCookie('kc_session', { path: '/' });
     res.json({ ok: true });
   });

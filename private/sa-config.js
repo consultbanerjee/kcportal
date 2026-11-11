@@ -1,7 +1,7 @@
 'use strict';
 /* ===== Super Admin: configure everything for one firm (services, Claude, mail, chat, court data, WhatsApp, reminders, Drive, case arguments, calendar, weather) =====
    Firms never see any of this. Every call goes through /api/platform/f/<firm>/… which only the Super Admin can reach. */
-const CFG_TABS = [['services', 'Services'], ['claude', 'Claude AI'], ['mail', 'Mail'], ['chat', 'Website chat'], ['court', 'Court data'], ['wa', 'WhatsApp'], ['rem', 'Reminders'], ['drive', 'Google Drive'], ['args', 'Case arguments'], ['cal', 'Calendar and home']];
+const CFG_TABS = [['services', 'Services'], ['claude', 'Claude AI'], ['mail', 'Mail'], ['chat', 'Website chat'], ['court', 'Court data'], ['wa', 'WhatsApp'], ['rem', 'Reminders'], ['drive', 'Google Drive'], ['args', 'Case arguments'], ['cal', 'Calendar and home'], ['bin', 'Recycle Bin']];
 
 route(/^\/fcfg\/(\d+)$/, async ([id], p) => {
   const tab = CFG_TABS.some((t) => t[0] === p.get('tab')) ? p.get('tab') : 'services', P = '/api/platform/f/' + id;
@@ -22,6 +22,7 @@ route(/^\/fcfg\/(\d+)$/, async ([id], p) => {
   if (tab === 'rem') return cfgRem(id, P, body);
   if (tab === 'drive') return cfgDrive(id, P, body, p);
   if (tab === 'args') return cfgArgs(id, P, body);
+  if (tab === 'bin') return cfgBin(id, P, body);
   return cfgCal(id, P, body, f);
 });
 
@@ -190,4 +191,13 @@ async function cfgCal(id, P, body) {
   const f = $('#cf');
   f.onsubmit = (e) => { e.preventDefault(); cfgSave(P, '/calendar/settings', { auto: f.auto.checked, email: f.email.checked, wa: f.wa.checked, subject: f.subject.value, msg: f.msg.value }); };
   $('#rf').onclick = async (e) => { e.target.disabled = true; try { const r = await POST(P + '/calendar/refresh'); toast(`Updated (${r.count} entries, ${r.source}).`); go(); } catch (x) { toast(x.message, true); e.target.disabled = false; } };
+}
+
+/* ---- Recycle Bin: only the Super Admin can delete a case for good (the firm can only restore) ---- */
+async function cfgBin(id, P, body) {
+  const rows = await GET(P + '/matters-deleted');
+  body(`<div class="card"><h2>Recycle Bin — deleted cases</h2><p class="mute">Cases deleted by the firm wait here. Restoring brings a case back exactly as it was. "Delete forever" removes the case record for good (its papers stay in the client's folder and Google Drive, unlinked). This cannot be undone.</p>
+    ${rows.length ? `<ul class="list">${rows.map((m) => `<li><span><b>${esc(m.file_no)}</b> ${esc(m.title)}<div class="mute">${esc(m.client_name)} · deleted ${esc(dt(m.deleted_at))}</div></span><span class="row" style="gap:.4rem"><button class="btn sm gold" data-rs="${m.id}">Restore</button><button class="btn sm ghost" data-pg="${m.id}" data-fn="${esc(m.file_no)}">Delete forever</button></span></li>`).join('')}</ul>` : '<p class="mute">The Recycle Bin is empty.</p>'}</div>`);
+  $$('[data-rs]').forEach((b) => (b.onclick = async () => { try { await POST(P + `/matters/${b.dataset.rs}/restore`); toast('Case restored.'); go(); } catch (e) { toast(e.message, true); } }));
+  $$('[data-pg]').forEach((b) => (b.onclick = () => ask('Delete forever?', [{ name: 'confirm', label: `This cannot be undone. Type ${b.dataset.fn} to confirm`, required: true }], 'Delete forever', async (v) => { await api('DELETE', P + `/matters/${b.dataset.pg}/purge`, { confirm: v.confirm }); toast('Deleted for good.'); go(); })));
 }

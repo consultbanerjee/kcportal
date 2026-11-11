@@ -17,12 +17,15 @@ const signup = async (c, email, pw) => { const row = db.prepare("SELECT invite_t
   r = await ad('POST', '/api/clients', { name: 'Team Client', phone: '9876543210' }); const cid = r.j.id;
   r = await ad('POST', '/api/matters', { client_id: cid, title: 'Team Matter' }); const mid = r.j.id;
   r = await ad('POST', '/api/matters', { client_id: cid, title: 'Other Matter' }); const mid2 = r.j.id;
-  // restriction OFF by default: everyone sees everything
-  ok((await a2('GET', '/api/matters/' + mid)).s === 200, 'off: advocate sees any case');
-  ok((await a2('GET', '/api/matters')).j.length === 2, 'off: list shows all');
-  // turn on
-  ok((await a1('PUT', '/api/team/settings', { restrict: true })).s === 403, 'only admin can switch restriction');
-  ok((await ad('PUT', '/api/team/settings', { restrict: true })).j.restrict === true, 'admin switches restriction on');
+  // advocates are strict by default: only their own (allotted or created) cases
+  ok((await a2('GET', '/api/matters/' + mid)).s === 404, 'default: advocate cannot open another\'s case');
+  ok((await a2('GET', '/api/matters')).j.length === 0, 'default: advocate list empty');
+  ok((await a1('PUT', '/api/team/settings', { advocate: ['allcases'] })).s === 403, 'only admin can change advocate access');
+  ok((await ad('PUT', '/api/team/settings', { advocate: ['allcases'] })).s === 200, 'admin opens all cases to advocates');
+  ok((await a2('GET', '/api/matters/' + mid)).s === 200, 'toggle: advocate sees any case');
+  ok((await a2('GET', '/api/matters')).j.length === 2, 'toggle: list shows all');
+  ok((await ad('PUT', '/api/team/settings', { advocate: [] })).s === 200, 'toggle off again');
+  ok((await ad('PUT', '/api/team/settings', { restrict: true })).j.restrict === true, 'admin switches staff restriction on');
   ok((await a1('GET', '/api/matters')).j.length === 0, 'on: unassigned advocate sees nothing');
   ok((await a1('GET', '/api/matters/' + mid)).s === 404, 'on: unassigned case hidden (404)');
   // assign

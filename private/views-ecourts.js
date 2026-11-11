@@ -14,7 +14,7 @@ function wireOrders(cnr, mid) {
 }
 async function pickClient(then, title) {
   const cl = await GET('/api/clients'); const rows = Array.isArray(cl) ? cl : cl.clients || [];
-  ask(title || 'Add to Cases', [{ name: 'client_id', label: 'Client', type: 'select', required: true, options: [['', '— choose —'], ...rows.map((c) => [c.id, c.name])] }, { name: 'title', label: 'Case title (optional — made from the parties if left blank)' }], 'Add case', async (v) => { if (!v.client_id) throw new Error('Choose the client.'); await then(v); });
+  ask(title || 'Add to Cases', [{ name: 'client_id', label: 'Client', type: 'select', required: true, options: [['', '— choose —'], ...rows.map((c) => [c.id, c.name]), NEW_CLIENT] }, ...newClientFields(), { name: 'title', label: 'Case title (optional — made from the parties if left blank)' }], 'Add case', async (v) => { if (!v.client_id) throw new Error('Choose the client.'); v.client_id = await resolveClient(v); await then(v); }); wireNewClient();
 }
 
 /* ---------- Court search ---------- */
