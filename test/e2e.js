@@ -275,12 +275,13 @@ async function setup(c, invite, pw) { const tok = invite.split('/').pop(); retur
     return { content: [{ type: 'text', text: 'LEGAL NOTICE\n\nTo [NAME]\n\n1. That ...\n=====NOTES FOR ADVOCATE=====\n- fill [NAME]' }], usage: { input_tokens: 100, output_tokens: 50 } };
   });
   r = await staff('GET', '/api/features'); ok(r.s === 200 && r.j.drafting === false && r.j.chat === false, 'features default off');
-  r = await staff('GET', '/api/ai-admin'); ok(r.s === 403, 'ai-admin is admin only');
+  r = await staff('GET', '/api/ai-admin'); ok(r.s === 404, 'ai-admin hidden from the firm (staff)'); r = await admin('GET', '/api/ai-admin'); ok(r.s === 404, 'ai-admin hidden from the firm (admin)');
+  const KFP = '/api/platform/f/' + db.prepare("SELECT id FROM tenants WHERE slug='kclegal'").get().id;
   const fd0 = new FormData(); fd0.append('kind', 'legal_notice'); fd0.append('instruction', 'cheque bounce notice');
   r = await staff('POST', '/api/ai/draft', fd0); ok(r.s === 403, 'drafting blocked while switched off');
-  r = await admin('PUT', '/api/ai-admin', { on: { drafting: true, email: true, chat: true }, text: { chat_origins: 'https://kclegal.us', mail_imap_host: 'imap.test', mail_imap_user: 'info@kclegal.us', mail_smtp_host: 'smtp.test', mail_smtp_user: 'info@kclegal.us', mail_signature: 'KC LEGAL' }, secrets: { ai_key: 'sk-ant-secret1234', mail_imap_pass: 'p', mail_smtp_pass: 'p' }, mail_mode: 'auto', num: { mail_auto_delay_min: 5 } }); ok(r.s === 200, 'admin saves AI settings');
-  r = await admin('GET', '/api/ai-admin'); ok(r.s === 200 && r.j.on.drafting && r.j.key_set && r.j.key_hint === '…1234' && !JSON.stringify(r.j).includes('sk-ant-secret') && r.j.secrets.mail_imap_pass === true, 'secrets never returned');
-  r = await admin('PUT', '/api/ai-admin', { num: { chat_daily_cap: 1 } }); ok(r.s === 400, 'badFd number rejected');
+  r = await sa('PUT', KFP + '/ai-admin', { on: { drafting: true, email: true, chat: true }, text: { chat_origins: 'https://kclegal.us', mail_imap_host: 'imap.test', mail_imap_user: 'info@kclegal.us', mail_smtp_host: 'smtp.test', mail_smtp_user: 'info@kclegal.us', mail_signature: 'KC LEGAL' }, secrets: { ai_key: 'sk-ant-secret1234', mail_imap_pass: 'p', mail_smtp_pass: 'p' }, mail_mode: 'auto', num: { mail_auto_delay_min: 5 } }); ok(r.s === 200, 'admin saves AI settings');
+  r = await sa('GET', KFP + '/ai-admin'); ok(r.s === 200 && r.j.on.drafting && r.j.key_set && r.j.key_hint === '…1234' && !JSON.stringify(r.j).includes('sk-ant-secret') && r.j.secrets.mail_imap_pass === true, 'secrets never returned');
+  r = await sa('PUT', KFP + '/ai-admin', { num: { chat_daily_cap: 1 } }); ok(r.s === 400, 'badFd number rejected');
   const pngBuf = Buffer.from('iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAADUlEQVR42mP8z8BQDwAEhQGAhKmMIQAAAABJRU5ErkJggg==', 'base64');
   const fdA = new FormData(); fdA.append('kind', 'legal_notice'); fdA.append('instruction', 'cheque bounce notice'); fdA.append('files', new Blob([pngBuf]), 'cheque.png'); fdA.append('files', new Blob(['hello facts']), 'facts.txt');
   r = await staff('POST', '/api/ai/draft', fdA); ok(r.s === 200 && r.j.id, 'staff drafts from image + text ' + JSON.stringify(r.j));
@@ -306,7 +307,7 @@ async function setup(c, invite, pw) { const tok = invite.split('/').pop(); retur
   r = await staff('GET', '/api/leads'); const chatLead = r.j.find((x) => x.source === 'website chat'); ok(chatLead && chatLead.name === 'Asha Roy' && chatLead.issue.includes('Cheque bounce'), 'chatLead saved from chat');
   r = await tele('GET', '/api/chats'); ok(r.s === 200 && r.j.length === 1, 'staff see chats'); const chid = r.j[0].id; r = await tele('GET', '/api/chats/' + chid); ok(r.j.messages.length === 2 && !r.j.token, 'transcript without token');
   r = await visitor('POST', '/api/public/chat/nonexistent/message', { text: 'hi' }); ok(r.s === 404, 'badFd chat token');
-  await admin('PUT', '/api/ai-admin', { on: { chat: false } }); r = await visitor('POST', `/api/public/chat/${ctok}/message`, { text: 'hi' }); ok(r.s === 404, 'chat off stops sessions'); await admin('PUT', '/api/ai-admin', { on: { chat: true } });
+  await sa('PUT', KFP + '/ai-admin', { on: { chat: false } }); r = await visitor('POST', `/api/public/chat/${ctok}/message`, { text: 'hi' }); ok(r.s === 404, 'chat off stops sessions'); await sa('PUT', KFP + '/ai-admin', { on: { chat: true } });
 
   // email
   const sentMails = []; let inboxMsgs = [];
@@ -329,9 +330,9 @@ async function setup(c, invite, pw) { const tok = invite.split('/').pop(); retur
   r = await staff('POST', `/api/mail/replies/${repId}/schedule`, {}); ok(r.s === 200, 'approve & send now'); await new Promise((z) => setTimeout(z, 200)); ok(sentMails.length === 2 && sentMails[1].text === 'Edited ack', 'approved reply sentMails');
   r = await staff('POST', '/api/mail/compose', { to: 'a@b.com', instruction: 'ask for documents' }); ok(r.s === 200 && r.j.id, 'compose draft');
   r = await tele('GET', '/api/mail'); ok(r.s === 403, 'telecaller no mail');
-  r = await admin('POST', '/api/ai-admin/test-mail', {}); ok(r.s === 200 && r.j.imap === 'ok', 'mailbox test');
-  await admin('PUT', '/api/ai-admin', { on: { email: false } }); r = await staff('GET', '/api/mail'); ok(r.s === 403, 'mail blocked when off');
-  r = await admin('GET', '/api/ai-admin'); ok(r.j.usage.some((u) => u.feature === 'drafting' && u.calls >= 2), 'usage metered');
+  r = await sa('POST', KFP + '/ai-admin/test-mail', {}); ok(r.s === 200 && r.j.imap === 'ok', 'mailbox test');
+  await sa('PUT', KFP + '/ai-admin', { on: { email: false } }); r = await staff('GET', '/api/mail'); ok(r.s === 403, 'mail blocked when off');
+  r = await sa('GET', KFP + '/ai-admin'); ok(r.j.usage.some((u) => u.feature === 'drafting' && u.calls >= 2), 'usage metered');
   AIc.setTransport(null);
 
   console.log(`\n${pass} passed, ${fail} failed`);

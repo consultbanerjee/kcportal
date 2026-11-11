@@ -142,7 +142,7 @@ function startWorker() {
 
 module.exports = (app) => {
   const T = (req) => req.user.tenant_id;
-  const gate = [L.need('admin', 'advocate', 'staff'), (req, res, next) => (AI.on(T(req), 'email') ? next() : res.status(403).json({ error: 'The email assistant is switched off. Ask the administrator to turn it on in AI Control.' }))];
+  const gate = [L.need('admin', 'advocate', 'staff'), (req, res, next) => (AI.on(T(req), 'email') ? next() : res.status(403).json({ error: 'This service is not active for your firm. Please contact the portal provider.' }))];
   const mailOf = (req, id) => db.prepare('SELECT * FROM mail_messages WHERE id=? AND tenant_id=?').get(id, T(req));
   const repOf = (req, id) => db.prepare('SELECT * FROM mail_replies WHERE id=? AND tenant_id=?').get(id, T(req));
 
@@ -158,7 +158,7 @@ module.exports = (app) => {
     res.json({ ...m, replies: db.prepare('SELECT * FROM mail_replies WHERE mail_id=? ORDER BY id DESC').all(m.id) });
   });
   app.post('/api/mail/poll', gate, async (req, res) => {
-    if (!ready(conf(T(req)))) return res.status(400).json({ error: 'Mailbox is not set up. The administrator must enter it in AI Control.' });
+    if (!ready(conf(T(req)))) return res.status(400).json({ error: 'The mailbox is not set up for your firm. Please contact the portal provider.' });
     try { res.json(await poll(T(req))); } catch (e) { res.status(502).json({ error: 'Could not read the mailbox: ' + String(e.message).slice(0, 120) }); }
   });
   app.post('/api/mail/compose', gate, async (req, res) => {
@@ -186,7 +186,7 @@ module.exports = (app) => {
   });
   app.post('/api/mail/replies/:rid/schedule', gate, (req, res) => {
     const r = repOf(req, req.params.rid); if (!r || !['draft', 'scheduled', 'failed'].includes(r.status)) return res.status(404).json({ error: 'Not found or already sent.' });
-    if (!L.must(res, sendReady(conf(T(req))), 'Sending is not set up. The administrator must add the outgoing (SMTP) details in AI Control.')) return;
+    if (!L.must(res, sendReady(conf(T(req))), 'E-mail sending is not set up for your firm. Please contact the portal provider.')) return;
     if (!L.must(res, /^[^@\s]+@[^@\s]+\.[^@\s]+$/.test(r.to_addr), 'Recipient email is not valid.')) return;
     let at = req.body.send_at ? Date.parse(req.body.send_at) : Date.now();
     if (!L.must(res, !isNaN(at), 'Invalid time.')) return;
@@ -201,5 +201,5 @@ module.exports = (app) => {
 module.exports.setMailer = setMailer; module.exports.startWorker = startWorker; module.exports.poll = poll; module.exports.sendDue = sendDue; module.exports.verify = (tid) => M().verify(conf(tid));
 module.exports.conf = conf;
 
-module.exports.mailReady = (tid) => sendReady(conf(tid));
-module.exports.sendMail = async (tid, m) => { const c = conf(tid); if (!sendReady(c)) throw new Error('E-mail sending is not set up (AI Control → mailbox).'); await M().send(c, m); };
+module.exports.mailReady = (tid) => !!AI.svc(tid, 'mailout') && !!sendReady(conf(tid));
+module.exports.sendMail = async (tid, m) => { const c = conf(tid); if (!m.system && !AI.svc(tid, 'mailout')) throw new Error('E-mail sending is not active for your firm. Please contact the portal provider.'); if (!sendReady(c)) throw new Error('E-mail sending is not set up for your firm. Please contact the portal provider.'); await M().send(c, m); };

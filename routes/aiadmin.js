@@ -13,10 +13,6 @@ const SECRETS = ['ai_key', 'mail_imap_pass', 'mail_smtp_pass'];
 
 module.exports = (app) => {
   const T = (req) => req.user.tenant_id;
-  app.get('/api/features', L.requireLogin, (req, res) => {
-    if (!req.user.tenant_id || req.user.role === 'client' || req.user.role === 'superadmin') return res.json({});
-    res.json(Object.fromEntries(TOG.map((f) => [f, AI.on(req.user.tenant_id, f)])));
-  });
   app.get('/api/ai-admin', L.need('admin'), (req, res) => {
     const t = T(req), g = (k, d = '') => AI.getS(t, k, d);
     const usage = db.prepare("SELECT feature, COUNT(*) calls, COALESCE(SUM(in_tok),0) in_tok, COALESCE(SUM(out_tok),0) out_tok FROM ai_usage WHERE tenant_id=? AND created_at>=date('now','start of month') GROUP BY feature").all(t);

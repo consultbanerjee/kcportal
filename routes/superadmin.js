@@ -94,7 +94,7 @@ module.exports = (app) => {
     const firms = db.prepare("SELECT id,name,slug,active FROM tenants WHERE kind='firm' ORDER BY id").all().map((f) => {
       const u = usageOf(f.id, month), g = (k, d) => AI.getS(f.id, k, d);
       const due = db.prepare("SELECT COALESCE(SUM(total_paise),0) v, COUNT(*) n FROM sub_invoices WHERE tenant_id=? AND status='due'").get(f.id);
-      return { ...f, plan: g('sa_plan', 'premium'), fee_paise: L.int(g('sa_fee', '0')) || 0, off: offList(f.id), claude: g('sa_claude', '1') === '1', ecourts: g('sa_ecourts', '1') === '1', markup: u.markup, ai_bill: g('sa_ai_bill', '1') === '1',
+      return { ...f, plan: g('sa_plan', 'premium'), fee_paise: L.int(g('sa_fee', '0')) || 0, off: offList(f.id), claude: AI.svcFirm(f.id, 'claude'), ecourts: AI.svcFirm(f.id, 'courtdata'), markup: u.markup, ai_bill: g('sa_ai_bill', '1') === '1',
         autosuspend: g('sa_autosuspend', '0') === '1', exempt: g('sa_exempt', '0') === '1', grace: L.int(g('sa_grace', '15')) || 15, net: L.int(g('sa_net', '10')) || 10, powered: g('sa_powered', ''), usage: u, due_paise: due.v, due_n: due.n,
         drive: !!AI.dec(g('drive_refresh', '')),
         users: db.prepare("SELECT COUNT(*) n FROM users WHERE tenant_id=? AND role<>'client' AND active=1").get(f.id).n };
@@ -187,7 +187,6 @@ module.exports = (app) => {
       ['Firm name, address, phone and email', !!(s.address && s.phone && s.email), '#/template'],
       ['Logo and letterhead', !!(tpl.has_logo || tpl.has_letterhead), '#/template'],
       ['Bank details and PAN for invoices', !!(s.payment_details || s.pan), '#/template'],
-      ['Connect your Google Drive', !!AI.dec(AI.getS(t, 'drive_refresh', '')), '#/settings'],
       ['Add your team', c("SELECT COUNT(*) n FROM users WHERE tenant_id=? AND role NOT IN ('admin','client')") > 0, '#/team'],
       ['Add your first client', c('SELECT COUNT(*) n FROM clients WHERE tenant_id=?') > 0, '#/clients'],
       ['Open your first case', c('SELECT COUNT(*) n FROM matters WHERE tenant_id=?') > 0, '#/matters'],

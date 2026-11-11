@@ -8,9 +8,28 @@ const { db, DATA_DIR } = require('./db');
 // ---- settings (key/value per firm) ----
 const getS = (tid, key, def = '') => { const r = db.prepare('SELECT value FROM firm_settings WHERE tenant_id=? AND key=?').get(tid, key); return r && r.value != null ? r.value : def; };
 const setS = (tid, key, value) => db.prepare('INSERT INTO firm_settings(tenant_id,key,value) VALUES (?,?,?) ON CONFLICT(tenant_id,key) DO UPDATE SET value=excluded.value').run(tid, key, value == null ? '' : String(value));
-// The Super Admin can switch Claude off for the whole platform or for one firm.
-const allowed = (tid) => getS(0, 'sa_claude_all', '1') === '1' && getS(tid, 'sa_claude', '1') === '1';
-const on = (tid, feature) => getS(tid, 'ai_' + feature, '0') === '1' && allowed(tid);
+// ---- Super Admin service switches ----
+// Every service that carries a running cost (or an outside connection) has a platform master switch and a per-firm switch,
+// both controlled only by the Super Admin. New firms start with everything OFF; the first firm (the owner's own) keeps what it had.
+const firstFirm = () => { const r = db.prepare("SELECT id FROM tenants WHERE kind='firm' ORDER BY id LIMIT 1").get(); return r ? r.id : 0; };
+const dflt = (tid) => (tid === firstFirm() ? '1' : '0');
+const SVC_MASTER = { claude: 'sa_claude_all', courtdata: 'sa_ecourts_all' };
+const svcMaster = (id) => getS(0, SVC_MASTER[id] || 'svc_m_' + id, '1') === '1';
+function svcFirm(tid, id) {
+  if (id === 'claude') return getS(tid, 'sa_claude', dflt(tid)) === '1';
+  if (id === 'courtdata') return getS(tid, 'sa_ecourts', dflt(tid)) === '1';
+  if (id === 'drafting' || id === 'email' || id === 'chat') return getS(tid, 'ai_' + id, '0') === '1';
+  return getS(tid, 'svc_' + id, dflt(tid)) === '1';
+}
+function setSvcFirm(tid, id, v) {
+  const k = id === 'claude' ? 'sa_claude' : id === 'courtdata' ? 'sa_ecourts' : (id === 'drafting' || id === 'email' || id === 'chat') ? 'ai_' + id : 'svc_' + id;
+  setS(tid, k, v ? '1' : '0');
+}
+const setSvcMaster = (id, v) => setS(0, SVC_MASTER[id] || 'svc_m_' + id, v ? '1' : '0');
+const allowed = (tid) => svcMaster('claude') && svcFirm(tid, 'claude');
+const CLAUDE_SVC = ['drafting', 'email', 'chat', 'args'];
+const svc = (tid, id) => svcMaster(id) && svcFirm(tid, id) && (!CLAUDE_SVC.includes(id) || allowed(tid));
+const on = (tid, feature) => svc(tid, feature);
 
 // ---- secrets: AES-256-GCM, key from SECRET_KEY env or an auto-generated file in the data dir ----
 function masterKey() {
@@ -51,7 +70,7 @@ async function call(tid, feature, { system, messages, tools, tool_choice, max_to
   if (transport) res = await transport(body, { tid, feature });
   else {
     const key = apiKey(tid);
-    if (!key) throw Object.assign(new Error('AI is not set up yet. The administrator must add the API key in AI Control.'), { status: 503 });
+    if (!key) throw Object.assign(new Error('The AI service is not active yet. Please contact the portal provider.'), { status: 503 });
     const ctl = new AbortController(), timer = setTimeout(() => ctl.abort(), timeoutMs);
     let r;
     try {
@@ -64,7 +83,7 @@ async function call(tid, feature, { system, messages, tools, tool_choice, max_to
     const j = await r.json().catch(() => ({}));
     if (!r.ok) {
       console.error('AI error', r.status, j && j.error && j.error.message);
-      const msg = r.status === 401 ? 'The AI API key is not valid. The administrator should check it in AI Control.' : r.status === 429 ? 'The AI service is busy or the usage limit is reached. Please try again shortly.' : 'The AI service could not complete this request.';
+      const msg = r.status === 401 ? 'The AI service is not available right now. Please contact the portal provider.' : r.status === 429 ? 'The AI service is busy or the usage limit is reached. Please try again shortly.' : 'The AI service could not complete this request.';
       throw Object.assign(new Error(msg), { status: 502 });
     }
     res = j;
@@ -80,4 +99,4 @@ function firmInfo(tid) {
   return { name: t.name || 'the firm', phone: s.phone || '', email: s.email || '', address: s.address || '', website: s.website || '', signatory: [s.signatory_name, s.signatory_title].filter(Boolean).join(', ') };
 }
 
-module.exports = { allowed, getS, setS, on, enc, dec, secret, setSecret, setTransport, call, textOf, configured, apiKey, model, firmInfo };
+module.exports = { allowed, svc, svcFirm, svcMaster, setSvcFirm, setSvcMaster, firstFirm, getS, setS, on, enc, dec, secret, setSecret, setTransport, call, textOf, configured, apiKey, model, firmInfo };

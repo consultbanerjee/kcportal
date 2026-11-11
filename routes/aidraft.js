@@ -82,7 +82,7 @@ function splitOut(t) {
 module.exports = (app) => {
   app.locals.aiDoc = { blockFor, textBlock, extOf, fmtOf, safeName };
   const T = (req) => req.user.tenant_id;
-  const gate = [L.need('admin', 'advocate', 'staff'), (req, res, next) => (AI.on(T(req), 'drafting') ? next() : res.status(403).json({ error: 'AI Drafting is switched off for your firm. Ask the administrator to turn it on in AI Control.' }))];
+  const gate = [L.need('admin', 'advocate', 'staff'), (req, res, next) => (AI.on(T(req), 'drafting') ? next() : res.status(403).json({ error: 'This service is not active for your firm. Please contact the portal provider.' }))];
   const gen = rateLimit({ windowMs: 3600000, limit: 60, keyGenerator: (req) => 'd' + req.user.id, validate: false, message: { error: 'Too many drafts this hour. Please wait.' } });
   const own = (req, id) => { const d = db.prepare('SELECT * FROM ai_drafts WHERE id=? AND tenant_id=?').get(id, T(req)); return d && (req.user.role !== 'staff' || d.user_id === req.user.id) ? d : null; };
   const fsH = () => app.locals.fsHelpers;
@@ -252,7 +252,7 @@ module.exports = (app) => {
     if (req.body.email) {
       const to = L.str(req.body.to, 200);
       if (!/^[^@\s]+@[^@\s]+\.[^@\s]+$/.test(to)) return res.status(400).json({ error: 'Enter a valid e-mail address.' });
-      const M = require('./aimail'); if (!M.mailReady(t)) return res.status(400).json({ error: 'E-mail sending is not set up yet (AI Control → mailbox). You can still send the link on WhatsApp.' });
+      const M = require('./aimail'); if (!M.mailReady(t)) return res.status(400).json({ error: 'E-mail sending is not set up for your firm. You can still send the link on WhatsApp.' });
       let total = 0; const atts = [];
       for (const n of pick) { const x = fileOf(d, n); if (x && total + x.f.size <= 18 * 1024 * 1024) { total += x.f.size; atts.push({ filename: x.f.name, content: fs.readFileSync(x.p) }); } }
       try { await M.sendMail(t, { to, subject: L.str(req.body.subject, 200) || d.title, text: `${msg ? msg + '\n\n' : ''}${atts.length < pick.length ? 'Some files were too large to attach; download all files here (valid 30 days):\n' : 'The documents are attached. You can also download them here (valid 30 days):\n'}${link}\n\nRegards,\n${firm}`, attachments: atts }); out.emailed = to; out.attached = atts.length; }

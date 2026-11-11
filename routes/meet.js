@@ -113,7 +113,7 @@ module.exports = (app) => {
   const part = (a, rid) => path.join(REC_DIR, `${a.id}-${/^[a-f0-9]{16}$/.test(rid) ? rid : 'x'}.part`);
   app.post('/api/appointments/:id/recording/start', host, (req, res) => {
     const a = load(req, res); if (!a) return;
-    if (!Drive.connected(T(req))) return res.status(409).json({ error: 'Connect Google Drive first (Files → Storage settings) so recordings have somewhere to go.' });
+    if (!Drive.connected(T(req))) return res.status(409).json({ error: 'The storage service is not active for your firm yet. Please contact the portal provider.' });
     if (!a.client_id) return res.status(409).json({ error: 'This booking has no client record yet.' });
     fs.mkdirSync(REC_DIR, { recursive: true }); const rid = L.rand(8);
     fs.writeFileSync(part(a, rid), ''); audit(T(req), req.user.id, 'recording_started', 'appointment', a.id, null, L.ip(req));

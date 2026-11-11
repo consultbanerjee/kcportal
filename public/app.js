@@ -35,7 +35,7 @@ async function api(method, url, body) {
   let j = null; try { j = await r.json(); } catch (e) {}
   if (r.status === 403 && ME && ME.role === 'client' && !url.startsWith('/api/login')) { const j403 = await r.clone().json().catch(() => ({})); if (j403.blocked) { ME = null; location.hash = '#/login'; toast(j403.error, true); throw new Error(j403.error); } }
   if (r.status === 401 && !url.startsWith('/api/login') && !url.startsWith('/api/me')) { ME = null; location.hash = '#/login'; throw new Error('Please sign in.'); }
-  if (!r.ok) { const er = new Error((j && j.error) || 'Something went wrong.'); if (j && j.choices) er.choices = j.choices; throw er; }
+  if (!r.ok) { const er = new Error((j && j.error) || 'Something went wrong.'); if (j && j.choices) er.choices = j.choices; if (j && j.need_code) er.need_code = true; throw er; }
   return j;
 }
 const GET = (u) => api('GET', u), POST = (u, b) => api('POST', u, b || {}), PUT = (u, b) => api('PUT', u, b), PATCH = (u, b) => api('PATCH', u, b), DEL = (u) => api('DELETE', u);
@@ -121,11 +121,12 @@ function on(root, ev, sel, fn) { root.addEventListener(ev, (e) => { const t = e.
 
 // Each item is [href, label, group]. Items with a group are shown under that group's heading in the left panel.
 function navItems() {
-  if (ME.role === 'superadmin') return [['#/firms', 'Firms'], ['#/account', 'Account']];
+  if (ME.role === 'superadmin') return [['#/firms', 'Firms and services'], ['#/journal', 'Build Journal'], ['#/account', 'Account']];
   if (isClient()) return [['#/', 'Home'], ['#/matters', 'My cases'], ['#/myfiles', 'My files'], ['#/letters', 'Letters'], ['#/messages', 'Messages'], ['#/livechat', 'Live chat'], ['#/invoices', 'Fees'], ['#/book', 'Book']];
   const r = ME.role, LG = 'Litigation', n = [['#/', 'Home']], pro = ['admin', 'advocate', 'staff'].includes(r), mod = (k) => !(MODS.off || []).includes(k);
   n.push(['#/clients', 'Clients', LG]);
-  if (pro) n.push(['#/matters', 'Cases', LG], ['#/ecourts', 'Court search', LG], ['#/causelist', 'Cause list', LG]);
+  if (pro) n.push(['#/matters', 'Cases', LG]);
+  if (pro && FEAT.courtdata) n.push(['#/ecourts', 'Court search', LG], ['#/causelist', 'Cause list', LG]);
   n.push(['#/tasks', 'Tasks', LG]);
   if (mod('calendar')) n.push(['#/calendar', 'Calendar', LG]);
   if (pro || r === 'accounts') n.push(['#/files', 'Files', LG]);
@@ -143,7 +144,7 @@ function navItems() {
   if (mod('accounts') && ['admin', 'advocate', 'accounts'].includes(r)) n.push(['#/accounts', 'Accounts']);
   if (mod('judgments') && r !== 'telecaller' && r !== 'accounts') n.push(['#/judgments', 'Judgments']);
   if (mod('repository')) REPO_CATS.forEach(([sl, nm]) => n.push(['#/repository/' + sl, nm, 'Repository']));
-  if (r === 'admin') n.push(['#/alerts', 'Alerts', 'Settings'], ['#/courtdata', 'Court data', 'Settings'], ['#/ai', 'AI Control', 'Settings'], ['#/template', 'Design', 'Settings'], ['#/team', 'Team', 'Settings'], ['#/settings', 'Firm settings', 'Settings'], ['#/plan', 'Plan and usage', 'Settings']);
+  if (r === 'admin') n.push(['#/alerts', 'Alerts', 'Settings'], ['#/template', 'Design', 'Settings'], ['#/team', 'Team', 'Settings'], ['#/settings', 'Firm settings', 'Settings'], ['#/plan', 'Plan and usage', 'Settings']);
   return n;
 }
 const REPO_CATS = [['all', 'All sections'], ['courts', 'Courts'], ['high-courts', 'All High Courts'], ['tribunals', 'Tribunals'], ['forums', 'Forums'], ['authorities', 'Authorities'], ['legislatures', 'Parliament and Assemblies'], ['intl-india', 'International courts (India)'], ['intl-other', 'International courts (other)'], ['elibrary', 'eLibrary & Research'], ['govt-repos', 'Government repositories'], ['news-world', 'Newspapers: world'], ['news-india', 'Newspapers: India'], ['news-legal', 'Legal news'], ['central-services', 'Central Govt Services'], ['wb-services', 'West Bengal Govt Services'], ['bodies', 'Professional bodies']];
@@ -190,7 +191,7 @@ async function go() {
     if (!m) continue;
     if (!r.public) {
       if (!ME) { location.hash = '#/login'; return; }
-      if (ME.role === 'superadmin' && !['/firms', '/account', '/logout'].includes(path)) { location.hash = '#/firms'; return; }
+      if (ME.role === 'superadmin' && !/^\/(firms|account|logout|journal|fcfg\/\d+)$/.test(path)) { location.hash = '#/firms'; return; }
       if (r.roles && !r.roles.includes(ME.role)) { layout(); view('<div class="card">You do not have access to this page.</div>'); return; }
       if (r.office && isClient()) { location.hash = '#/'; return; }
       if (r.client && !isClient()) { location.hash = '#/'; return; }
@@ -200,7 +201,9 @@ async function go() {
     catch (e) { if (tok === navToken && $('#view')) view(`<div class="card"><p class="err">${esc(e.message)}</p></div>`); else if (tok === navToken) toast(e.message, true); }
     return;
   }
-  view('<div class="card">Page not found.</div>');
+  if (!ME) { location.hash = '#/login'; return; }
+  if (ME.role === 'superadmin' && !/^\/(firms|account|logout|journal|fcfg\/\d+)$/.test(path)) { location.hash = '#/firms'; return; }
+  layout(); view('<div class="card">Page not found.</div>');
 }
 window.addEventListener('hashchange', go);
 
@@ -219,10 +222,10 @@ route(/^\/login(?:\/(client|firm|admin))?$/, async ([kind]) => {
   if (FIRMQ) { try { const pf = await GET('/api/public/firm?firm=' + encodeURIComponent(FIRMQ)); if (pf && pf.name) FIRM = pf.name; } catch (e) {} }
   const k = LOGIN_KINDS[kind] || { h: 'Login', p: 'One login for everyone: clients, advocates, staff, administrators and law firms. After you sign in you are taken to your own pages. New clients receive a private invitation link from the office to set a password.' };
   authShell(`<h2>${k.h}</h2><form id="lf"><label>Email</label><input name="email" type="email" autocomplete="username" required>
-    <label>Password</label><input name="password" type="password" autocomplete="current-password" required><p class="err" hidden></p>
+    <label>Password</label><input name="password" type="password" autocomplete="current-password" required><div id="cdw" hidden><label>6-digit code from your authenticator app</label><input name="code" inputmode="numeric" autocomplete="one-time-code" maxlength="7" placeholder="123456"></div><p class="err" hidden></p>
     <div style="margin-top:1rem"><button class="btn" style="width:100%">Sign in</button></div></form>
     <p style="margin:.8rem 0 0"><a href="#/forgot${FIRMQ ? '?firm=' + encodeURIComponent(FIRMQ) : ''}">Forgot password?</a></p>`);
-  const doLogin = async (f, firm) => { await POST('/api/login', { email: f.email.value, password: f.password.value, as: kind || '', firm: firm || FIRMQ || '' }); try { Object.keys(localStorage).filter((k) => k.startsWith('kc-nav-')).forEach((k) => localStorage.removeItem(k)); } catch (e) {} await loadMe(); location.hash = '#/'; go(); };
+  const doLogin = async (f, firm) => { await POST('/api/login', { email: f.email.value, password: f.password.value, code: f.code ? f.code.value : '', as: kind || '', firm: firm || FIRMQ || '' }); try { Object.keys(localStorage).filter((k) => k.startsWith('kc-nav-')).forEach((k) => localStorage.removeItem(k)); } catch (e) {} await loadMe(); location.hash = '#/'; go(); };
   $('#lf').onsubmit = async (e) => {
     e.preventDefault(); const f = e.target, err = $('.err', f), b = $('button', f); b.disabled = true; err.hidden = true;
     try { await doLogin(f); }
@@ -230,7 +233,7 @@ route(/^\/login(?:\/(client|firm|admin))?$/, async ([kind]) => {
       if (ex.choices) {
         err.hidden = false; err.innerHTML = 'This email is registered with more than one firm. Which firm do you want to open?<br>' + ex.choices.map((c) => `<button type="button" class="btn ghost pick" data-s="${esc(c.slug)}" style="margin:.3rem .3rem 0 0">${esc(c.name)}</button>`).join('');
         $$('.pick', f).forEach((x) => { x.onclick = async () => { try { await doLogin(f, x.dataset.s); } catch (e2) { err.textContent = e2.message; } }; });
-      } else { err.hidden = false; err.textContent = ex.message; }
+      } else { err.hidden = false; err.textContent = ex.message; if (ex.need_code) { $('#cdw').hidden = false; f.code.focus(); } }
       b.disabled = false;
     }
   };
@@ -257,15 +260,32 @@ route(/^\/invite\/([a-f0-9]+)$/, async ([tok]) => {
   };
 }, { public: true });
 
-route(/^\/logout$/, async () => { try { await POST('/api/logout'); } catch (e) {} ME = null; location.hash = '#/login'; }, { public: true });
+route(/^\/logout$/, async () => { try { await POST('/api/logout'); } catch (e) {} ME = null; location.replace('/#/login'); location.reload(); }, { public: true });
 
 route(/^\/account$/, async () => {
+  const tf = await GET('/api/2fa').catch(() => ({ on: false }));
   view(`<h1>Account</h1><div class="card"><b>${esc(ME.name)}</b><div class="mute">${esc(ME.email)} · ${esc(ME.role)}</div></div>
-    <div class="card"><h2>Change password</h2><button class="btn" id="cp">Change password</button></div>`);
+    <div class="card"><h2>Change password</h2><button class="btn" id="cp">Change password</button></div>
+    <div class="card"><h2>Two-step sign-in</h2><p class="mute">Adds a 6-digit code from an authenticator app (Google Authenticator, Microsoft Authenticator, Authy) to your password. Strongly recommended for administrators.</p>
+      <p>Status: ${tf.on ? pill('on', 'ok') : pill('off', 'warn')}</p><button class="btn ${tf.on ? 'ghost' : 'gold'}" id="tf">${tf.on ? 'Turn off' : 'Turn on'}</button></div>`);
   $('#cp').onclick = () => ask('Change password', [
     { name: 'current', label: 'Current password', type: 'password', required: true },
     { name: 'next', label: 'New password', type: 'password', required: true, hint: 'At least 10 characters with letters and numbers.' }],
     'Change', async (v) => { await POST('/api/password', { current: v.current, next: v.next }); toast('Password changed.'); });
+  $('#tf').onclick = async () => {
+    if (tf.on) { ask('Turn off two-step sign-in', [{ name: 'password', label: 'Password', type: 'password', required: true }, { name: 'code', label: 'Current 6-digit code', required: true }], 'Turn off', async (v) => { await POST('/api/2fa/disable', v); toast('Two-step sign-in is off.'); go(); }); return; }
+    const r = await POST('/api/2fa/start');
+    ask('Turn on two-step sign-in', [{ name: 'code', label: 'Enter the 6-digit code shown in the app', required: true, hint: 'Scan this QR in your authenticator app, or type the key: ' + r.secret }], 'Turn on', async (v) => { await POST('/api/2fa/enable', { code: v.code }); toast('Two-step sign-in is on.'); go(); });
+    const m = $('.modal'); if (m) m.querySelector('h3').insertAdjacentHTML('afterend', `<div style="text-align:center"><img src="${r.qr}" alt="QR code" width="200" height="200"></div>`);
+  };
 });
 
-async function loadMe() { const r = await GET('/api/me'); ME = r.user; FIRM = r.tenant.name; FEAT = {}; MODS = { off: [], powered: '', product: '' }; if (ME) { try { MODS = await GET('/api/modules'); } catch (e) {} } if (ME && ME.role !== 'client' && ME.role !== 'superadmin') { try { FEAT = await GET('/api/features'); } catch (e) {} } }
+/* application scripts are delivered only after sign-in (Super Admin scripts only to the Super Admin) */
+let BUNDLED = false;
+async function loadBundle() {
+  if (BUNDLED || !ME) return;
+  const files = (await GET('/api/bundle')).files || [];
+  await Promise.all(files.map((n) => new Promise((ok, no) => { const s = document.createElement('script'); s.src = '/x/' + n + '.js'; s.async = false; s.onload = ok; s.onerror = () => no(new Error('Could not load the application.')); document.body.appendChild(s); })));
+  BUNDLED = true;
+}
+async function loadMe() { const r = await GET('/api/me'); ME = r.user; FIRM = r.tenant.name; FEAT = {}; MODS = { off: [], powered: '', product: '' }; if (ME) { try { MODS = await GET('/api/modules'); } catch (e) {} } if (ME && ME.role !== 'client' && ME.role !== 'superadmin') { try { FEAT = await GET('/api/features'); } catch (e) {} } if (ME) await loadBundle(); }

@@ -229,7 +229,7 @@ async function nightly() {
   if (running) return; running = true;
   try {
     for (const f of db.prepare("SELECT id FROM tenants WHERE kind='firm' AND active=1").all()) {
-      if (!AI.on(f.id, 'drafting') || !AI.configured(f.id) || AI.getS(f.id, 'args_auto', '1') !== '1') continue;
+      if (!AI.svc(f.id, 'args') || !AI.configured(f.id) || AI.getS(f.id, 'args_auto', '1') !== '1') continue;
       const cap = Math.min(40, L.int(AI.getS(f.id, 'args_daily_cap', '8')) || 8); let done = 0;
       for (const m of db.prepare("SELECT m.* FROM matters m LEFT JOIN case_args_cfg c ON c.matter_id=m.id WHERE m.tenant_id=? AND m.status='open' AND COALESCE(c.auto,1)=1 ORDER BY COALESCE(c.last_run,'') ASC").all(f.id)) {
         if (done >= cap) break;
@@ -246,7 +246,7 @@ const startWorker = () => {
 module.exports = (app) => {
   APP = app;
   const T = (req) => req.user.tenant_id;
-  const gate = [L.need('admin', 'advocate', 'staff'), (req, res, next) => (AI.on(T(req), 'drafting') ? next() : res.status(403).json({ error: 'AI Drafting is switched off for your firm. Ask the administrator to turn it on in AI Control.' }))];
+  const gate = [L.need('admin', 'advocate', 'staff'), (req, res, next) => (AI.svc(T(req), 'args') ? next() : res.status(403).json({ error: 'This service is not active for your firm. Please contact the portal provider.' }))];
   const matterOf = (req) => db.prepare('SELECT * FROM matters WHERE id=? AND tenant_id=?').get(L.int(req.params.id), T(req));
   try { db.prepare("UPDATE case_args SET status=CASE WHEN output IS NULL OR output='' THEN 'failed' ELSE 'ready' END, error='The server restarted while this was being prepared. Press Prepare again.' WHERE status='working'").run(); } catch (e) {}
 

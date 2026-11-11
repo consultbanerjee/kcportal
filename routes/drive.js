@@ -32,7 +32,7 @@ const cfg = (t) => ({
   email: S(t, 'drive_email'), keep_local: S(t, 'drive_keep_local') === '1',
 });
 const configured = (t) => { const c = cfg(t); return !!(c.client_id && c.client_secret); };
-const connected = (t) => !!cfg(t).refresh;
+const connected = (t) => !!cfg(t).refresh && AI.svc(t, 'drive');
 
 const tokens = new Map();
 async function accessToken(t) {
@@ -439,10 +439,10 @@ module.exports = (app) => {
       access_type: 'offline', prompt: 'consent', state: t + '.' + state }).toString());
   });
   app.get('/api/storage/callback', async (req, res) => {
-    const back = (m) => res.redirect('/#/storage?' + m);
+    let backT = 0; const back = (m) => res.redirect('/#/fcfg/' + backT + '?tab=drive&' + m);
     try {
       const [tid, st] = String(req.query.state || '').split('.');
-      const t = parseInt(tid, 10), saved = (S(t, 'drive_state') || '').split(':');
+      const t = backT = parseInt(tid, 10), saved = (S(t, 'drive_state') || '').split(':');
       if (!t || !st || saved[0] !== st || Date.now() - Number(saved[1]) > 15 * 60000) return back('err=' + encodeURIComponent('Connection link expired. Try again.'));
       AI.setS(t, 'drive_state', '');
       if (req.query.error) return back('err=' + encodeURIComponent('Google said: ' + req.query.error));

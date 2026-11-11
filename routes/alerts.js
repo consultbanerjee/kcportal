@@ -80,10 +80,9 @@ function checksFor(t) {
 
   safe('ai', () => {
     const on = (f) => AI.getS(t, 'ai_' + f, '0') === '1';
-    if ((on('drafting') || on('email') || on('chat')) && !AI.apiKey(t)) add('ai:key', 'high', 'AI', 'AI features are on but no Claude key is saved', 'Drafting, email and chat will fail until a key is added.', '#/ai');
-    if (on('drafting') && !AI.getS(t, 'ai_draft_model')) add('ai:model', 'info', 'AI', 'Drafting uses the standard model', 'For petitions choose the strongest model under AI Control → "Model for drafting only".', '#/ai');
+    if ((on('drafting') || on('email') || on('chat')) && !AI.apiKey(t)) add('ai:key', 'high', 'AI', 'An AI service is not ready', 'Please contact the portal provider.', '');
     const e = AI.getS(t, 'mail_last_error');
-    if (on('email') && e) add('ai:mail', 'high', 'AI', 'The email assistant cannot log in to the mailbox', 'Last error: ' + e + '. Re-enter the mailbox login in AI Control.', '#/ai');
+    if (on('email') && e) add('ai:mail', 'high', 'AI', 'The e-mail assistant is not working', 'Please contact the portal provider.', '');
     const f = one("SELECT COUNT(*) n FROM ai_drafts WHERE tenant_id=? AND status='failed' AND created_at>=date('now','-7 day')", t).n;
     if (f) add('ai:failed', 'medium', 'AI', `${plural(f, 'AI draft')} failed this week`, 'Open Drafting Desk and press Prepare draft again.', '#/draft');
   });

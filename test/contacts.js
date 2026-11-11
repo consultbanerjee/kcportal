@@ -20,9 +20,12 @@ const srv = app.listen(0), base = 'http://127.0.0.1:' + srv.address().port;
 function client() { let cookie = ''; return async (method, url, body) => { const h = { 'X-Requested-With': 'kcportal', cookie }; let b = body; if (body) { h['Content-Type'] = 'application/json'; b = JSON.stringify(body); }
   const r = await fetch(base + url, { method, headers: h, body: b }); const sc = r.headers.get('set-cookie'); if (sc) cookie = sc.split(';')[0]; let j = null; try { j = await r.json(); } catch (e) {} return { s: r.status, j }; }; }
 (async () => {
-  const admin = client(), tok = db.prepare("SELECT invite_token t FROM users WHERE role='admin' AND email='kclegal.in@gmail.com'").get().t;
-  await admin('POST', '/api/invite/' + tok, { password: 'StrongPass123' }); await admin('POST', '/api/login', { email: 'kclegal.in@gmail.com', password: 'StrongPass123' });
+  const admin0 = client(), tok = db.prepare("SELECT invite_token t FROM users WHERE role='admin' AND email='kclegal.in@gmail.com'").get().t;
+  await admin0('POST', '/api/invite/' + tok, { password: 'StrongPass123' }); await admin0('POST', '/api/login', { email: 'kclegal.in@gmail.com', password: 'StrongPass123' });
   const t = db.prepare("SELECT id FROM tenants WHERE kind='firm'").get().id;
+  const sa0 = client(); { const stk = db.prepare("SELECT invite_token t FROM users WHERE role='superadmin'").get().t; await sa0('POST', '/api/invite/' + stk, { password: 'SuperPass123' }); await sa0('POST', '/api/login', { email: 'consultbanerjee@gmail.com', password: 'SuperPass123' }); }
+  const LK = /^\/api\/(whatsapp$|reminders|contacts|calendar\/(settings|refresh)$|storage)/;
+  const admin = (m, u, b, f) => (LK.test(u) ? sa0(m, '/api/platform/f/' + t + u.slice(4), b, f) : admin0(m, u, b, f));
   let r = await admin('POST', '/api/contacts/sync'); ok(r.s === 409, 'asks to reconnect when the contacts permission is missing');
   AI.setS(t, 'drive_client_id', 'cid'); AI.setS(t, 'drive_client_secret', AI.enc('sec')); AI.setS(t, 'drive_refresh', AI.enc('rt')); AI.setS(t, 'drive_scopes', 'https://www.googleapis.com/auth/drive https://www.googleapis.com/auth/contacts');
   const sita = (await admin('POST', '/api/clients', { name: 'Sita Devi', phone: '98300 12345', email: 'sita@example.com', address: '12 Park St, Kolkata', notes: 'Prefers calls after 5' })).j.id;
@@ -57,6 +60,6 @@ function client() { let cookie = ''; return async (method, url, body) => { const
   P.delete(gr); db.prepare("UPDATE clients SET gc_synced_at=datetime('now','-1 hour') WHERE id=?").run(sita); r = await admin('POST', '/api/contacts/sync'); ok(r.j.created_in_google === 1, 'deleted contact recreated');
   r = await admin('GET', '/api/contacts'); ok(r.j.ready && r.j.linked === 3 && r.j.last, 'status');
   const adv = client(); await admin('POST', '/api/users', { name: 'Stf', email: 'stf@example.com', role: 'staff' }); const st = db.prepare("SELECT invite_token t FROM users WHERE email='stf@example.com'").get().t; await adv('POST', '/api/invite/' + st, { password: 'StrongPass123' }); await adv('POST', '/api/login', { email: 'stf@example.com', password: 'StrongPass123' });
-  r = await adv('POST', '/api/contacts/sync'); ok(r.s === 403, 'staff cannot run the sync');
+  r = await adv('POST', '/api/contacts/sync'); ok(r.s === 404, 'staff cannot run the sync');
   console.log(`${pass} passed, ${fail} failed`); srv.close(); process.exit(fail ? 1 : 0);
 })();

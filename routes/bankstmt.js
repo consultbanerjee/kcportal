@@ -123,7 +123,7 @@ module.exports = (app) => {
 
   app.post('/api/bank/import-pdf', ACC, up.single('file'), (req, res) => {
     if (!req.file || !/pdf/i.test(req.file.mimetype + req.file.originalname)) return res.status(400).json({ error: 'Choose the bank statement as a PDF file.' });
-    if (!AI.configured(T(req))) return res.status(503).json({ error: 'AI is not set up yet (AI Control), so a PDF cannot be read. Upload the statement as CSV instead, or add the AI key first.' });
+    if (!AI.configured(T(req))) return res.status(503).json({ error: 'AI is not active for your firm, so a PDF cannot be read. Upload the statement as CSV instead.' });
     const r = db.prepare('INSERT INTO bank_imports(tenant_id,filename,source,created_by) VALUES (?,?,?,?)').run(T(req), L.str(req.file.originalname, 120), 'pdf', req.user.id);
     fs.writeFileSync(path.join(tmpDir(), r.lastInsertRowid + '.pdf'), req.file.buffer);
     audit(T(req), req.user.id, 'bank_pdf_upload', 'bank', r.lastInsertRowid, req.file.originalname, L.ip(req));

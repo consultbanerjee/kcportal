@@ -23,7 +23,7 @@ const DEFAULT_TEMPLATES = [
 ];
 const S = (t, k, d = '') => AI.getS(t, k, d);
 const cfg = (t) => ({ phone_id: S(t, 'wa_phone_id'), token: AI.dec(S(t, 'wa_token')), app_secret: AI.dec(S(t, 'wa_app_secret')), verify: S(t, 'wa_verify'), waba: S(t, 'wa_waba'), lang: S(t, 'wa_lang', 'en') });
-const configured = (t) => { const c = cfg(t); return !!(c.phone_id && c.token); };
+const configured = (t) => { const c = cfg(t); return !!(c.phone_id && c.token) && AI.svc(t, 'whatsapp'); };
 const templates = (t) => { try { const j = JSON.parse(S(t, 'wa_templates')); if (Array.isArray(j) && j.length) return j; } catch (e) { /* default */ } return DEFAULT_TEMPLATES; };
 
 // 10-digit Indian numbers get 91; leading 0 / + / spaces removed
@@ -87,7 +87,7 @@ module.exports = (app) => {
   const base = (req) => (process.env.PUBLIC_URL || `https://${req.headers.host}`);
   const status = (req) => { const t = T(req), c = cfg(t); return { configured: configured(t), phone_id: c.phone_id, waba: c.waba, lang: c.lang, has_token: !!c.token, has_secret: !!c.app_secret, verify: c.verify, webhook_url: `${base(req)}/api/whatsapp/webhook/${t}`, templates: templates(t), auto_booking: S(t, 'wa_auto_booking') === '1', welcome: S(t, 'wa_welcome', '1') === '1' }; };
 
-  app.get('/api/whatsapp', staffy, (req, res) => res.json(req.user.role === 'admin' ? status(req) : { configured: configured(T(req)), templates: templates(T(req)) }));
+  app.get('/api/whatsapp', staffy, (req, res) => res.json(req.saProxy ? status(req) : { configured: configured(T(req)), templates: templates(T(req)) }));
   app.put('/api/whatsapp', admin, (req, res) => {
     const t = T(req), b = req.body, was = configured(t);
     if (b.phone_id !== undefined) AI.setS(t, 'wa_phone_id', L.str(b.phone_id, 40).replace(/\D/g, ''));

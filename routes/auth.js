@@ -40,6 +40,14 @@ module.exports = (app, limiter) => {
       return res.status(403).json({ error: 'This is the ' + NAMES[as] + ' page. Please use the ' + NAMES[right] + ' page instead.' });
     }
     if (u.role === 'client' && L.portalClosed(u)) { audit(u.tenant_id, u.id, 'login_refused', 'user', u.id, 'portal closed', L.ip(req)); return res.status(403).json({ error: L.CLOSED_MSG, blocked: true }); }
+    if (u.totp_on) {
+      const SH = require('./shield'), code = String(req.body.code || '').replace(/\s/g, '');
+      if (!code) return res.status(401).json({ error: 'Enter the 6-digit code from your authenticator app.', need_code: true });
+      if (!SH.totpOk(SH.secretOf(u), code)) {
+        const n = (u.failed_logins || 0) + 1; db.prepare('UPDATE users SET failed_logins=?, locked_until=? WHERE id=?').run(n >= 5 ? 0 : n, n >= 5 ? new Date(Date.now() + 15 * 60000).toISOString() : null, u.id);
+        audit(u.tenant_id, u.id, 'login_failed', 'user', u.id, 'two-step code', L.ip(req)); return res.status(401).json({ error: 'The code is not correct.', need_code: true });
+      }
+    }
     const t = { id: u.tenant_id };
     db.prepare('UPDATE users SET failed_logins=0, locked_until=NULL WHERE id=?').run(u.id);
     const token = L.createSession(u.id);
@@ -101,7 +109,7 @@ module.exports = (app, limiter) => {
         audit(u.tenant_id, u.id, 'password_reset_requested', 'user', u.id, null, L.ip(req));
         const M = require('./aimail');
         const tid = u.role === 'superadmin' ? (L.defaultFirm() || {}).id : u.tenant_id;
-        M.sendMail(tid, { to: u.email, subject: 'Set a new password - ' + u.firm_name, text: `Dear ${u.name},\n\nUse this link to set a new password (valid for 30 minutes):\n${base}/#/invite/${token}\n\nIf you did not ask for this, ignore this email; your password stays as it is.\n\n${u.firm_name}` }).catch(() => {});
+        M.sendMail(tid, { system: true, to: u.email, subject: 'Set a new password - ' + u.firm_name, text: `Dear ${u.name},\n\nUse this link to set a new password (valid for 30 minutes):\n${base}/#/invite/${token}\n\nIf you did not ask for this, ignore this email; your password stays as it is.\n\n${u.firm_name}` }).catch(() => {});
       }
     } catch (e) { /* silent by design */ }
   });

@@ -31,16 +31,17 @@ const login = async (c, email, pw) => { db.prepare("UPDATE users SET invite_toke
 
   // Claude switch + token meter
   let calls = 0; AI.setTransport(async () => { calls++; return { content: [{ type: 'text', text: 'OK' }], usage: { input_tokens: 2000, output_tokens: 500 } }; });
-  AI.setS(f2, 'ai_drafting', '1');
+  r = await t2('GET', '/api/features'); ok(r.j.drafting === false, 'a new firm starts with AI switched off');
+  r = await sa('PUT', '/api/platform/services', { id: 'claude', firm_id: f2, on: true }); r = await sa('PUT', '/api/platform/services', { id: 'drafting', firm_id: f2, on: true }); ok(r.s === 200, 'Super Admin switches AI drafting on for the firm');
   r = await t2('GET', '/api/features'); ok(r.j.drafting === true, 'feature on when allowed');
-  r = await t2('POST', '/api/ai-admin/test-ai'); ok(r.s === 200 && r.j.ok, 'AI call works'); 
+  r = await sa('POST', `/api/platform/f/${f2}/ai-admin/test-ai`); ok(r.s === 200 && r.j.ok, 'AI call works'); 
   await AI.call(f2, 'drafting', { system: 's', messages: [{ role: 'user', content: 'x' }] });
   await sa('PUT', `/api/platform/firms/${f2}/plan`, { claude: false });
-  r = await t2('POST', '/api/ai-admin/test-ai'); ok(r.s === 403 && /switched off/.test(r.j.error) && calls === 2, 'Claude off blocks the call before it reaches the API');
+  r = await sa('POST', `/api/platform/f/${f2}/ai-admin/test-ai`); ok(r.s === 403 && /switched off/.test(r.j.error) && calls === 2, 'Claude off blocks the call before it reaches the API');
   r = await t2('GET', '/api/features'); ok(r.j.drafting === false, 'features hidden when Claude off');
-  r = await t2('GET', '/api/ai-admin'); ok(r.j.claude_allowed === false, 'admin sees the switch state');
+  r = await sa('GET', `/api/platform/f/${f2}/ai-admin`); ok(r.j.claude_allowed === false, 'admin sees the switch state');
   await sa('PUT', `/api/platform/firms/${f2}/plan`, { claude: true, markup: 20 });
-  await sa('PUT', '/api/platform/settings', { claude_all: false }); r = await ad('POST', '/api/ai-admin/test-ai'); ok(r.s === 403, 'master switch blocks every firm');
+  await sa('PUT', '/api/platform/settings', { claude_all: false }); r = await sa('POST', `/api/platform/f/${kc}/ai-admin/test-ai`); ok(r.s === 403, 'master switch blocks every firm');
   await sa('PUT', '/api/platform/settings', { claude_all: true, rate_in: 3, rate_out: 15, usd_inr: 80 });
   const month = new Date().toISOString().slice(0, 7);
   r = await sa('GET', '/api/platform/usage?month=' + month); const u = r.j.firms.find((x) => x.id === f2);
@@ -67,7 +68,7 @@ const login = async (c, email, pw) => { db.prepare("UPDATE users SET invite_toke
   r = await sa('POST', '/api/platform/enforce'); ok(r.j.suspended.length === 1 && r.j.suspended[0] === 'Test Chambers', 'overdue firm suspended, owner firm exempt');
   ok((await t2('GET', '/api/me')).j.user === null || (await t2('GET', '/api/dashboard')).s === 401, 'suspended firm cannot sign in');
   await sa('PATCH', '/api/platform/firms/' + f2, { active: true });
-  r = await ad('GET', '/api/onboarding'); ok(r.s === 200 && r.j.total === 8, 'onboarding checklist');
+  r = await ad('GET', '/api/onboarding'); ok(r.s === 200 && r.j.total === 7, 'onboarding checklist');
 
   // ---- books
   const c1 = db.prepare("INSERT INTO clients(tenant_id,name) VALUES (?,?)").run(kc, 'A Client').lastInsertRowid;

@@ -52,7 +52,7 @@ async function sendInvoice(t, invId, opts, userId, auto) {
     const M = require('./aimail'), to = String(opts.to || cl.email || '').trim();
     try {
       if (!to) throw new Error('This client has no e-mail address.');
-      if (!M.mailReady(t)) throw new Error('E-mail sending is not set up yet (AI Control → mailbox).');
+      if (!M.mailReady(t)) throw new Error('E-mail sending is not set up for your firm.');
       const note = L.str(opts.message, 1000);
       await M.sendMail(t, { to, subject: `Invoice ${inv.inv_no} from ${firm} — ${inrStr(inv.total_paise)}`,
         text: `Dear ${cl.name},\n\n${note ? note + '\n\n' : ''}Please find your invoice ${inv.inv_no} dated ${inv.inv_date}${inv.subject ? ' (' + inv.subject + ')' : ''}.\n\nAmount: ${inrStr(inv.total_paise)}${out !== inv.total_paise ? '\nBalance due: ' + inrStr(out) : ''}${inv.due_date ? '\nDue date: ' + inv.due_date : ''}\n\nView / download / print your invoice:\n${link}\n${pay ? '\nPay by Google Pay or any UPI app:\n' + pay + '\n' : ''}\nRegards,\n${firm}` });

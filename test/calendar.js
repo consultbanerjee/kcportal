@@ -22,9 +22,12 @@ const today = new Date(Date.now() + 5.5 * 3600000).toISOString().slice(0, 10), m
   const prov = C.provisional([{ cat: 'state', date: '2026-01-01' }], 2026, 2027); ok(!prov.some((x) => x.cat === 'state' && x.date.startsWith('2026')) && prov.some((x) => x.cat === 'state' && x.date === '2027-01-12') && prov.every((x) => x.prov), 'provisional only where no official list');
   ok(C.saturdays(2027, 2027).length === 24 && C.saturdays(2026, 2026).some((x) => x.date === '2026-01-24' && x.title === 'Fourth Saturday') && C.saturdays(2026, 2026).some((x) => x.date === '2026-05-09'), '2nd/4th Saturdays');
 
-  const admin = client(), tok = db.prepare("SELECT invite_token t FROM users WHERE role='admin' AND email='kclegal.in@gmail.com'").get().t;
-  await admin('POST', '/api/invite/' + tok, { password: 'StrongPass123' }); await admin('POST', '/api/login', { email: 'kclegal.in@gmail.com', password: 'StrongPass123' });
+  const admin0 = client(), tok = db.prepare("SELECT invite_token t FROM users WHERE role='admin' AND email='kclegal.in@gmail.com'").get().t;
+  await admin0('POST', '/api/invite/' + tok, { password: 'StrongPass123' }); await admin0('POST', '/api/login', { email: 'kclegal.in@gmail.com', password: 'StrongPass123' });
   const t = db.prepare("SELECT id FROM tenants WHERE kind='firm'").get().id;
+  const sa0 = client(); { const stk = db.prepare("SELECT invite_token t FROM users WHERE role='superadmin'").get().t; await sa0('POST', '/api/invite/' + stk, { password: 'SuperPass123' }); await sa0('POST', '/api/login', { email: 'consultbanerjee@gmail.com', password: 'SuperPass123' }); }
+  const LK = /^\/api\/(whatsapp$|reminders|contacts|calendar\/(settings|refresh)$|storage)/;
+  const admin = (m, u, b, f) => (LK.test(u) ? sa0(m, '/api/platform/f/' + t + u.slice(4), b, f) : admin0(m, u, b, f));
 
   // ---- official data
   let r = await admin('GET', '/api/calendar?from=2026-10-01&to=2026-11-30');
@@ -46,7 +49,7 @@ const today = new Date(Date.now() + 5.5 * 3600000).toISOString().slice(0, 10), m
   r = await admin('GET', '/api/calendar?from=2026-12-01&to=2026-12-31'); const off = r.j.holidays.find((h) => h.cat === 'state' && h.date === '2026-12-25');
   ok(off && off.origin === 'data' && (await admin('PUT', '/api/calendar/holidays/' + off.id, { cat: 'state', date: '2026-12-25', title: 'z' })).s === 404, 'official rows cannot be edited');
   ok((await admin('DELETE', '/api/calendar/holidays/' + off.id)).s === 200, 'official row deleted');
-  r = await admin('POST', '/api/calendar/refresh'); ok(r.s === 200 && r.j.source === 'bundled list' && r.j.count > 100, 'manual refresh (offline → bundled): ' + JSON.stringify(r.j));
+  C.setFetch(async () => { throw new Error('offline'); }); r = await admin('POST', '/api/calendar/refresh'); ok(r.s === 200 && r.j.source === 'bundled list' && r.j.count > 100, 'manual refresh (offline → bundled): ' + JSON.stringify(r.j));
   r = await admin('GET', '/api/calendar?from=2026-12-01&to=2026-12-31'); ok(!r.j.holidays.some((h) => h.cat === 'state' && h.date === '2026-12-25') && r.j.holidays.some((h) => h.title === 'Office closed (edited)'), 'deleted entry stays deleted, manual entry kept');
   // online feed: newer version wins; junk feed ignored
   const feed = JSON.parse(fs.readFileSync(path.join(__dirname, '..', 'assets', 'holidays.json'), 'utf8')); feed.version = '2026-12-20'; feed.items.push({ cat: 'state', date: '2027-01-14', title: 'Feed holiday' });
@@ -103,7 +106,7 @@ const today = new Date(Date.now() + 5.5 * 3600000).toISOString().slice(0, 10), m
   const tel = client(); await admin('POST', '/api/users', { name: 'Tel', email: 'tel@example.com', role: 'telecaller' }); const tt = db.prepare("SELECT invite_token t FROM users WHERE email='tel@example.com'").get().t;
   await tel('POST', '/api/invite/' + tt, { password: 'StrongPass123' }); await tel('POST', '/api/login', { email: 'tel@example.com', password: 'StrongPass123' });
   r = await tel('GET', `/api/calendar?from=${today}&to=${fut2}&cases=1&bday=1`); ok(r.s === 200 && r.j.cases.length === 0 && r.j.can_edit === false, 'telecaller sees the calendar but not case dates');
-  ok((await tel('POST', '/api/calendar/holidays', { title: 'x', date: today })).s === 403 && (await tel('PUT', '/api/calendar/settings', { auto: true })).s === 403 && (await tel('POST', '/api/calendar/refresh')).s === 403, 'telecaller cannot edit');
+  ok((await tel('POST', '/api/calendar/holidays', { title: 'x', date: today })).s === 403 && (await tel('PUT', '/api/calendar/settings', { auto: true })).s === 404 && (await tel('POST', '/api/calendar/refresh')).s === 404, 'telecaller cannot edit');
   ok((await client()('GET', '/api/calendar')).s === 401, 'sign-in required');
   console.log(`${pass} passed, ${fail} failed`); srv.close(); process.exit(fail ? 1 : 0);
 })();

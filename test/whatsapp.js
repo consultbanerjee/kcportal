@@ -12,9 +12,12 @@ const srv = app.listen(0), base = 'http://127.0.0.1:' + srv.address().port;
 function client() { let cookie = ''; return async (method, url, body) => { const h = { 'X-Requested-With': 'kcportal', cookie }; let b = body; if (body) { h['Content-Type'] = 'application/json'; b = JSON.stringify(body); }
   const r = await fetch(base + url, { method, headers: h, body: b }); const sc = r.headers.get('set-cookie'); if (sc) cookie = sc.split(';')[0]; let j = null; try { j = await r.json(); } catch (e) {} return { s: r.status, j }; }; }
 (async () => {
-  const admin = client(), tok = db.prepare("SELECT invite_token t FROM users WHERE role='admin' AND email='kclegal.in@gmail.com'").get().t;
-  await admin('POST', '/api/invite/' + tok, { password: 'StrongPass123' }); await admin('POST', '/api/login', { email: 'kclegal.in@gmail.com', password: 'StrongPass123' });
+  const admin0 = client(), tok = db.prepare("SELECT invite_token t FROM users WHERE role='admin' AND email='kclegal.in@gmail.com'").get().t;
+  await admin0('POST', '/api/invite/' + tok, { password: 'StrongPass123' }); await admin0('POST', '/api/login', { email: 'kclegal.in@gmail.com', password: 'StrongPass123' });
   const t = db.prepare("SELECT id FROM tenants WHERE kind='firm'").get().id;
+  const sa0 = client(); { const stk = db.prepare("SELECT invite_token t FROM users WHERE role='superadmin'").get().t; await sa0('POST', '/api/invite/' + stk, { password: 'SuperPass123' }); await sa0('POST', '/api/login', { email: 'consultbanerjee@gmail.com', password: 'SuperPass123' }); }
+  const LK = /^\/api\/(whatsapp$|reminders|contacts|calendar\/(settings|refresh)$|storage)/;
+  const admin = (m, u, b, f) => (LK.test(u) ? sa0(m, '/api/platform/f/' + t + u.slice(4), b, f) : admin0(m, u, b, f));
   let r = await admin('POST', '/api/clients', { name: 'Sita Devi', phone: '98300 12345' }); const cid = r.j.id;
   ok(WA.normPhone('98300 12345') === '919830012345' && WA.normPhone('+91 98300-12345') === '919830012345' && WA.normPhone('098300 12345') === '919830012345' && WA.normPhone('123') === null, 'phone numbers normalised');
   // not set up: click-to-chat link, logged
@@ -42,7 +45,7 @@ function client() { let cookie = ''; return async (method, url, body) => { const
   await admin('PUT', `/api/clients/${cid}/whatsapp-consent`, { optout: false }); r = await admin('POST', `/api/clients/${cid}/whatsapp`, { text: 'back' }); ok(r.s === 200, 'consent can be restored');
   // permissions
   const tele = client(); r = await admin('POST', '/api/users', { name: 'T', email: 'tele@kc.com', role: 'telecaller' }); await tele('POST', '/api/invite/' + r.j.invite_path.split('/').pop(), { password: 'Passw0rdPass1' }); await tele('POST', '/api/login', { email: 'tele@kc.com', password: 'Passw0rdPass1' });
-  r = await tele('POST', `/api/clients/${cid}/whatsapp`, { text: 'x' }); ok(r.s === 403, 'telecaller cannot send'); r = await tele('PUT', '/api/whatsapp', { phone_id: '1' }); ok(r.s === 403, 'only admin changes WhatsApp settings');
+  r = await tele('POST', `/api/clients/${cid}/whatsapp`, { text: 'x' }); ok(r.s === 403, 'telecaller cannot send'); r = await tele('PUT', '/api/whatsapp', { phone_id: '1' }); ok(r.s === 404, 'only admin changes WhatsApp settings');
   // welcome greeting on first WhatsApp number
   const before = sent.length;
   r = await admin('POST', '/api/clients', { name: 'Gita Rani', phone: '98300 55555' }); await new Promise((x) => setTimeout(x, 400));

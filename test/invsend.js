@@ -11,9 +11,12 @@ function client() { let cookie = ''; return async (method, url, body) => { const
   const r = await fetch(base + url, { method, headers: h, body: b }); const sc = r.headers.get('set-cookie'); if (sc) cookie = sc.split(';')[0]; let j = null; try { j = await r.json(); } catch (e) {} return { s: r.status, j }; }; }
 (async () => {
   ok(IS.addPeriod('2026-01-31', 1, 'month') === '2026-02-28' && IS.addPeriod('2026-11-10', 1, 'quarter') === '2027-02-10' && IS.addPeriod('2026-11-10', 1, 'week') === '2026-11-17' && IS.addPeriod('2028-02-29', 1, 'year') === '2029-02-28', 'date arithmetic');
-  const admin = client(), anon = client(), tok = db.prepare("SELECT invite_token t FROM users WHERE role='admin' AND email='kclegal.in@gmail.com'").get().t;
-  await admin('POST', '/api/invite/' + tok, { password: 'StrongPass123' }); await admin('POST', '/api/login', { email: 'kclegal.in@gmail.com', password: 'StrongPass123' });
+  const admin0 = client(), anon = client(), tok = db.prepare("SELECT invite_token t FROM users WHERE role='admin' AND email='kclegal.in@gmail.com'").get().t;
+  await admin0('POST', '/api/invite/' + tok, { password: 'StrongPass123' }); await admin0('POST', '/api/login', { email: 'kclegal.in@gmail.com', password: 'StrongPass123' });
   const t = db.prepare("SELECT id FROM tenants WHERE kind='firm'").get().id;
+  const sa0 = client(); { const stk = db.prepare("SELECT invite_token t FROM users WHERE role='superadmin'").get().t; await sa0('POST', '/api/invite/' + stk, { password: 'SuperPass123' }); await sa0('POST', '/api/login', { email: 'consultbanerjee@gmail.com', password: 'SuperPass123' }); }
+  const LK = /^\/api\/(whatsapp$|reminders|contacts|calendar\/(settings|refresh)$|storage)/;
+  const admin = (m, u, b, f) => (LK.test(u) ? sa0(m, '/api/platform/f/' + t + u.slice(4), b, f) : admin0(m, u, b, f));
   const cid = (await admin('POST', '/api/clients', { name: 'Sita Devi', phone: '9830012345', email: 'sita@example.com' })).j.id;
   let r = await admin('POST', '/api/invoices', { client_id: cid, subject: 'Lease', items: [{ description: 'Deed\nDrafting', qty: 2, rate: 5000 }], notes: 'n1' }); const inv = r.j.id;
   // send needs a mailbox

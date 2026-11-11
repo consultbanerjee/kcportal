@@ -48,7 +48,7 @@ function due(t, now = today()) {
   }
   return out;
 }
-async function runFor(t) { let invoices = 0, messages = 0; for (const inv of due(t)) { const r = await remindOne(t, inv, false); if (r.length) { invoices++; messages += r.length; } } return { invoices, messages }; }
+async function runFor(t) { let invoices = 0, messages = 0; if (!AI.svc(t, 'reminders')) return { invoices, messages }; for (const inv of due(t)) { const r = await remindOne(t, inv, false); if (r.length) { invoices++; messages += r.length; } } return { invoices, messages }; }
 
 let timer;
 function startWorker() {

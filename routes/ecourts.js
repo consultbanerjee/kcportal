@@ -13,7 +13,7 @@ db.exec('CREATE TABLE IF NOT EXISTS ecourt_usage (id INTEGER PRIMARY KEY, tenant
 
 let transport = null; // tests replace this
 const setTransport = (fn) => { transport = fn; };
-const allowed = (t) => AI.getS(0, 'sa_ecourts_all', '1') === '1' && AI.getS(t, 'sa_ecourts', '1') === '1';
+const allowed = (t) => AI.svcMaster('courtdata') && AI.svcFirm(t, 'courtdata');
 const keyOf = (t) => AI.secret(t, 'ecourts_key') || AI.secret(0, 'platform_ecourts_key') || process.env.ECOURTS_KEY || '';
 const on = (t) => allowed(t) && AI.getS(t, 'ecourts_on', '1') === '1' && !!keyOf(t);
 const rate = (t) => { const n = Number(AI.getS(t, 'ecourts_rate', '0.60')); return Math.round((Number.isFinite(n) && n >= 0 ? n : 0.6) * 100); };
@@ -25,7 +25,7 @@ const meter = (t, kind, ref, paise) => { try { const k = rate(t) / 60; db.prepar
 // one call to the service. opts: {query, body, raw}
 async function call(t, method, path, opts = {}) {
   const key = keyOf(t);
-  if (!key && !opts.noauth) throw Object.assign(new Error('Court data is not set up for this firm yet. The administrator can add the key under Settings → Court data.'), { status: 409 });
+  if (!key && !opts.noauth) throw Object.assign(new Error('Court data is not set up for this firm yet. Please contact the portal provider.'), { status: 409 });
   const url = new URL(BASE + path);
   for (const [k, v] of Object.entries(opts.query || {})) { if (Array.isArray(v)) v.filter((x) => x !== '' && x != null).forEach((x) => url.searchParams.append(k, x)); else if (v !== '' && v != null) url.searchParams.set(k, v); }
   const init = { method, headers: { Accept: 'application/json', ...(key ? { Authorization: 'Bearer ' + key } : {}), ...(opts.headers || {}) }, signal: AbortSignal.timeout(opts.timeout || 45000), redirect: 'manual' };
@@ -33,7 +33,7 @@ async function call(t, method, path, opts = {}) {
   const r = transport ? await transport({ method, url: url.toString(), init, path, query: opts.query, body: opts.body }) : await fetch(url, init);
   if (opts.raw) return r;
   let j = null; try { j = await r.json(); } catch (e) {}
-  if (r.status === 401 || r.status === 403) throw Object.assign(new Error('The court-data key was refused. Check it under Settings → Court data.'), { status: 502 });
+  if (r.status === 401 || r.status === 403) throw Object.assign(new Error('The court-data key was refused. Please contact the portal provider.'), { status: 502 });
   if (r.status === 402) throw Object.assign(new Error('The court-data account has no credit left. Add credit with the service provider.'), { status: 402 });
   if (r.status === 429) throw Object.assign(new Error('The court-data service is busy. Please try again in a minute.'), { status: 429 });
   if (!r.ok) throw Object.assign(new Error((j && (j.message || (j.error && (j.error.message || j.error)))) || 'The court-data service returned an error (' + r.status + ').'), { status: r.status === 404 ? 404 : 502 });
@@ -209,7 +209,7 @@ module.exports = (app) => {
   APP = app;
   const T = (req) => req.user.tenant_id;
   const OFF = L.need('admin', 'advocate', 'staff');
-  const gate = [OFF, (req, res, next) => (!allowed(T(req)) ? res.status(403).json({ error: 'Court data is switched off for your firm by the platform.' }) : AI.getS(T(req), 'ecourts_on', '1') !== '1' ? res.status(403).json({ error: 'Court data is switched off. The administrator can switch it on under Settings → Court data.' }) : !keyOf(T(req)) ? res.status(409).json({ error: 'Court data is not set up yet. The administrator adds the key under Settings → Court data.', setup: true }) : next())];
+  const gate = [OFF, (req, res, next) => (!allowed(T(req)) ? res.status(403).json({ error: 'This service is not active for your firm. Please contact the portal provider.' }) : AI.getS(T(req), 'ecourts_on', '1') !== '1' ? res.status(403).json({ error: 'This service is not active for your firm. Please contact the portal provider.' }) : !keyOf(T(req)) ? res.status(409).json({ error: 'Court data is not set up for your firm yet. Please contact the portal provider.', setup: true }) : next())];
   const wrap = (fn) => async (req, res) => { try { await fn(req, res); } catch (e) { if (e.status && e.status < 500 || e.status === 502) return res.status(e.status === 502 ? 502 : e.status).json({ error: e.message }); console.error('ecourts', e.message); res.status(502).json({ error: 'The court-data service could not be reached. Please try again.' }); } };
   const month = () => new Date().toISOString().slice(0, 7);
   const matterOf = (req, id) => db.prepare('SELECT * FROM matters WHERE id=? AND tenant_id=?').get(L.int(id), T(req));
