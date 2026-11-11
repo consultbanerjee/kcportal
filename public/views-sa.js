@@ -33,6 +33,7 @@ async function saFirms(head) {
       { name: 'apply_preset', label: 'Reset the module ticks below to this plan\'s standard set', type: 'checkbox' },
       { name: 'fee', label: 'Monthly fee (₹)', type: 'number', step: '0.01', value: o.fee_paise / 100 },
       { name: 'claude', label: 'Claude (AI) allowed for this firm', type: 'checkbox', value: o.claude },
+      { name: 'ecourts', label: 'Court data (eCourts search and case tracking) allowed for this firm', type: 'checkbox', value: o.ecourts },
       { name: 'markup', label: 'AI cost markup % added when billing this firm', type: 'number', step: '1', value: o.markup },
       { name: 'ai_bill', label: 'Include AI usage in this firm\'s monthly invoice', type: 'checkbox', value: o.ai_bill },
       ...O.modules.map(([k, l]) => ({ name: 'm_' + k, label: 'Include: ' + l, type: 'checkbox', value: !on.has(k) })),
@@ -42,7 +43,7 @@ async function saFirms(head) {
       { name: 'exempt', label: 'Owner firm — never suspend', type: 'checkbox', value: o.exempt },
       { name: 'powered', label: 'Small footer line for this firm (optional)', value: o.powered, ph: 'e.g. Powered by …' },
     ], 'Save', async (v) => {
-      const body = { plan: v.plan, apply_preset: v.apply_preset, fee: v.fee || 0, claude: v.claude, markup: v.markup || 0, ai_bill: v.ai_bill, net: v.net || 10, autosuspend: v.autosuspend, grace: v.grace || 15, exempt: v.exempt, powered: v.powered };
+      const body = { plan: v.plan, apply_preset: v.apply_preset, fee: v.fee || 0, claude: v.claude, ecourts: v.ecourts, markup: v.markup || 0, ai_bill: v.ai_bill, net: v.net || 10, autosuspend: v.autosuspend, grace: v.grace || 15, exempt: v.exempt, powered: v.powered };
       if (!v.apply_preset) body.off = O.modules.filter(([k]) => !v['m_' + k]).map(([k]) => k);
       await PUT(`/api/platform/firms/${o.id}/plan`, body); go();
     }, true);
@@ -79,6 +80,8 @@ async function saSettings(head) {
     <p class="mute">Claude stays connected through your own Anthropic account, so a firm needs no AI account of its own. Key: ${O.key_set ? 'saved in the portal' : O.key_env ? 'set on the server' : '<b>not set</b>'}.</p>
     <form id="sf" class="grid2">
       <label class="chk"><input type="checkbox" name="claude_all" ${O.claude_all ? 'checked' : ''}> Claude allowed on the whole platform (master switch)</label>
+      <label class="chk"><input type="checkbox" name="ecourts_all" ${O.ecourts_all ? 'checked' : ''}> Court data allowed on the whole platform (master switch)</label>
+      <label>Platform court-data key ${O.ecourts_key_set ? '✓ saved' : '— not saved'} <span class="mute">(used by firms that have no key of their own; type __clear__ to remove)</span></label><input name="ecourts_key" type="text" autocomplete="off" data-lpignore="true" style="-webkit-text-security:disc" placeholder="eci_live_…">
       <label class="chk"><input type="checkbox" name="auto_bill" ${O.auto_bill ? 'checked' : ''}> Create monthly invoices automatically on the 1st</label>
       <label>Platform Anthropic API key (leave empty to keep; type __clear__ to remove)</label><input name="platform_key" type="password" autocomplete="new-password" placeholder="sk-ant-…">
       <label>Input price, US$ per million tokens</label><input name="rate_in" type="number" step="0.01" value="${O.rates.in}">
@@ -89,7 +92,7 @@ async function saSettings(head) {
       <button class="btn">Save</button></form></div>`);
   $('#sf').onsubmit = async (e) => {
     e.preventDefault(); const f = e.target.elements;
-    try { await PUT('/api/platform/settings', { claude_all: f.claude_all.checked, auto_bill: f.auto_bill.checked, platform_key: f.platform_key.value.trim(), rate_in: f.rate_in.value, rate_out: f.rate_out.value, usd_inr: f.usd_inr.value, product: f.product.value }); toast('Saved'); go(); }
+    try { await PUT('/api/platform/settings', { ecourts_all: f.ecourts_all.checked, ecourts_key: f.ecourts_key.value.trim(), claude_all: f.claude_all.checked, auto_bill: f.auto_bill.checked, platform_key: f.platform_key.value.trim(), rate_in: f.rate_in.value, rate_out: f.rate_out.value, usd_inr: f.usd_inr.value, product: f.product.value }); toast('Saved'); go(); }
     catch (ex) { toast(ex.message, true); }
   };
 }

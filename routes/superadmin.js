@@ -94,13 +94,13 @@ module.exports = (app) => {
     const firms = db.prepare("SELECT id,name,slug,active FROM tenants WHERE kind='firm' ORDER BY id").all().map((f) => {
       const u = usageOf(f.id, month), g = (k, d) => AI.getS(f.id, k, d);
       const due = db.prepare("SELECT COALESCE(SUM(total_paise),0) v, COUNT(*) n FROM sub_invoices WHERE tenant_id=? AND status='due'").get(f.id);
-      return { ...f, plan: g('sa_plan', 'premium'), fee_paise: L.int(g('sa_fee', '0')) || 0, off: offList(f.id), claude: g('sa_claude', '1') === '1', markup: u.markup, ai_bill: g('sa_ai_bill', '1') === '1',
+      return { ...f, plan: g('sa_plan', 'premium'), fee_paise: L.int(g('sa_fee', '0')) || 0, off: offList(f.id), claude: g('sa_claude', '1') === '1', ecourts: g('sa_ecourts', '1') === '1', markup: u.markup, ai_bill: g('sa_ai_bill', '1') === '1',
         autosuspend: g('sa_autosuspend', '0') === '1', exempt: g('sa_exempt', '0') === '1', grace: L.int(g('sa_grace', '15')) || 15, net: L.int(g('sa_net', '10')) || 10, powered: g('sa_powered', ''), usage: u, due_paise: due.v, due_n: due.n,
         drive: !!AI.dec(g('drive_refresh', '')),
         users: db.prepare("SELECT COUNT(*) n FROM users WHERE tenant_id=? AND role<>'client' AND active=1").get(f.id).n };
     });
     res.json({ month, firms, modules: MODULES, plans: Object.fromEntries(Object.entries(PLANS).map(([k, v]) => [k, v.label])),
-      claude_all: AI.getS(0, 'sa_claude_all', '1') === '1', rates: { in: R.rin, out: R.rout, fx: R.fx }, key_set: !!AI.secret(0, 'platform_key'), key_env: !!process.env.ANTHROPIC_API_KEY,
+      claude_all: AI.getS(0, 'sa_claude_all', '1') === '1', ecourts_all: AI.getS(0, 'sa_ecourts_all', '1') === '1', ecourts_key_set: !!AI.secret(0, 'platform_ecourts_key'), rates: { in: R.rin, out: R.rout, fx: R.fx }, key_set: !!AI.secret(0, 'platform_key'), key_env: !!process.env.ANTHROPIC_API_KEY,
       product: AI.getS(0, 'sa_product', ''), auto_bill: AI.getS(0, 'sa_auto', '0') === '1' });
   });
   app.put('/api/platform/firms/:id/plan', SA, (req, res) => {
@@ -111,6 +111,7 @@ module.exports = (app) => {
     if (Array.isArray(b.off)) S('sa_off', b.off.filter((m) => MODULES.some((x) => x[0] === m)).join(','));
     if (b.fee !== undefined) { const n = Math.round(Number(b.fee) * 100); if (!(n >= 0 && n < 1e10)) return res.status(400).json({ error: 'Enter a valid monthly fee.' }); S('sa_fee', String(n)); }
     if (b.claude !== undefined) S('sa_claude', b.claude ? '1' : '0');
+    if (b.ecourts !== undefined) S('sa_ecourts', b.ecourts ? '1' : '0');
     if (b.markup !== undefined) { const n = Number(b.markup); if (!(n >= 0 && n <= 1000)) return res.status(400).json({ error: 'Markup must be between 0 and 1000 percent.' }); S('sa_markup', String(n)); }
     for (const [k, key] of [['ai_bill', 'sa_ai_bill'], ['autosuspend', 'sa_autosuspend'], ['exempt', 'sa_exempt']]) if (b[k] !== undefined) S(key, b[k] ? '1' : '0');
     for (const [k, key, lo, hi] of [['grace', 'sa_grace', 1, 120], ['net', 'sa_net', 1, 90]]) if (b[k] !== undefined) { const n = L.int(b[k]); if (!(n >= lo && n <= hi)) return res.status(400).json({ error: `${k} days must be ${lo}–${hi}.` }); S(key, String(n)); }
@@ -121,6 +122,8 @@ module.exports = (app) => {
   app.put('/api/platform/settings', SA, (req, res) => {
     const b = req.body || {};
     if (b.claude_all !== undefined) AI.setS(0, 'sa_claude_all', b.claude_all ? '1' : '0');
+    if (b.ecourts_all !== undefined) AI.setS(0, 'sa_ecourts_all', b.ecourts_all ? '1' : '0');
+    if (typeof b.ecourts_key === 'string' && b.ecourts_key !== '') AI.setSecret(0, 'platform_ecourts_key', b.ecourts_key === '__clear__' ? '' : L.str(b.ecourts_key, 200));
     for (const [k, key] of [['rate_in', 'sa_rate_in'], ['rate_out', 'sa_rate_out'], ['usd_inr', 'sa_usd_inr']]) if (b[k] !== undefined) { const n = Number(b[k]); if (!(n >= 0 && n < 100000)) return res.status(400).json({ error: 'Enter valid rates.' }); AI.setS(0, key, String(n)); }
     if (typeof b.platform_key === 'string' && b.platform_key !== '') AI.setSecret(0, 'platform_key', b.platform_key === '__clear__' ? '' : L.str(b.platform_key, 300));
     if (b.product !== undefined) AI.setS(0, 'sa_product', L.str(b.product, 80));

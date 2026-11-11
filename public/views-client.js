@@ -137,10 +137,11 @@ route(/^\/client\/(\d+)$/, async ([id], p) => {
   }
   else if (tab === 'chat') {
     const rows = await GET('/api/messages?client_id=' + id);
-    T.innerHTML = `<div class="row sp noprint" style="margin-bottom:.8rem"><span class="mute">Conversation with ${esc(c.name)} — ${rows.length} message${rows.length === 1 ? '' : 's'}</span>${can('admin') ? '<button class="btn sm" data-print>Print / Save as PDF</button>' : ''}</div>
+    T.innerHTML = `<div class="row sp noprint" style="margin-bottom:.8rem"><span class="mute">Conversation with ${esc(c.name)} — ${rows.length} message${rows.length === 1 ? '' : 's'}</span>${can('admin') ? '<span class="row"><button class="btn sm ghost" data-cx="docx">Word</button><button class="btn sm ghost" data-cx="pdf">PDF</button><button class="btn sm" data-print>Print</button></span>' : ''}</div>
       <div class="printhead"><h2 style="margin:0">${esc(FIRM)}</h2><div>Chat record — ${esc(c.name)}</div><div class="mute">Printed ${dtm(new Date().toISOString())} by ${esc(ME.name)}</div><hr></div>
       <div class="card">${rows.length ? rows.map((m) => `<div class="msg ${m.from_user === ME.id ? 'me' : ''}"><small>${esc(m.from_name)} · ${dtm(m.created_at)}</small>${esc(m.body)}</div>`).join('') : '<p class="mute">No messages yet.</p>'}
       <form id="mf" class="row noprint" style="margin-top:1rem;flex-wrap:nowrap"><input name="b" placeholder="Write a message…" required><button class="btn">Send</button></form></div>`;
+    $$('[data-cx]').forEach((b) => (b.onclick = () => dlTable(b.dataset.cx, 'Chat record - ' + c.name, `${rows.length} messages`, [{ h: 'When', w: 1.3 }, { h: 'From', w: 1.3 }, { h: 'Message', w: 6 }], rows.map((m) => [dtm(m.created_at), m.from_name, m.body]), 'chat')));
     $('#mf').onsubmit = async (e) => { e.preventDefault(); try { await POST('/api/messages', { body: e.target.b.value, client_id: +id }); reload(); } catch (x) { toast(x.message, true); } };
   }
 
@@ -169,9 +170,10 @@ route(/^\/client\/(\d+)$/, async ([id], p) => {
 
   else if (tab === 'activity') {
     const from = p.get('from') || '', to = p.get('to') || '', a = await GET(`/api/clients/${id}/activity?from=${from}&to=${to}`);
-    T.innerHTML = `<div class="row sp noprint" style="margin-bottom:.8rem"><form id="af" class="row"><label class="mute">From</label><input type="date" name="f" value="${esc(from)}"><label class="mute">To</label><input type="date" name="t" value="${esc(to)}"><button class="btn sm ghost">Filter</button></form>${can('admin') ? '<button class="btn sm" data-print>Print / Save as PDF</button>' : ''}</div>
+    T.innerHTML = `<div class="row sp noprint" style="margin-bottom:.8rem"><form id="af" class="row"><label class="mute">From</label><input type="date" name="f" value="${esc(from)}"><label class="mute">To</label><input type="date" name="t" value="${esc(to)}"><button class="btn sm ghost">Filter</button></form>${can('admin') ? '<span class="row"><button class="btn sm ghost" data-ax="docx">Word</button><button class="btn sm ghost" data-ax="pdf">PDF</button><button class="btn sm" data-print>Print</button></span>' : ''}</div>
       <div class="printhead"><h2 style="margin:0">${esc(FIRM)}</h2><div>Portal activity — ${esc(c.name)}${from || to ? ` (${esc(from || 'start')} to ${esc(to || 'today')})` : ''}</div><div class="mute">Printed ${dtm(new Date().toISOString())} by ${esc(ME.name)}</div><hr></div>
       <div class="card"><div class="tw">${a.rows.length ? `<table><tr><th>When</th><th>What the client did</th><th>Details</th><th>From (IP)</th></tr>${a.rows.map((r) => `<tr><td>${dtm(r.at.replace(' ', 'T') + 'Z')}</td><td>${esc(r.what)}</td><td>${esc(r.detail)}</td><td class="mute">${esc(r.ip)}</td></tr>`).join('')}</table>` : '<p class="mute">Nothing recorded for this client yet. Activity starts being recorded once the client signs in.</p>'}</div></div>`;
+    $$('[data-ax]').forEach((b) => (b.onclick = () => dlTable(b.dataset.ax, 'Portal activity - ' + c.name, from || to ? `${from || 'start'} to ${to || 'today'}` : '', [{ h: 'When', w: 1.4 }, { h: 'What the client did', w: 2 }, { h: 'Details', w: 3 }, { h: 'From (IP)', w: 1.2 }], a.rows.map((r) => [dtm(r.at.replace(' ', 'T') + 'Z'), r.what, r.detail, r.ip]), 'activity')));
     $('#af').onsubmit = (e) => { e.preventDefault(); location.hash = `#/client/${id}?tab=activity&from=${e.target.f.value}&to=${e.target.t.value}`; };
   }
 

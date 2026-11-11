@@ -152,4 +152,4 @@ async function annexurePdf({ buf, name, mime }, label, startNo, fmt) {
   return { bytes: Buffer.from(await out.save()), pages: out.getPageCount() };
 }
 
-module.exports = { parse, toPdf, toDocx, annexurePdf };
+module.exports = { parse, toPdf, toDocx, annexurePdf, fontPath };

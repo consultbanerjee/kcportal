@@ -125,7 +125,7 @@ function navItems() {
   if (isClient()) return [['#/', 'Home'], ['#/matters', 'My cases'], ['#/myfiles', 'My files'], ['#/letters', 'Letters'], ['#/messages', 'Messages'], ['#/livechat', 'Live chat'], ['#/invoices', 'Fees'], ['#/book', 'Book']];
   const r = ME.role, LG = 'Litigation', n = [['#/', 'Home']], pro = ['admin', 'advocate', 'staff'].includes(r), mod = (k) => !(MODS.off || []).includes(k);
   n.push(['#/clients', 'Clients', LG]);
-  if (pro) n.push(['#/matters', 'Cases', LG]);
+  if (pro) n.push(['#/matters', 'Cases', LG], ['#/ecourts', 'Court search', LG], ['#/causelist', 'Cause list', LG]);
   n.push(['#/tasks', 'Tasks', LG]);
   if (mod('calendar')) n.push(['#/calendar', 'Calendar', LG]);
   if (pro || r === 'accounts') n.push(['#/files', 'Files', LG]);
@@ -143,7 +143,7 @@ function navItems() {
   if (mod('accounts') && ['admin', 'advocate', 'accounts'].includes(r)) n.push(['#/accounts', 'Accounts']);
   if (mod('judgments') && r !== 'telecaller' && r !== 'accounts') n.push(['#/judgments', 'Judgments']);
   if (mod('repository')) REPO_CATS.forEach(([sl, nm]) => n.push(['#/repository/' + sl, nm, 'Repository']));
-  if (r === 'admin') n.push(['#/ai', 'AI Control', 'Settings'], ['#/template', 'Design', 'Settings'], ['#/team', 'Team', 'Settings'], ['#/settings', 'Firm settings', 'Settings'], ['#/plan', 'Plan and usage', 'Settings']);
+  if (r === 'admin') n.push(['#/alerts', 'Alerts', 'Settings'], ['#/courtdata', 'Court data', 'Settings'], ['#/ai', 'AI Control', 'Settings'], ['#/template', 'Design', 'Settings'], ['#/team', 'Team', 'Settings'], ['#/settings', 'Firm settings', 'Settings'], ['#/plan', 'Plan and usage', 'Settings']);
   return n;
 }
 const REPO_CATS = [['all', 'All sections'], ['courts', 'Courts'], ['high-courts', 'All High Courts'], ['tribunals', 'Tribunals'], ['forums', 'Forums'], ['authorities', 'Authorities'], ['legislatures', 'Parliament and Assemblies'], ['intl-india', 'International courts (India)'], ['intl-other', 'International courts (other)'], ['elibrary', 'eLibrary & Research'], ['govt-repos', 'Government repositories'], ['news-world', 'Newspapers: world'], ['news-india', 'Newspapers: India'], ['news-legal', 'Legal news'], ['central-services', 'Central Govt Services'], ['wb-services', 'West Bengal Govt Services'], ['bodies', 'Professional bodies']];
@@ -151,7 +151,7 @@ const REPO_MAP = { courts: 'Courts', 'high-courts': 'All High Courts', tribunals
 function navHtml(items, active) {
   let out = '', last = null, gi = 0;
   const store = (k, v) => { try { if (v === undefined) return localStorage.getItem('kc-nav-' + k); localStorage.setItem('kc-nav-' + k, v); } catch (e) {} };
-  const open = (g) => items.some(([h, , gg]) => gg === g && active(h)) || (store(g) === null ? g === 'Litigation' : store(g) === '1');
+  const open = (g) => items.some(([h, , gg]) => gg === g && active(h)) || store(g) === '1';
   for (const [h, l, g] of items) {
     if (g && g !== last) {
       if (last) out += '</div>';
@@ -175,6 +175,7 @@ function layout() {
     <main class="main" id="view"></main>${MODS.powered ? `<div class="mute noprint" style="text-align:center;padding:.6rem;font-size:.78rem">${esc(MODS.powered)}</div>` : ''}</div>
     <nav class="bottom">${items.slice(0, isClient() ? 6 : 14).map(([h, l]) => `<a href="${h}" class="${active(h)}">${l}</a>`).join('')}</nav></div>`;
   $$('.side .tg').forEach((t) => { const tg = () => { const b = t.nextElementSibling, o = b.hidden; b.hidden = !o; t.setAttribute('aria-expanded', o); $('.car', t).textContent = o ? '▾' : '▸'; try { localStorage.setItem('kc-nav-' + t.dataset.g, o ? '1' : '0'); } catch (e) {} }; t.onclick = tg; t.onkeydown = (e) => { if (e.key === 'Enter' || e.key === ' ') { e.preventDefault(); tg(); } }; });
+  if (ME.role === 'admin') GET('/api/alerts/count').then((c) => { const a = $('.side a[href="#/alerts"]'); if (a && c.open && !$('.abadge', a)) a.insertAdjacentHTML('beforeend', ` <span class="abadge${c.high ? ' hi' : ''}">${c.open}</span>`); }).catch(() => {});
   // firm logo in the side brand (loaded once; harmless if the firm has none)
   getTpl().then((t) => { const b = $('.side .brand'); if (t && t.has_logo && b && !$('.blogo', b)) b.insertAdjacentHTML('afterbegin', `<img class="blogo" src="/api/template/logo?v=${t.lv}" alt="">`); }).catch(() => {});
 }
@@ -221,7 +222,7 @@ route(/^\/login(?:\/(client|firm|admin))?$/, async ([kind]) => {
     <label>Password</label><input name="password" type="password" autocomplete="current-password" required><p class="err" hidden></p>
     <div style="margin-top:1rem"><button class="btn" style="width:100%">Sign in</button></div></form>
     <p style="margin:.8rem 0 0"><a href="#/forgot${FIRMQ ? '?firm=' + encodeURIComponent(FIRMQ) : ''}">Forgot password?</a></p>`);
-  const doLogin = async (f, firm) => { await POST('/api/login', { email: f.email.value, password: f.password.value, as: kind || '', firm: firm || FIRMQ || '' }); await loadMe(); location.hash = '#/'; go(); };
+  const doLogin = async (f, firm) => { await POST('/api/login', { email: f.email.value, password: f.password.value, as: kind || '', firm: firm || FIRMQ || '' }); try { Object.keys(localStorage).filter((k) => k.startsWith('kc-nav-')).forEach((k) => localStorage.removeItem(k)); } catch (e) {} await loadMe(); location.hash = '#/'; go(); };
   $('#lf').onsubmit = async (e) => {
     e.preventDefault(); const f = e.target, err = $('.err', f), b = $('button', f); b.disabled = true; err.hidden = true;
     try { await doLogin(f); }

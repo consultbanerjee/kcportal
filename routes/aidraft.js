@@ -80,6 +80,7 @@ function splitOut(t) {
 }
 
 module.exports = (app) => {
+  app.locals.aiDoc = { blockFor, textBlock, extOf, fmtOf, safeName };
   const T = (req) => req.user.tenant_id;
   const gate = [L.need('admin', 'advocate', 'staff'), (req, res, next) => (AI.on(T(req), 'drafting') ? next() : res.status(403).json({ error: 'AI Drafting is switched off for your firm. Ask the administrator to turn it on in AI Control.' }))];
   const gen = rateLimit({ windowMs: 3600000, limit: 60, keyGenerator: (req) => 'd' + req.user.id, validate: false, message: { error: 'Too many drafts this hour. Please wait.' } });
@@ -216,6 +217,20 @@ module.exports = (app) => {
     }
     return files;
   }
+  // instant single-file download (Word or PDF) of the draft as it stands now; no annexures, nothing saved
+  app.get('/api/ai/drafts/:id/download/:fmt', gate, async (req, res) => {
+    const d = own(req, req.params.id); if (!d) return res.status(404).json({ error: 'Not found.' });
+    if (d.status !== 'ready' || !d.output) return res.status(409).json({ error: 'The draft is not ready yet.' });
+    const f = req.params.fmt; if (!['docx', 'pdf'].includes(f)) return res.status(400).json({ error: 'Choose docx or pdf.' });
+    try {
+      const t = d.tenant_id, fmt = fmtOf(d), title = safeName(d.title); let lh = null;
+      if (fmt.letterhead) { try { const p = require('./template').publicAsset(t, 'letterhead'); const tpl = db.prepare('SELECT settings FROM tenant_templates WHERE tenant_id=?').get(t); const top = Number(JSON.parse((tpl && tpl.settings) || '{}').top_mm) || 50; if (p) lh = { path: p, topMm: top }; } catch (e) {} }
+      const buf = f === 'pdf' ? (await DOC.toPdf(d.output, fmt, { letterhead: lh })).bytes : await DOC.toDocx(d.output, fmt, { title: d.title, author: AI.firmInfo(t).name });
+      audit(t, req.user.id, 'ai_draft_download', 'ai_draft', d.id, f, L.ip(req));
+      res.set({ 'Content-Type': f === 'pdf' ? 'application/pdf' : 'application/vnd.openxmlformats-officedocument.wordprocessingml.document', 'X-Content-Type-Options': 'nosniff', 'Cache-Control': 'private, no-store', 'Content-Disposition': `attachment; filename*=UTF-8''${encodeURIComponent(title + '.' + f)}` });
+      res.end(Buffer.from(buf));
+    } catch (e) { console.error(e); res.status(500).json({ error: 'Could not make the file: ' + String(e.message).slice(0, 150) }); }
+  });
   app.post('/api/ai/drafts/:id/build', gate, async (req, res) => {
     const d = own(req, req.params.id); if (!d) return res.status(404).json({ error: 'Not found.' });
     if (d.status !== 'ready' || !d.output) return res.status(409).json({ error: 'The draft is not ready yet.' });

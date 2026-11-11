@@ -86,6 +86,7 @@ route(/^\/matter\/(\d+)$/, async ([id]) => {
     <div class="card"><div class="row sp"><h2>Case details</h2>${edit ? '<button class="btn sm ghost" id="em">Edit</button>' : ''}</div>
     <p><b>Forum:</b> ${esc(m.forum || '—')}<br><b>Case no.:</b> ${esc(m.case_no || '—')}<br><b>Stage:</b> ${esc(m.stage || '—')}${cli ? '' : `<br><b>Opposite party:</b> ${esc(m.opposite_party || '—')}`}</p>
     ${cli ? (m.client_visible_note ? `<p><b>Update from the office:</b><br>${esc(m.client_visible_note)}</p>` : '') : (m.summary ? `<p><b>Internal summary:</b><br>${esc(m.summary)}</p>` : '')}</div>
+    ${cli ? '' : '<div class="card" id="ecard"></div><div class="card" id="acard"></div>'}
     <div class="card"><div class="row sp"><h2>Hearings & dates</h2>${edit ? '<button class="btn sm" id="ah">Add hearing</button>' : ''}</div>
     ${m.hearings.length ? `<div class="tw"><table><tr><th>Date</th><th>Purpose</th><th>Outcome</th><th>Next date</th></tr>${m.hearings.map((h) => `<tr><td>${dt(h.hearing_date)}</td><td>${esc(h.purpose || '')}</td><td>${esc(h.outcome || '')}</td><td><b>${h.next_date ? dt(h.next_date) : '—'}</b></td></tr>`).join('')}</table></div>` : '<p class="mute">No hearings recorded.</p>'}</div>
     <div class="card"><div class="row sp"><h2>Documents</h2><button class="btn sm" id="ud">${cli ? 'Upload a document' : 'Upload'}</button></div>
@@ -96,6 +97,8 @@ route(/^\/matter\/(\d+)$/, async ([id]) => {
     ${cli ? '' : `<div class="card"><div class="row sp"><h2>Tasks</h2><button class="btn sm" id="at">Assign task</button></div>${m.tasks.length ? `<ul class="list">${m.tasks.map((t) => `<li><span>${esc(t.title)}<div class="mute">${esc(t.assignee || '')} · due ${dt(t.due_date)}</div></span>${sp(t.status)}</li>`).join('')}</ul>` : '<p class="mute">No tasks.</p>'}</div>
     <div class="card"><div class="row sp"><h2>File notings</h2><button class="btn sm" id="an">Add noting</button></div>${m.notings.length ? `<ul class="list">${m.notings.map((n) => `<li><span>${esc(n.note)}<div class="mute">${esc(n.user_name || '')} · ${dtm(n.created_at)}</div></span></li>`).join('')}</ul>` : '<p class="mute">No notings.</p>'}</div>`}`);
   const upd = () => go();
+  if (!cli && typeof courtCard === 'function') courtCard(id, edit);
+  if (!cli && typeof argCard === 'function') argCard(id);
   const em = $('#em'); if (em) em.onclick = () => ask('Edit case', [{ name: 'title', label: 'Title', value: m.title, required: true }, { name: 'forum', label: 'Forum', value: m.forum }, { name: 'case_no', label: 'Case number', value: m.case_no }, { name: 'opposite_party', label: 'Opposite party', value: m.opposite_party }, { name: 'stage', label: 'Stage', value: m.stage }, { name: 'status', label: 'Status', type: 'select', value: m.status, options: ['open', 'on_hold', 'closed'] }, { name: 'summary', label: 'Internal summary', type: 'textarea', value: m.summary }, { name: 'client_visible_note', label: 'Update the client can see', type: 'textarea', value: m.client_visible_note }], 'Save', async (v) => { await PUT('/api/matters/' + id, v); upd(); });
   const ah = $('#ah'); if (ah) ah.onclick = () => ask('Record hearing', [{ name: 'hearing_date', label: 'Hearing date', type: 'date', value: today(), required: true }, { name: 'purpose', label: 'Purpose' }, { name: 'outcome', label: 'Outcome / order' }, { name: 'next_date', label: 'Next date', type: 'date' }], 'Save', async (v) => { await POST(`/api/matters/${id}/hearings`, v); upd(); });
   $('#ud').onclick = () => ask('Upload document', [{ name: 'file', label: 'File', type: 'file', required: true, hint: 'PDF, Word, Excel, JPG/PNG, ZIP — up to 25 MB.' }, ...(cli ? [] : [{ name: 'category', label: 'Category', ph: 'Pleading, Order, Notice…' }, { name: 'client_visible', label: 'Client can see this', type: 'checkbox' }])], 'Upload', async (v) => {
@@ -133,7 +136,7 @@ route(/^\/letter\/(\d+)$/, async ([id]) => {
   const [l, T] = await Promise.all([GET('/api/letters/' + id), getTpl()]);
   view(`<div class="row sp noprint"><a class="btn ghost sm" href="#/letters">← Letters</a><div class="row">
     ${!isClient() && l.status === 'draft' ? `<button class="btn ghost sm" id="ed">Edit</button>${can('admin', 'advocate') ? '<button class="btn gold sm" id="send">Approve & number</button>' : '<span class="mute">Waiting for advocate approval</span>'}<button class="btn red sm" id="del">Delete</button>` : ''}
-    <button class="btn sm" data-print>Print</button></div></div>
+    <a class="btn sm ghost" href="/api/letters/${id}/download/docx">Word</a><a class="btn sm ghost" href="/api/letters/${id}/download/pdf">PDF</a><button class="btn sm" data-print>Print</button></div></div>
     ${sheetFor(T, `<div class="lref"><span>Ref. No. ${esc(l.ref_no || 'DRAFT')}</span><span>Date: ${dt(l.sent_at || l.created_at)}</span></div><p>To,<br><b>${esc(l.to_name)}</b></p><p><b>Subject: ${esc(l.subject)}</b></p><div class="lbody">${esc(l.body)}</div>${signBlock(T.settings)}`)}`);
   const s = $('#send'); if (s) s.onclick = async () => { if (!sure('Approve this letter and issue its reference number? It cannot be edited afterwards.')) return; const r = await POST(`/api/letters/${id}/send`); toast('Issued ' + r.ref_no); go(); };
   const d = $('#del'); if (d) d.onclick = async () => { if (sure('Delete this draft?')) { await DEL('/api/letters/' + id); location.hash = '#/letters'; } };
@@ -179,7 +182,7 @@ async function regNumbering() {
 }
 // the table, used on the register page and inside a client page
 function regTable(rows, showClient) {
-  const csvBtn = rows.length ? '<button class="btn sm ghost noprint" id="rcsv">Export CSV</button>' : '';
+  const csvBtn = rows.length ? '<button class="btn sm ghost noprint" id="rcsv">Export CSV</button><button class="btn sm ghost noprint" data-rx="docx">Word</button><button class="btn sm ghost noprint" data-rx="pdf">PDF</button>' : '';
   const head = `<tr><th>No.</th><th>Date</th><th>From / To</th><th>Subject</th>${showClient ? '<th>Client</th>' : ''}<th>Details</th><th class="noprint"></th></tr>`;
   const body = rows.map((x) => `<tr><td><b>${esc(x.no)}</b><div class="mute">${x.kind === 'in' ? 'Inward' : 'Outward'}</div></td><td>${dt(x.entry_date)}${x.entry_time ? '<div class="mute">' + esc(x.entry_time) + '</div>' : ''}</td><td>${esc(x.party || '—')}${x.dept ? '<div class="mute">' + esc(x.dept) + '</div>' : ''}</td>
     <td>${esc(x.subject || '—')}${x.file_no ? `<div class="mute">${esc(x.file_no)}</div>` : ''}${x.enclosures ? `<div class="mute">Encl: ${esc(x.enclosures)}</div>` : ''}</td>${showClient ? `<td>${x.client_id ? `<a href="#/client/${x.client_id}?tab=register">${esc(x.client_name)}</a>` : '—'}</td>` : ''}
@@ -190,6 +193,7 @@ function regTable(rows, showClient) {
 function regWire(root, rows, after) {
   $$('[data-re]', root).forEach((b) => (b.onclick = () => { const x = rows.find((r) => r.id === +b.dataset.re); regForm(x.kind, x, null, after); }));
   $$('[data-rd]', root).forEach((b) => (b.onclick = async () => { const x = rows.find((r) => r.id === +b.dataset.rd); if (!sure('Delete entry ' + x.no + '? This cannot be undone.')) return; try { await DEL('/api/register/' + x.id); toast('Deleted.'); after ? after() : go(); } catch (e) { toast(e.message, true); } }));
+  $$('[data-rx]', root).forEach((b) => (b.onclick = () => { const ks = [['kind', 'Type', 1], ['no', 'No.', 1], ['entry_date', 'Date', 1.2], ['party', 'Party', 2], ['their_ref', 'Their ref.', 1.2], ['subject', 'Subject', 3], ['dept', 'Dept.', 1], ['action', 'Action', 1.5], ['mode', 'Mode', 1], ['file_no', 'File', 1.2]]; dlTable(b.dataset.rx, 'In-Out Register', `${rows.length} entries`, ks.map((k) => ({ h: k[1], w: k[2] })), rows.map((r) => ks.map((k) => r[k[0]] == null ? '' : r[k[0]]))); }));
   const c = $('#rcsv', root); if (c) c.onclick = () => {
     const cols = ['kind', 'no', 'entry_date', 'entry_time', 'party', 'their_ref', 'subject', 'enclosures', 'dept', 'action', 'reply_to', 'mode', 'tracking', 'signature', 'remarks', 'client_name', 'file_no'];
     const q = (v) => '"' + String(v == null ? '' : v).replace(/"/g, '""') + '"';
