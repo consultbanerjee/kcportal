@@ -19,7 +19,10 @@ app.use(cookieParser());
 app.use(L.loadUser);
 app.use(L.csrfGuard);
 app.use(require('./routes/portalctl').mw);
+require('./routes/shield')(app);
 require('./routes/superadmin')(app);
+require('./routes/control')(app);
+require('./routes/journal')(app);
 // after a client / lead / matter is saved: push to Google Contacts, and greet a client whose WhatsApp number was just added
 // any change to documents or to a client (new reference, rename, upload, move, delete) goes to Google Drive within a moment
 app.use((req, res, next) => { if (['POST', 'PUT', 'PATCH', 'DELETE'].includes(req.method) && /^\/api\/(fs|clients|matters|documents|letters|register|upload|drafts)(\/|$)/.test(req.path)) res.on('finish', () => { if (res.statusCode < 300 && req.user) { try { require('./routes/drive').kick(req.user.tenant_id); } catch (e) {} } }); next(); });
@@ -118,8 +121,9 @@ require('./routes/casehistory')(app);
 
 app.get('/chat.js', (req, res, next) => { res.set('Cross-Origin-Resource-Policy', 'cross-origin'); res.set('Cache-Control', 'public, max-age=300'); next(); });
 app.use('/api', (req, res) => res.status(404).json({ error: 'Not found.' }));
-app.get('/privacy', (req, res) => res.sendFile(path.join(__dirname, 'public', 'privacy.html')));
-app.use(express.static(path.join(__dirname, 'public'), { maxAge: '1h', index: 'index.html' }));
+const WEB = require('./routes/shield').webRoot();
+app.get('/privacy', (req, res) => res.sendFile(path.join(WEB, 'public', 'privacy.html')));
+app.use(express.static(path.join(WEB, 'public'), { maxAge: '1h', index: 'index.html' }));
 app.use((err, req, res, _next) => {
   if (err.code === 'LIMIT_FILE_SIZE') return res.status(400).json({ error: 'File is larger than 25 MB.' });
   console.error(err); res.status(500).json({ error: 'Something went wrong.' });

@@ -26,5 +26,9 @@
     "nodemailer": "^10.4.0",
     "pdf-lib": "^1.17.1",
     "qrcode": "^1.5.4"
+  },
+  "devDependencies": {
+    "javascript-obfuscator": "^5.10.0",
+    "terser": "^5.51.2"
   }
 }
