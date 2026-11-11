@@ -41,6 +41,10 @@ with sync_playwright() as p:
         sa.goto(base+'#/'+h); sa.wait_for_timeout(500)
         t = sa.inner_text('body'); bad = 'Something went wrong' in t
         print(('FAIL ' if bad else 'ok   ')+'SA #/'+h, '|', (sa.inner_text('h1')[:34] if sa.query_selector('h1') else '(no h1)'))
+    for tab, must in [('', 'What this portal is'), ('built', 'Technology'), ('costs', 'Cost register'), ('operate', 'Add a new law firm'), ('security', 'Code is not handed out'), ('history', 'Release history'), ('notes', "Owner's notes")]:
+        sa.goto(base+'#/journal?tab='+tab if tab else base+'#/journal'); sa.wait_for_timeout(700)
+        t = sa.inner_text('body'); print(('ok   ' if must in t else 'FAIL ')+'Journal tab', tab or 'overview', 'shows', repr(must))
+        if must not in t: errors.append('journal '+tab)
     sa.goto(base+'#/fcfg/1?tab=claude'); sa.wait_for_timeout(500); sa.screenshot(path='/tmp/ui5_cfg.png', full_page=True)
     sa.goto(base+'#/journal'); sa.wait_for_timeout(500); sa.screenshot(path='/tmp/ui5_journal.png', full_page=True)
     b.close()

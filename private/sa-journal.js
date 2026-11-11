@@ -6,7 +6,7 @@ route(/^\/journal$/, async (_, p) => {
   const T = [['overview', 'Overview'], ['built', 'How it is built'], ['costs', 'Running costs'], ['operate', 'How to operate'], ['security', 'Security'], ['history', 'Versions'], ['notes', 'My notes']];
   const paras = (a) => a.map(([h, b]) => `<div class="card"><h3>${esc(h)}</h3><p style="white-space:pre-wrap">${esc(b)}</p></div>`).join('');
   let body = '';
-  if (tab === 'overview') body = `<div class="card"><h2>What this portal is</h2>${J.purpose.map((x) => `<p>${esc(x)}</p>`).join('')}</div>
+  if (tab === 'overview') body = `<div class="card"><h2>What this portal is</h2>${String(J.purpose).split(/\n+/).map((x) => `<p>${esc(x)}</p>`).join("")}</div>
     <div class="card"><h2>Position today</h2><div class="tw"><table>
       <tr><td>Version</td><td><b>${esc(J.version)}</b> (${esc(J.built)})</td></tr><tr><td>Firms</td><td>${L.firms}</td></tr><tr><td>Office users</td><td>${L.users}</td></tr><tr><td>Clients / cases</td><td>${L.clients} / ${L.matters}</td></tr>
       <tr><td>Claude calls this month</td><td>${L.ai_calls}</td></tr><tr><td>Estimated running cost this month</td><td><b>${inr(L.total_month_paise)}</b> (fixed ${inr(L.fixed_month_paise)} + Claude ${inr(L.ai_cost_paise)} + court data ${inr(L.ecourts_cost_paise)})</td></tr></table></div></div>
