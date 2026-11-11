@@ -82,13 +82,13 @@ async function saSettings(head) {
     <form id="sf" class="grid2">
       <label class="chk"><input type="checkbox" name="claude_all" ${O.claude_all ? 'checked' : ''}> Claude allowed on the whole platform (master switch)</label>
       <label class="chk"><input type="checkbox" name="ecourts_all" ${O.ecourts_all ? 'checked' : ''}> Court data allowed on the whole platform (master switch)</label>
-      <label>Platform court-data key ${O.ecourts_key_set ? '✓ saved' : '— not saved'} <span class="mute">(used by firms that have no key of their own; type __clear__ to remove)</span></label><input name="ecourts_key" type="text" autocomplete="off" data-lpignore="true" style="-webkit-text-security:disc" placeholder="eci_live_…">
+      <div><label>Platform court-data key ${O.ecourts_key_set ? '✓ saved' : '— not saved'} <span class="mute">(used by firms that have no key of their own; type __clear__ to remove)</span></label><input name="ecourts_key" type="text" autocomplete="off" data-lpignore="true" style="-webkit-text-security:disc" placeholder="eci_live_…"></div>
       <label class="chk"><input type="checkbox" name="auto_bill" ${O.auto_bill ? 'checked' : ''}> Create monthly invoices automatically on the 1st</label>
-      <label>Platform Anthropic API key (leave empty to keep; type __clear__ to remove)</label><input name="platform_key" type="password" autocomplete="new-password" placeholder="sk-ant-…">
-      <label>Input price, US$ per million tokens</label><input name="rate_in" type="number" step="0.01" value="${O.rates.in}">
-      <label>Output price, US$ per million tokens</label><input name="rate_out" type="number" step="0.01" value="${O.rates.out}">
-      <label>₹ per US$</label><input name="usd_inr" type="number" step="0.01" value="${O.rates.fx}">
-      <label>Product name shown to firms (optional)</label><input name="product" value="${esc(O.product)}">
+      <div><label>Platform Anthropic API key (leave empty to keep; type __clear__ to remove)</label><input name="platform_key" type="password" autocomplete="new-password" placeholder="sk-ant-…"></div>
+      <div><label>Input price, US$ per million tokens</label><input name="rate_in" type="number" step="0.01" value="${O.rates.in}"></div>
+      <div><label>Output price, US$ per million tokens</label><input name="rate_out" type="number" step="0.01" value="${O.rates.out}"></div>
+      <div><label>₹ per US$</label><input name="usd_inr" type="number" step="0.01" value="${O.rates.fx}"></div>
+      <div><label>Product name shown to firms (optional)</label><input name="product" value="${esc(O.product)}"></div>
       <p class="mute">The price boxes are placeholders. Set them from Anthropic's current price list for the model you use; the meter then shows a close estimate of what each firm costs you.</p>
       <button class="btn">Save</button></form></div>`);
   $('#sf').onsubmit = async (e) => {
