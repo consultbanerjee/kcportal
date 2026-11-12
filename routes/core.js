@@ -380,14 +380,14 @@ module.exports = (app) => {
       open_matters: (() => { const f = app.locals.teamSql(req); return db.prepare("SELECT COUNT(*) v FROM matters m WHERE m.tenant_id=? AND m.status='open'" + f.sql).get(t, ...f.args).v; })(),
       clients: c('SELECT COUNT(*) v FROM clients WHERE tenant_id=?'),
       my_tasks: c("SELECT COUNT(*) v FROM tasks WHERE tenant_id=? AND assigned_to=? AND status<>'done'", req.user.id),
-      overdue_tasks: c("SELECT COUNT(*) v FROM tasks WHERE tenant_id=? AND status<>'done' AND due_date<date('now')"),
+      overdue_tasks: req.user.role === 'admin' ? c("SELECT COUNT(*) v FROM tasks WHERE tenant_id=? AND status<>'done' AND due_date<date('now')") : c("SELECT COUNT(*) v FROM tasks WHERE tenant_id=? AND status<>'done' AND due_date<date('now') AND assigned_to=?", req.user.id),
       new_leads: c("SELECT COUNT(*) v FROM leads WHERE tenant_id=? AND stage='new'"),
       appointments_today: c("SELECT COUNT(*) v FROM appointments WHERE tenant_id=? AND date(start_at,'+5 hours','+30 minutes')=date('now','+5 hours','+30 minutes') AND status='confirmed'"),
       unread_messages: c("SELECT COUNT(*) v FROM messages m JOIN users u ON u.id=m.from_user WHERE m.tenant_id=? AND u.role='client' AND m.read_at IS NULL"),
       drafts_to_approve: c("SELECT COUNT(*) v FROM letters WHERE tenant_id=? AND status='draft'"),
-      dates: db.prepare(`SELECT h.next_date AS date, m.id AS matter_id, m.file_no, m.title, m.forum FROM hearings h JOIN matters m ON m.id=h.matter_id AND m.status<>'deleted'
-        WHERE h.tenant_id=? AND m.status='open' AND h.next_date>=date('now') AND h.next_date<=date('now','+7 days')
-        AND h.id=(SELECT id FROM hearings h2 WHERE h2.matter_id=h.matter_id ORDER BY hearing_date DESC,id DESC LIMIT 1) ORDER BY h.next_date LIMIT 15`).all(t),
+      dates: (() => { const f = app.locals.teamSql(req); return db.prepare(`SELECT h.next_date AS date, m.id AS matter_id, m.file_no, m.title, m.forum FROM hearings h JOIN matters m ON m.id=h.matter_id AND m.status<>'deleted'
+        WHERE h.tenant_id=? AND m.status='open' AND h.next_date>=date('now') AND h.next_date<=date('now','+7 days')${f.sql}
+        AND h.id=(SELECT id FROM hearings h2 WHERE h2.matter_id=h.matter_id ORDER BY hearing_date DESC,id DESC LIMIT 1) ORDER BY h.next_date LIMIT 15`).all(t, ...f.args); })(),
     });
   });
 

@@ -17,7 +17,11 @@ const pill = (t, k = '') => `<span class="pill ${k}">${esc(t)}</span>`;
 const STATUS_PILL = { tagged: 'ok', paid: 'ok', confirmed: 'ok', sent: '', part_paid: 'warn', draft: 'warn', awaiting_payment: 'warn', cancelled: 'bad', expired: 'bad', open: 'ok', closed: '', matched: 'ok', suggested: 'warn', unmatched: 'warn', ignored: '' };
 const sp = (s) => pill(String(s).replace(/_/g, ' '), STATUS_PILL[s] || '');
 
-let ME = null, FIRM = 'KC LEGAL', FIRMQ = '', FEAT = {}, MODS = { off: [], powered: '', product: '' };
+function quoteStart() {
+  const el = document.getElementById('qod'); if (!el) return;
+  GET('/api/quote').then((q) => { const e = document.getElementById('qod'); if (e && q && q.text) e.innerHTML = `<span class="qt">“${esc(q.text)}”</span> <span class="qb">— ${esc(q.by)}</span>`; }).catch(() => {});
+}
+let ME = null, FIRM = 'Portal', FIRMQ = '', FEAT = {}, MODS = { off: [], powered: '', product: '' };
 const isClient = () => ME && ME.role === 'client';
 const can = (...roles) => ME && roles.includes(ME.role);
 
@@ -140,6 +144,7 @@ function navItems() {
   if (isClient()) return [['#/', 'Home'], ['#/matters', 'My cases'], ['#/myfiles', 'My files'], ['#/letters', 'Letters'], ['#/messages', 'Messages'], ['#/livechat', 'Live chat'], ['#/invoices', 'Fees'], ['#/book', 'Book']];
   const r = ME.role, LG = 'Litigation', n = [['#/', 'Home']], pro = ['admin', 'advocate', 'staff'].includes(r), mod = (k) => !(MODS.off || []).includes(k) && !(MODS.advOff || []).includes(k);
   if (mod('clients')) n.push(['#/clients', 'Clients', LG]);
+  if (pro && mod('research')) n.push(['#/research', 'Research Desk', LG]);
   if (pro) n.push(['#/matters', 'Cases', LG]);
   if (pro && FEAT.courtdata && mod('ecourts')) n.push(['#/ecourts', 'Court search', LG], ['#/causelist', 'Cause list', LG]);
   if (mod('tasks')) n.push(['#/tasks', 'Tasks', LG]);
@@ -190,7 +195,7 @@ function layout() {
     ${navHtml(items, active)}
     <div class="who">${esc(ME.name)}<br><a href="#/account" style="padding:0;display:inline">Account</a> · <a href="#/logout" style="padding:0;display:inline">Sign out</a></div></nav>
     <div style="flex:1;min-width:0"><div class="top"><b>${esc(FIRM)}</b><span><a href="#/account">${esc(ME.name.split(' ')[0])}</a> · <a href="#/logout">Sign out</a></span></div>
-    <main class="main" id="view"></main>${MODS.powered ? `<div class="mute noprint" style="text-align:center;padding:.6rem;font-size:.78rem">${esc(MODS.powered)}</div>` : ''}</div>
+    <main class="main" id="view"></main>${MODS.powered ? `<div class="mute noprint" style="text-align:center;padding:.6rem;font-size:10px">${esc(MODS.powered)}</div>` : ''}</div>
     <nav class="bottom">${items.slice(0, isClient() ? 6 : 14).map(([h, l]) => `<a href="${h}" class="${active(h)}">${l}</a>`).join('')}</nav></div>`;
   $$('.side .tg').forEach((t) => { const tg = () => { const b = t.nextElementSibling, o = b.hidden; b.hidden = !o; t.setAttribute('aria-expanded', o); $('.car', t).textContent = o ? '▾' : '▸'; try { localStorage.setItem('kc-nav-' + t.dataset.g, o ? '1' : '0'); } catch (e) {} }; t.onclick = tg; t.onkeydown = (e) => { if (e.key === 'Enter' || e.key === ' ') { e.preventDefault(); tg(); } }; });
   if (ME.access_notice) { let seen = false; try { seen = sessionStorage.getItem('kc-acc-notice') === ME.access_notice.until; } catch (e) {}
@@ -307,4 +312,4 @@ async function loadBundle() {
   await Promise.all(files.map((n) => new Promise((ok, no) => { const s = document.createElement('script'); s.src = '/x/' + n + '.js'; s.async = false; s.onload = ok; s.onerror = () => no(new Error('Could not load the application.')); document.body.appendChild(s); })));
   BUNDLED = true;
 }
-async function loadMe() { const r = await GET('/api/me'); ME = r.user; FIRM = r.tenant.name; FEAT = {}; MODS = { off: [], powered: '', product: '' }; if (ME) { try { MODS = await GET('/api/modules'); } catch (e) {} } if (ME && ME.role !== 'client' && ME.role !== 'superadmin') { try { FEAT = await GET('/api/features'); } catch (e) {} } if (ME) await loadBundle(); }
+async function loadMe() { const r = await GET('/api/me'); ME = r.user; FIRM = r.tenant.name; document.title = FIRM + ' — Client & Office Portal'; FEAT = {}; MODS = { off: [], powered: '', product: '' }; if (ME) { try { MODS = await GET('/api/modules'); } catch (e) {} } if (ME && ME.role !== 'client' && ME.role !== 'superadmin') { try { FEAT = await GET('/api/features'); } catch (e) {} } if (ME) await loadBundle(); }

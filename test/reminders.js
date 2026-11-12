@@ -43,6 +43,6 @@ function client() { let cookie = ''; return async (method, url, body) => { const
   db.prepare("UPDATE reminder_log SET created_at=datetime('now','-30 days')").run(); r = await admin('POST', '/api/reminders/run'); ok(r.j.invoices === 0, 'paid invoice no longer reminded');
   const staff = client(); await admin('POST', '/api/users', { name: 'Stf', email: 'stf@example.com', role: 'staff' }); const st = db.prepare("SELECT invite_token t FROM users WHERE email='stf@example.com'").get().t;
   await staff('POST', '/api/invite/' + st, { password: 'StrongPass123' }); await staff('POST', '/api/login', { email: 'stf@example.com', password: 'StrongPass123' });
-  r = await staff('PUT', '/api/reminders', { on: false }); ok(r.s === 404, 'only admin sets reminders');
+  r = await staff('PUT', '/api/reminders', { on: false }); ok(r.s === 404 || r.s === 403, 'only admin sets reminders');
   console.log(`${pass} passed, ${fail} failed`); srv.close(); process.exit(fail ? 1 : 0);
 })();

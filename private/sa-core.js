@@ -14,10 +14,11 @@ route(/^\/firms$/, async (_, p) => {
 });
 
 async function saFirms(head) {
+  setTimeout(quoteStart, 400);
   const [O, firms] = await Promise.all([GET('/api/platform/overview'), GET('/api/platform/firms')]);
   const by = Object.fromEntries(O.firms.map((f) => [f.id, f]));
   const link = (pth) => show('Invitation link', `<p>Send this private link to the administrator. It works once and expires in 7 days.</p><input readonly value="${esc(location.origin + '/' + pth)}">`);
-  view(`${head}<div class="row sp"><p class="mute" style="margin:0">Each firm has its own administrator, team, clients and Google Drive. You never see a firm's client data. Claude is currently <b>${O.claude_all ? 'ON' : 'OFF'}</b> for the platform.</p><button class="btn" id="nf">Add firm</button></div>
+  view(`${head}<div id="qod" class="qod"></div><div class="row sp"><p class="mute" style="margin:0">Each firm has its own administrator, team, clients and Google Drive. You never see a firm's client data. Claude is currently <b>${O.claude_all ? 'ON' : 'OFF'}</b> for the platform.</p><button class="btn" id="nf">Add firm</button></div>
     ${firms.map((f) => { const o = by[f.id] || {}, u = o.usage || {}; return `<div class="card"><div class="row sp"><h2>${esc(f.name)} ${f.active ? '' : pill('disabled', 'bad')} ${o.exempt ? pill('owner firm') : ''} ${o.due_n ? pill('dues ' + inr(o.due_paise), 'bad') : ''}</h2><span class="row"><a class="btn sm gold" href="#/fcfg/${f.id}">Configure</a> <a class="btn sm" href="#/fcfg/${f.id}?tab=services">Services</a> <button class="btn sm ghost" data-pl="${f.id}">Plan and modules</button><button class="btn sm ghost" data-tg="${f.id}" data-a="${f.active ? 0 : 1}">${f.active ? 'Disable' : 'Enable'}</button></span></div>
       <p class="mute">Plan <b>${esc(O.plans[o.plan] || o.plan)}</b> · fee ${inr(o.fee_paise)}/month · ${f.team} team · ${f.clients} clients · Drive ${o.drive ? 'connected' : 'not connected'}<br>
       Claude: ${o.claude ? pill('on', 'ok') : pill('off', 'bad')} · this month ${u.calls || 0} calls, ${saTok((u.in_tok || 0) + (u.out_tok || 0))} tokens, cost ${inr(u.cost_paise)}${o.ai_bill ? ', to bill ' + inr(u.bill_paise) : ' (not billed)'}<br>

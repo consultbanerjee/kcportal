@@ -30,28 +30,26 @@ function heroStart() {
 route(/^\/$/, async () => {
   const d = await GET('/api/dashboard');
   if (isClient()) {
-    view(`${heroHtml(ME.name.split(' ')[0])}
+    view(`${heroHtml(ME.name.split(' ')[0])}<div id="qod" class="qod"></div>
       <div class="grid"><a class="stat" href="#/matters"><b>${d.matters}</b><span>Open cases</span></a>
       <a class="stat" href="#/letters"><b>${d.unread_letters}</b><span>New letters</span></a>
       <a class="stat" href="#/messages"><b>${d.unread_messages}</b><span>New messages</span></a>
       <a class="stat ${d.due_paise ? 'alert' : ''}" href="#/invoices"><b>${inr(d.due_paise)}</b><span>Fees due</span></a></div>
       <div class="card" style="margin-top:1rem"><h2>Next court dates</h2>${d.next_dates.length ? `<ul class="list">${d.next_dates.map((x) => `<li><a href="#/matter/${x.matter_id}">${esc(x.title)}</a><b>${dt(x.date)}</b></li>`).join('')}</ul>` : '<p class="mute">No upcoming dates recorded.</p>'}</div>
       <div class="card"><div class="row sp"><h2>Consultations</h2><a class="btn sm" href="#/book">Book a call</a></div>${d.appointments.length ? `<ul class="list">${d.appointments.map((a) => `<li><span>${dtm(a.start_at)}</span><span>${sp(a.status)} ${a.meet_link ? `<a href="${esc(a.meet_link)}" target="_blank" rel="noopener">Join</a>` : ''}</span></li>`).join('')}</ul>` : '<p class="mute">None booked.</p>'}</div>`);
-    heroStart();
+    heroStart(); quoteStart();
     return;
   }
-  view(`${heroHtml(ME.name.split(' ')[0])}${can('admin', 'advocate', 'staff', 'telecaller') ? '<div class="row end"><button class="btn gold" id="qc">+ Add client</button></div>' : ''}
-    <div class="grid">
-    <a class="stat" href="#/matters"><b>${d.open_matters}</b><span>Open cases</span></a>
-    <a class="stat" href="#/tasks"><b>${d.my_tasks}</b><span>My tasks</span></a>
-    <a class="stat ${d.overdue_tasks ? 'alert' : ''}" href="#/tasks?view=overdue"><b>${d.overdue_tasks}</b><span>Overdue tasks</span></a>
-    <a class="stat" href="#/leads"><b>${d.new_leads}</b><span>New leads</span></a>
-    <a class="stat" href="#/appointments"><b>${d.appointments_today}</b><span>Calls today</span></a>
-    <a class="stat" href="#/messages"><b>${d.unread_messages}</b><span>Client messages</span></a>
-    <a class="stat" href="#/letters"><b>${d.drafts_to_approve}</b><span>Letter drafts</span></a></div>
-    <div class="card" style="margin-top:1rem"><h2>Court dates — next 7 days</h2>${d.dates.length ? `<ul class="list">${d.dates.map((x) => `<li><span><a href="#/matter/${x.matter_id}">${esc(x.title)}</a><div class="mute">${esc(x.file_no)} · ${esc(x.forum || '')}</div></span><b>${dt(x.date)}</b></li>`).join('')}</ul>` : '<p class="mute">Nothing listed for the coming week.</p>'}</div>`);
+  const mod = (k) => !(MODS.off || []).includes(k) && !(MODS.advOff || []).includes(k), pro = ['admin', 'advocate', 'staff'].includes(ME.role);
+  const stat = (href, n, label, alert) => `<a class="stat ${alert ? 'alert' : ''}" href="${href}"><b>${n}</b><span>${label}</span></a>`;
+  view(`${heroHtml(ME.name.split(' ')[0])}<div id="qod" class="qod"></div>
+    ${mod('research') ? researchBox() : ''}
+    <div class="grid">${pro ? stat('#/matters', d.open_matters, 'Open cases') : ''}${stat('#/tasks', d.my_tasks, 'My tasks')}${stat('#/tasks?view=overdue', d.overdue_tasks, 'Overdue tasks', d.overdue_tasks)}
+    ${mod('crm') ? stat('#/leads', d.new_leads, 'New leads') + stat('#/appointments', d.appointments_today, 'Calls today') : ''}${mod('messages') && ME.role !== 'accounts' && ME.role !== 'telecaller' ? stat('#/messages', d.unread_messages, 'Client messages') : ''}${mod('letters') && pro ? stat('#/letters', d.drafts_to_approve, 'Letter drafts') : ''}</div>
+    ${pro ? `<div class="card"><div class="row sp"><h2>Court dates — next 7 days</h2>${can('admin', 'advocate', 'staff', 'telecaller') ? '<button class="btn sm gold" id="qc">+ Add client</button>' : ''}</div>${d.dates.length ? `<ul class="list">${d.dates.map((x) => `<li><span><a href="#/matter/${x.matter_id}">${esc(x.title)}</a><div class="mute">${esc(x.file_no)} · ${esc(x.forum || '')}</div></span><b>${dt(x.date)}</b></li>`).join('')}</ul>` : '<p class="mute">Nothing listed for the coming week.</p>'}</div>` : ''}`);
   const qc = $('#qc'); if (qc) qc.onclick = () => addClient();
-  heroStart();
+  researchBoxWire();
+  heroStart(); quoteStart();
   homeExtras();
 }, {});
 
@@ -108,9 +106,9 @@ view(`<div class="row sp"><div><h1 style="margin-bottom:.1rem">${esc(m.title)}</
     ${cli ? '' : '<div class="card" id="ecard" style="padding:10px 16px"></div>'}
     ${(() => { const I = m.ident || {}, cn = I.case_no || m.case_no || '', d1 = (x) => (x ? ' <span class="mute" style="white-space:nowrap">dated ' + esc(dt(x)) + '</span>' : ''), kv = (k, v) => (v ? `<div style="display:flex;gap:.6rem;padding:.18rem 0"><span class="mute" style="min-width:7.5rem">${k}</span><b>${esc(v)}</b></div>` : ''), day = I.next_date ? new Date(I.next_date + 'T00:00:00').toLocaleDateString('en-IN', { weekday: 'short' }) : '';
       const side = (t, a) => `<div class="card" style="margin:0"><div class="row sp"><b>${t}</b><span class="chip" style="padding:.05rem .5rem">${a.length}</span></div>${a.length ? a.map((x) => `<div style="padding:.3rem 0;border-top:1px solid var(--line);margin-top:.3rem">${esc(x)}</div>`).join('') : '<div class="mute" style="margin-top:.4rem">—</div>'}</div>`;
-      return `<div class="grid2" style="align-items:stretch;margin-bottom:1rem"><div class="card" style="margin:0"><div style="font-size:1.12rem;line-height:1.7"><b>Case No.:</b> <b style="color:#c00000">${esc(cn || '—')}</b>${cn && I.case_date ? d1(I.case_date) : ''}${I.reg_no ? `<br><b>Registration No.:</b> ${esc(I.reg_no)}${d1(I.reg_date)}` : ''}</div>
+      return `<div class="grid2" style="align-items:stretch;margin-bottom:1rem"><div class="card" style="margin:0"><div style="font-size:14px;line-height:1.7"><b>Case No.:</b> <b style="color:#c00000">${esc(cn || '—')}</b>${cn && I.case_date ? d1(I.case_date) : ''}${I.reg_no ? `<br><b>Registration No.:</b> ${esc(I.reg_no)}${d1(I.reg_date)}` : ''}</div>
           <div style="margin-top:.5rem">${kv('Filing No.', (I.filing_no || '').replace('Filing No: ', ''))}${kv('Stage', I.stage || m.stage)}${kv('CNR No.', I.cnr)}${kv('Act', I.act)}${cli ? '' : kv('Opposite party', m.opposite_party)}</div></div>
-        <div class="card" style="margin:0;text-align:center"><div class="mute">Next hearing</div><div style="font:700 1.5rem Georgia,serif;color:var(--navy);margin:.25rem 0">${I.next_date ? esc(dt(I.next_date)) + ' <span class="mute" style="font-size:1rem">(' + day + ')</span>' : '—'}</div><div class="mute">${I.next_date ? 'From the court record' : 'Not available — add a hearing or link the court record'}</div>
+        <div class="card" style="margin:0;text-align:center"><div class="mute">Next hearing</div><div style="font:700 14px Georgia,serif;color:var(--navy);margin:.25rem 0">${I.next_date ? esc(dt(I.next_date)) + ' <span class="mute" style="font-size:12px">(' + day + ')</span>' : '—'}</div><div class="mute">${I.next_date ? 'From the court record' : 'Not available — add a hearing or link the court record'}</div>
           <div style="display:flex;justify-content:center;gap:2.2rem;margin-top:.8rem;border-top:1px solid var(--line);padding-top:.6rem"><div><div class="mute">Court</div><b>${esc(I.court_no || '—')}</b></div><div><div class="mute">Item No.</div><b>${esc(I.item_no || '—')}</b></div></div></div></div>
         ${cli || !m.ident ? '' : `<div style="display:grid;grid-template-columns:repeat(auto-fit,minmax(220px,1fr));gap:1rem;margin-bottom:1rem">${side('Advocates (petitioner side)', I.adv_p || [])}${side('Advocates (respondent side)', I.adv_r || [])}${side('Judges', I.judges || [])}</div>`}`; })()}
     ${cli ? (m.client_visible_note ? `<div class="card"><p><b>Update from the office:</b><br>${esc(m.client_visible_note)}</p></div>` : '') : (m.summary ? `<div class="card"><p><b>Internal summary:</b><br>${esc(m.summary)}</p></div>` : '')}
@@ -376,6 +374,15 @@ route(/^\/settings$/, async () => {
       toast('Availability saved.');
     } catch (e) { toast(e.message, true); }
   };
+  try {
+    const rs = await GET('/api/research/status').catch(() => null);
+    if (rs !== null && !(MODS.off || []).includes('research') || (rs && !rs.on)) {
+      const box = document.createElement('div'); box.className = 'card';
+      box.innerHTML = `<h2>Research Desk</h2><label class="chk"><input type="checkbox" id="rsw" ${rs && rs.on ? 'checked' : ''}> Show the Research Desk (law search and AI questions) to my firm</label><p class="mute">Switch it off to hide it for everyone in your firm. Your portal provider can also leave it out of your plan.</p>`;
+      $('#view').insertBefore(box, $('#view').children[2] || null);
+      $('#rsw', box).onchange = async (e) => { await PUT('/api/research/settings', { on: e.target.checked }); toast(e.target.checked ? 'Research Desk is on.' : 'Research Desk is off.'); MODS = await GET('/api/modules'); };
+    }
+  } catch (e) {}
 }, { roles: ['admin'] });
 
 /* ===== Document design (letter pad template) — firm admin ===== */
@@ -383,7 +390,7 @@ route(/^\/template$/, async () => {
   if (ME.role !== 'admin') { view('<p class="mute">Only the firm administrator can change the document design.</p>'); return; }
   let T = await getTpl(true);
   { const S0 = T.settings; if (![1, 2, 3, 4].some((n) => S0['pay' + n + '_text'])) { S0.pay1_text = S0.payment_details || ''; S0.pay2_text = S0.pan || ''; } }
-  const F = (k, label, o = {}) => `<label>${label}</label>${o.hint ? `<div class="mute" style="font-size:.78rem;margin:-.1rem 0 .25rem">${o.hint}</div>` : ''}${o.area ? `<textarea name="${k}" rows="${o.rows || 3}" placeholder="${esc(o.ph || '')}">` : `<input name="${k}" type="${o.type || 'text'}" ${o.type === 'number' ? 'min="0" max="120"' : ''} value="`}${o.area ? esc(T.settings[k] || '') + '</textarea>' : esc(T.settings[k] ?? '') + '">'}`;
+  const F = (k, label, o = {}) => `<label>${label}</label>${o.hint ? `<div class="mute" style="font-size:10px;margin:-.1rem 0 .25rem">${o.hint}</div>` : ''}${o.area ? `<textarea name="${k}" rows="${o.rows || 3}" placeholder="${esc(o.ph || '')}">` : `<input name="${k}" type="${o.type || 'text'}" ${o.type === 'number' ? 'min="0" max="120"' : ''} value="`}${o.area ? esc(T.settings[k] || '') + '</textarea>' : esc(T.settings[k] ?? '') + '">'}`;
   const sample = () => {
     const S = T.settings, d = new Date().toISOString().slice(0, 10);
     const inv = { inv_no: 'INV/0001', inv_date: d, due_date: d, status: 'sent', client_name: 'Sample Client Pvt. Ltd.', client_address: '12 Park Street\nKolkata 700016', subject: 'Professional fees for legal services',
@@ -394,10 +401,10 @@ route(/^\/template$/, async () => {
     <div class="tplgrid"><div class="card"><form id="tf">
       <h3>Firm documents</h3><p class="mute">Upload your firm's own letterhead, logo, signature and payment QR here, once. They are used on every invoice, receipt and letter. JPG or PNG; a transparent PNG is best for the logo and signature.</p>
       <div class="docs3">
-        <div class="docbox"><h4>Letterhead</h4><div class="thumb">${T.has_letterhead ? `<img src="/api/template/letterhead?v=${T.v}" alt="">` : '<span>Not uploaded</span>'}</div><p class="mute" style="margin:0 0 .3rem;font-size:.78rem">Full A4 page, up to 4 MB.</p><input type="file" id="lhf" accept="image/jpeg,image/png"><div class="row"><button type="button" class="btn sm" id="lhm" style="${T.has_letterhead ? '' : 'display:none'}">Match colours &amp; margins</button><button type="button" class="btn sm ghost" id="lhd" style="${T.has_letterhead ? '' : 'display:none'}">Remove</button></div></div>
-        <div class="docbox"><h4>Logo</h4><div class="thumb">${T.has_logo ? `<img src="/api/template/logo?v=${T.lv}" alt="">` : '<span>Not uploaded</span>'}</div><p class="mute" style="margin:0 0 .3rem;font-size:.78rem">Shown in the portal and on a text header.</p><input type="file" id="lgf" accept="image/jpeg,image/png"><div class="row"><button type="button" class="btn sm ghost" id="lgd" style="${T.has_logo ? '' : 'display:none'}">Remove</button></div></div>
-        <div class="docbox"><h4>Signature</h4><div class="thumb">${T.has_signature ? `<img src="/api/template/signature?v=${T.sv}" alt="">` : '<span>Not uploaded</span>'}</div><p class="mute" style="margin:0 0 .3rem;font-size:.78rem">Prints above "Authorised Signatory".</p><input type="file" id="sgf" accept="image/jpeg,image/png"><div class="row"><button type="button" class="btn sm ghost" id="sgd" style="${T.has_signature ? '' : 'display:none'}">Remove</button></div></div>
-        <div class="docbox"><h4>Payment QR</h4><div class="thumb">${T.has_qr ? `<img src="/api/template/qr?v=${T.qv}" alt="">` : '<span>Not uploaded</span>'}</div><p class="mute" style="margin:0 0 .3rem;font-size:.78rem">UPI / bank QR. Prints beside the bank details.</p><input type="file" id="qrf" accept="image/jpeg,image/png"><div class="row"><button type="button" class="btn sm ghost" id="qrd" style="${T.has_qr ? '' : 'display:none'}">Remove</button></div></div>
+        <div class="docbox"><h4>Letterhead</h4><div class="thumb">${T.has_letterhead ? `<img src="/api/template/letterhead?v=${T.v}" alt="">` : '<span>Not uploaded</span>'}</div><p class="mute" style="margin:0 0 .3rem;font-size:10px">Full A4 page, up to 4 MB.</p><input type="file" id="lhf" accept="image/jpeg,image/png"><div class="row"><button type="button" class="btn sm" id="lhm" style="${T.has_letterhead ? '' : 'display:none'}">Match colours &amp; margins</button><button type="button" class="btn sm ghost" id="lhd" style="${T.has_letterhead ? '' : 'display:none'}">Remove</button></div></div>
+        <div class="docbox"><h4>Logo</h4><div class="thumb">${T.has_logo ? `<img src="/api/template/logo?v=${T.lv}" alt="">` : '<span>Not uploaded</span>'}</div><p class="mute" style="margin:0 0 .3rem;font-size:10px">Shown in the portal and on a text header.</p><input type="file" id="lgf" accept="image/jpeg,image/png"><div class="row"><button type="button" class="btn sm ghost" id="lgd" style="${T.has_logo ? '' : 'display:none'}">Remove</button></div></div>
+        <div class="docbox"><h4>Signature</h4><div class="thumb">${T.has_signature ? `<img src="/api/template/signature?v=${T.sv}" alt="">` : '<span>Not uploaded</span>'}</div><p class="mute" style="margin:0 0 .3rem;font-size:10px">Prints above "Authorised Signatory".</p><input type="file" id="sgf" accept="image/jpeg,image/png"><div class="row"><button type="button" class="btn sm ghost" id="sgd" style="${T.has_signature ? '' : 'display:none'}">Remove</button></div></div>
+        <div class="docbox"><h4>Payment QR</h4><div class="thumb">${T.has_qr ? `<img src="/api/template/qr?v=${T.qv}" alt="">` : '<span>Not uploaded</span>'}</div><p class="mute" style="margin:0 0 .3rem;font-size:10px">UPI / bank QR. Prints beside the bank details.</p><input type="file" id="qrf" accept="image/jpeg,image/png"><div class="row"><button type="button" class="btn sm ghost" id="qrd" style="${T.has_qr ? '' : 'display:none'}">Remove</button></div></div>
       </div>
       <p class="mute">After a letterhead upload the portal reads it and sets the colours and the header/footer space so the invoice matches it.</p>
       <h3>Header (used when there is no image)</h3>${F('header_name', 'Firm name')}${F('tagline', 'Tagline')}${F('address', 'Address', { area: 1 })}${F('phone', 'Phone')}${F('email', 'Email')}${F('website', 'Website')}
@@ -522,7 +529,7 @@ async function teamCard(id, m) {
     const cur = Object.fromEntries(T.members.map((x) => [x.user_id, x.level]));
     const rows = T.people.map((u) => `<div class="row sp" style="padding:.35rem 0;border-bottom:1px solid var(--line)"><span>${esc(u.name)} <span class="mute">(${esc(u.role)})</span></span><select data-tu="${u.id}" style="width:auto"><option value="">Not on case</option>${['view', 'work', 'full'].map((l) => `<option value="${l}" ${cur[u.id] === l ? 'selected' : ''}>${LVL[l][0]}</option>`).join('')}</select></div>`).join('');
     const d = document.createElement('div'); d.className = 'modal-bg'; d.style.cssText = 'position:fixed;inset:0;background:#0008;z-index:99;display:flex;align-items:flex-end;justify-content:center';
-    d.innerHTML = `<div class="card" style="max-width:520px;width:100%;max-height:85vh;overflow:auto;margin:0;border-radius:14px 14px 0 0"><h2>Assign advocates</h2><p class="mute" style="font-size:.85rem">View: read only · Work: add hearings, notings, tasks, files · Full: also edit details, fees and team.</p>${rows}<div class="row" style="justify-content:flex-end;margin-top:.8rem"><button class="btn ghost" id="tx">Cancel</button><button class="btn" id="ts">Save team</button></div></div>`;
+    d.innerHTML = `<div class="card" style="max-width:520px;width:100%;max-height:85vh;overflow:auto;margin:0;border-radius:14px 14px 0 0"><h2>Assign advocates</h2><p class="mute" style="font-size:12px">View: read only · Work: add hearings, notings, tasks, files · Full: also edit details, fees and team.</p>${rows}<div class="row" style="justify-content:flex-end;margin-top:.8rem"><button class="btn ghost" id="tx">Cancel</button><button class="btn" id="ts">Save team</button></div></div>`;
     document.body.appendChild(d); $('#tx').onclick = () => d.remove();
     $('#ts').onclick = async () => { const members = [...d.querySelectorAll('[data-tu]')].filter((x) => x.value).map((x) => ({ user_id: +x.dataset.tu, level: x.value })); try { await PUT(`/api/matters/${id}/team`, { members }); d.remove(); toast('Team saved.'); go(); } catch (e) { toast(e.message, true); } };
   };
@@ -587,11 +594,11 @@ async function diaryCard(id, m, cli) {
       ${ed ? `<button class="btn sm ghost" id="dsort">Sort by date</button>` : ''}${ed && m.ident ? '<button class="btn sm ghost" id="dsync">Sync from eCourts</button>' : ''}</div></div>
     ${D.stage === null ? '' : `<div style="display:flex;gap:4px;margin:.7rem 0;overflow-x:auto">${D.stages.map((x, k) => `<span class="chip" style="flex:0 0 auto;${k < D.stage ? 'background:var(--bg-success)' : k === D.stage ? 'background:var(--bg-accent);font-weight:600' : 'opacity:.6'}">${esc(x)}</span>`).join('')}</div>`}
     <div id="dlist" style="margin-top:.6rem">${rows.length ? rows.map((e) => `<div class="drow" ${ed ? 'draggable="true"' : ''} data-id="${e.id}" style="display:flex;gap:.5rem;align-items:flex-start;padding:.55rem;border:1px solid var(--line);border-radius:8px;margin-bottom:.4rem;background:#fff">
-        ${ed ? '<span class="dh" title="Drag to move" style="cursor:grab;color:#999;font-size:1.2rem;line-height:1">⋮⋮</span>' : ''}<div style="min-width:84px;font-size:.82rem" class="mute">${esc(dt(e.date))}</div>
-        <div style="flex:1;min-width:0"><div><span style="display:inline-block;font-size:.72rem;padding:1px 7px;border-radius:6px;margin-right:6px;background:${GC[e.group]}">${esc(GL[e.group])}</span><b>${esc(e.title || e.label)}</b>${e.source === 'court' ? ' <span class="mute" style="font-size:.78rem">· eCourts</span>' : ''}${e.edited ? ' <span class="mute" style="font-size:.78rem">· edited</span>' : ''}${!cli && e.visible ? ' <span class="mute" style="font-size:.78rem">· shown to client</span>' : ''}</div>
-          ${e.note ? `<div style="font-size:.92rem;margin-top:.15rem;white-space:pre-wrap">${esc(e.note)}</div>` : ''}
+        ${ed ? '<span class="dh" title="Drag to move" style="cursor:grab;color:#999;font-size:14px;line-height:1">⋮⋮</span>' : ''}<div style="min-width:84px;font-size:12px" class="mute">${esc(dt(e.date))}</div>
+        <div style="flex:1;min-width:0"><div><span style="display:inline-block;font-size:10px;padding:1px 7px;border-radius:6px;margin-right:6px;background:${GC[e.group]}">${esc(GL[e.group])}</span><b>${esc(e.title || e.label)}</b>${e.source === 'court' ? ' <span class="mute" style="font-size:10px">· eCourts</span>' : ''}${e.edited ? ' <span class="mute" style="font-size:10px">· edited</span>' : ''}${!cli && e.visible ? ' <span class="mute" style="font-size:10px">· shown to client</span>' : ''}</div>
+          ${e.note ? `<div style="font-size:12px;margin-top:.15rem;white-space:pre-wrap">${esc(e.note)}</div>` : ''}
           ${e.clock ? `<div style="margin-top:.2rem"><span class="chip" style="background:${e.clock.closed ? 'var(--bg-success)' : e.clock.over ? '#fdecec' : '#fff4d6'}">${e.clock.closed ? 'Reply received' : e.clock.over ? 'Reply period over (' + esc(dt(e.clock.due)) + ')' : 'Reply due ' + esc(dt(e.clock.due)) + ' · ' + e.clock.left + ' day(s) left'}</span></div>` : ''}
-          ${e.link ? `<div style="font-size:.82rem"><a href="${esc(e.link)}" target="_blank" rel="noopener">${esc(e.link)}</a></div>` : ''}${e.by ? `<div class="mute" style="font-size:.78rem">by ${esc(e.by)}</div>` : ''}</div>
+          ${e.link ? `<div style="font-size:12px"><a href="${esc(e.link)}" target="_blank" rel="noopener">${esc(e.link)}</a></div>` : ''}${e.by ? `<div class="mute" style="font-size:10px">by ${esc(e.by)}</div>` : ''}</div>
         ${ed ? `<div style="display:flex;gap:2px"><button class="btn sm ghost" data-a="up" data-id="${e.id}" aria-label="Move up">▲</button><button class="btn sm ghost" data-a="dn" data-id="${e.id}" aria-label="Move down">▼</button><button class="btn sm ghost" data-a="ed" data-id="${e.id}">Edit</button><button class="btn sm ghost" data-a="rm" data-id="${e.id}" aria-label="Delete">✕</button></div>` : ''}</div>`).join('') : '<p class="mute">No entries yet.</p>'}</div>
     ${ed ? `<div id="dform" style="display:grid;grid-template-columns:repeat(auto-fit,minmax(170px,1fr));gap:.5rem;margin-top:.7rem;align-items:end;padding-top:.7rem;border-top:1px solid var(--line)">
       <label>Date<input type="date" id="dd" value="${today()}"></label>

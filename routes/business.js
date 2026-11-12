@@ -152,7 +152,11 @@ module.exports = (app, limiter) => {
     res.json({ ok: true });
   });
 
-  app.get('/api/public/firm', (req, res) => { const t = pubFirm(req); res.json({ name: t ? t.name : 'Client Portal' }); });
+  app.get('/api/public/firm', (req, res) => {
+    const t = pubFirm(req); let c = {};
+    try { if (t) c = require('./template').tplInfo(t.id).settings || {}; } catch (e) { /* no template yet */ }
+    res.json({ name: t ? t.name : 'Client Portal', address: c.address || '', phone: c.phone || '', email: c.email || '', website: c.website || '' });
+  });
   app.get('/api/public/booking', (req, res) => {
     const t = pubFirm(req);
     res.json({

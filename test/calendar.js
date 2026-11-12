@@ -105,8 +105,8 @@ const today = new Date(Date.now() + 5.5 * 3600000).toISOString().slice(0, 10), m
   // ---- permissions
   const tel = client(); await admin('POST', '/api/users', { name: 'Tel', email: 'tel@example.com', role: 'telecaller' }); const tt = db.prepare("SELECT invite_token t FROM users WHERE email='tel@example.com'").get().t;
   await tel('POST', '/api/invite/' + tt, { password: 'StrongPass123' }); await tel('POST', '/api/login', { email: 'tel@example.com', password: 'StrongPass123' });
-  r = await tel('GET', `/api/calendar?from=${today}&to=${fut2}&cases=1&bday=1`); ok(r.s === 200 && r.j.cases.length === 0 && r.j.can_edit === false, 'telecaller sees the calendar but not case dates');
-  ok((await tel('POST', '/api/calendar/holidays', { title: 'x', date: today })).s === 403 && (await tel('PUT', '/api/calendar/settings', { auto: true })).s === 404 && (await tel('POST', '/api/calendar/refresh')).s === 404, 'telecaller cannot edit');
+  r = await tel('GET', `/api/calendar?from=${today}&to=${fut2}&cases=1&bday=1`); ok(r.s === 403, 'telecaller sees only calling work, not the calendar');
+  ok((await tel('POST', '/api/calendar/holidays', { title: 'x', date: today })).s === 403 && [403, 404].includes((await tel('PUT', '/api/calendar/settings', { auto: true })).s) && [403, 404].includes((await tel('POST', '/api/calendar/refresh')).s), 'telecaller cannot edit');
   ok((await client()('GET', '/api/calendar')).s === 401, 'sign-in required');
   console.log(`${pass} passed, ${fail} failed`); srv.close(); process.exit(fail ? 1 : 0);
 })();

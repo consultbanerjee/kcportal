@@ -147,7 +147,7 @@ function saveBday(t, b) {
 const bdayDate = (b, y) => ymd(y, b.month, b.month === 2 && b.day === 29 && !isLeap(y) ? 28 : b.day);
 
 // ---------- greetings ----------
-const firmName = (t) => (db.prepare('SELECT name FROM tenants WHERE id=?').get(t) || {}).name || 'KC LEGAL';
+const firmName = (t) => (db.prepare('SELECT name FROM tenants WHERE id=?').get(t) || {}).name || 'our law firm';
 const DEF_MSG = 'Dear {name},\n\nWarm birthday greetings from {firm}! Wishing you good health and happiness in the year ahead.\n\nWith regards,\n{firm}';
 const fillMsg = (t, b) => (S(t, 'cal_bday_msg') || DEF_MSG).replace(/\{name\}/g, b.name).replace(/\{firm\}/g, firmName(t));
 const logG = (t, id, year, channel, status, error, auto) => db.prepare('INSERT INTO cal_greet_log(tenant_id,bday_id,year,channel,status,error,auto) VALUES (?,?,?,?,?,?,?)').run(t, id, year, channel, status, error ? String(error).slice(0, 250) : null, auto ? 1 : 0);

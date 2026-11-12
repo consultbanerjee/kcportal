@@ -13,7 +13,7 @@ try { db.exec('ALTER TABLE matters ADD COLUMN created_by INTEGER'); } catch (e) 
 // The firm administrator switches on, one by one, what advocates may also use. (Staff, telecallers and accounts follow the older single switch above.)
 const ADV_KEYS = [['allcases', 'All cases of the firm (not only their own)'], ['clients', 'All clients'], ['ecourts', 'Court search and cause list'], ['calendar', 'Calendar'], ['tasks', 'Tasks page'], ['files', 'Firm-wide Files'],
   ['letters', 'Letters'], ['register', 'In-Out Register'], ['draft', 'AI Drafting'], ['limitation', 'Limitation'], ['messages', 'Messages'], ['mail', 'Mail'], ['chats', 'Chats'], ['crm', 'CRM (follow-ups, tickets, leads, calls)'],
-  ['consents', 'Consents'], ['accounts', 'Accounts'], ['judgments', 'Judgments'], ['repository', 'Repository']];
+  ['consents', 'Consents'], ['accounts', 'Accounts'], ['judgments', 'Judgments'], ['repository', 'Repository'], ['research', 'Research Desk']];
 // Advocates and staff: the firm switches modules on one by one (setting adv_mods / staff_mods). Accountants see accounts only and telecallers calling/CRM only, fixed.
 const SETKEY = { advocate: 'adv_mods', staff: 'staff_mods' }, FIXED = { accounts: ['accounts'], telecaller: ['crm', 'chats'] };
 const modOn = (t, role, k) => (SETKEY[role] ? String(AI.getS(t, SETKEY[role], '')).split(',').includes(k) : FIXED[role] ? FIXED[role].includes(k) : true);
@@ -24,7 +24,7 @@ const advOffList = (t) => offList(t, 'advocate');
 const GATES = [['ecourts', /^\/api\/ecourts\/(search|causelist|structure|legal-check|import)/], ['draft', /^\/api\/ai\/(draft|drafts|formats|kinds|client-docs)/], ['calendar', /^\/api\/(calendar|dates)(\/|$)/],
   ['tasks', /^\/api\/tasks(\/|$)/], ['letters', /^\/api\/letters(\/|$)/], ['register', /^\/api\/(register|dak)(\/|$)/], ['messages', /^\/api\/messages(\/|$)/], ['mail', /^\/api\/mail(\/|$)/], ['chats', /^\/api\/chats(\/|$)/],
   ['crm', /^\/api\/(appointments|leads|tickets|tickets-count|followups|consents|contacts|consult-types|consult-fees|availability)(\/|$)/], ['consents', /^\/api\/consents(\/|$)/],
-  ['accounts', /^\/api\/(books|bank|invoices|payments|payee-payments|payees|payee-sources|pay-schedules|recurring|expenses|ledger|cash|reports|upi|reminders)(\/|$)/], ['judgments', /^\/api\/judgments(\/|$)/], ['repository', /^\/api\/repository(\/|$)/]];
+  ['accounts', /^\/api\/(books|bank|invoices|payments|payee-payments|payees|payee-sources|pay-schedules|recurring|expenses|ledger|cash|reports|upi|reminders)(\/|$)/], ['judgments', /^\/api\/judgments(\/|$)/], ['research', /^\/api\/research(\/|$)/], ['repository', /^\/api\/repository(\/|$)/]];
 function gate(req, res, next) {
   const u = req.user; if (!u || !(SETKEY[u.role] || FIXED[u.role]) || !req.path.startsWith('/api/')) return next();
   const t = u.tenant_id, role = u.role; let key = null;

@@ -1,12 +1,12 @@
 <!doctype html>
 <html lang="en"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1">
-<title>Privacy Policy — KC LEGAL</title>
+<title>Privacy Policy</title>
 <style>body{font-family:Georgia,serif;max-width:760px;margin:2rem auto;padding:0 1rem;line-height:1.6;color:#1b2238}h1,h2{color:#141c33}h2{margin-top:1.6rem;font-size:1.15rem}a{color:#141c33}.m{color:#667}</style></head>
 <body>
 <h1>Privacy Policy</h1>
-<p class="m">KC LEGAL — Client &amp; Office Portal (portal.kclegal.us) · Last updated: 10 November 2026</p>
+<p class="m"><span data-f="name">The firm</span> — Client &amp; Office Portal · Last updated: 12 November 2026</p>
 
-<p>KC LEGAL (“we”, “us”), a law firm practising in India, operates this portal for its own clients and staff. This policy explains what information the portal handles and how it is used. The portal is a private, firm-run application and is not offered to the general public.</p>
+<p><span data-f="name">The firm</span> (“we”, “us”), a law firm practising in India, operates this portal for its own clients and staff. This policy explains what information the portal handles and how it is used. The portal is a private, firm-run application and is not offered to the general public.</p>
 
 <h2>1. Information we handle</h2>
 <p>Client and contact details (name, phone, e-mail, address); matter details and case numbers; documents and drafts you or we upload; appointment bookings and payment records (invoices, receipts, UPI payment references); messages sent through the portal, WhatsApp or e-mail; and sign-in details for staff and client logins.</p>
@@ -15,20 +15,29 @@
 <p>Solely to provide legal services and run the firm: handling your matters, scheduling consultations and hearings, issuing invoices and receipts, sending reminders and updates, and keeping our records as the law and the Bar Council rules require. We do not sell your information or use it for advertising.</p>
 
 <h2>3. Google services</h2>
-<p>With the firm administrator's permission, the portal connects to the firm's own Google account to: store files in Google Drive (folder “KcLegalPortal” only); create Google Meet links and calendar entries for booked consultations; and save clients as contacts in Google Contacts. The portal accesses only these items, uses them only for these purposes, and does not share Google data with anyone else. The portal's use of information received from Google APIs adheres to the <a href="https://developers.google.com/terms/api-services-user-data-policy">Google API Services User Data Policy</a>, including its Limited Use requirements.</p>
+<p>With the firm administrator's permission, the portal connects to the firm's own Google account to: store files in Google Drive (a single portal folder only); create Google Meet links and calendar entries for booked consultations; and save clients as contacts in Google Contacts. The portal accesses only these items, uses them only for these purposes, and does not share Google data with anyone else. The portal's use of information received from Google APIs adheres to the <a href="https://developers.google.com/terms/api-services-user-data-policy">Google API Services User Data Policy</a>, including its Limited Use requirements.</p>
 
 <h2>4. WhatsApp and e-mail</h2>
 <p>We send messages (appointment confirmations, hearing and fee reminders, payment links) only to clients who have given us their number or e-mail for this purpose. Messages through WhatsApp are carried by Meta’s WhatsApp Business Platform. You may tell us at any time to stop.</p>
 
 <h2>5. Sharing</h2>
-<p>Information is shared only with the advocates and staff of KC LEGAL who need it; with courts, tribunals, authorities or opposing parties as your matter requires; and with service providers that run the portal (hosting, Google, Meta, payment apps), who act on our instructions. Client confidences remain protected by professional duty.</p>
+<p>Information is shared only with the advocates and staff of <span data-f="name">the firm</span> who need it; with courts, tribunals, authorities or opposing parties as your matter requires; and with service providers that run the portal (hosting, Google, Meta, payment apps), who act on our instructions. Client confidences remain protected by professional duty.</p>
 
 <h2>6. Security and retention</h2>
 <p>Access is by individual login; each client can see only their own matters and files; the administrator can block any client’s access at any time. Files are kept in the firm’s Google Drive. We keep records for as long as needed for your matter and to meet legal and professional obligations.</p>
 
 <h2>7. Your choices</h2>
-<p>You may ask us to correct your details, stop reminders or messages, or (subject to our legal and professional duties to retain records) delete your information, by writing to <a href="mailto:info@kclegal.us">info@kclegal.us</a>.</p>
+<p>You may ask us to correct your details, stop reminders or messages, or (subject to our legal and professional duties to retain records) delete your information, by writing to <a data-f="mailto">the firm's e-mail address</a>.</p>
 
 <h2>8. Contact</h2>
-<p>KC LEGAL, Olisa House, 10th Floor, 4 Government Place, Kolkata 700001 · Phone/WhatsApp +91 98311 90819 · <a href="mailto:info@kclegal.us">info@kclegal.us</a> · <a href="https://www.kclegal.us/terms/">Terms of Service</a></p>
-</body></html>
+<p><span data-f="name"></span><span data-f="address"></span><span data-f="phone"></span><span data-f="email"></span></p>
+<script>
+fetch('/api/public/firm').then((r) => r.json()).then((f) => {
+  document.title = 'Privacy Policy — ' + f.name;
+  document.querySelectorAll('[data-f=name]').forEach((e) => { e.textContent = f.name; });
+  const set = (k, v) => document.querySelectorAll('[data-f=' + k + ']').forEach((e) => { if (v) e.textContent = (k === 'name' ? '' : ' · ') + v; });
+  set('address', f.address); set('phone', f.phone); set('email', f.email);
+  document.querySelectorAll('[data-f=name]').forEach((e) => { if (e.parentElement.tagName === 'P' && e.parentElement.textContent.indexOf('·') > -1) e.textContent = f.name; });
+  const m = document.querySelector('[data-f=mailto]'); if (m && f.email) { m.href = 'mailto:' + f.email; m.textContent = f.email; }
+}).catch(() => {});
+</script></body></html>

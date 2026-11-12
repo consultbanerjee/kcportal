@@ -96,6 +96,8 @@ require('./routes/team')(app);
 require('./routes/activity')(app);
 require('./routes/diary')(app);
 require('./routes/casedel')(app);
+require('./routes/research')(app);
+require('./routes/quote')(app);
 require('./routes/moves')(app);
 require('./routes/business')(app, limiter);
 require('./routes/template')(app);

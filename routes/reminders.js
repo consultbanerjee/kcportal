@@ -21,7 +21,7 @@ const outstanding = (inv) => inv.total_paise - db.prepare('SELECT COALESCE(SUM(a
 
 async function remindOne(t, inv, manual) {
   const cl = db.prepare('SELECT id,name,email,phone,wa_optout FROM clients WHERE id=?').get(inv.client_id), out = outstanding(inv), c = cfg(t);
-  const firm = (db.prepare('SELECT name FROM tenants WHERE id=?').get(t) || {}).name || 'KC LEGAL', link = payLink(t, inv, out), res = [];
+  const firm = (db.prepare('SELECT name FROM tenants WHERE id=?').get(t) || {}).name || 'our law firm', link = payLink(t, inv, out), res = [];
   const log = (channel, status, error) => db.prepare('INSERT INTO reminder_log(tenant_id,invoice_id,client_id,channel,status,error,manual) VALUES (?,?,?,?,?,?,?)').run(t, inv.id, cl.id, channel, status, error ? String(error).slice(0, 250) : null, manual ? 1 : 0);
   if ((c.wa || manual) && WA.configured(t) && !cl.wa_optout && WA.normPhone(cl.phone)) {
     try { await WA.sendToClient(t, cl.id, { template: 'kc_payment_link', vars: [cl.name, inv.inv_no, inrStr(out), link, firm] }, null); log('whatsapp', 'sent'); res.push('whatsapp'); } catch (e) { log('whatsapp', 'failed', e.message); }

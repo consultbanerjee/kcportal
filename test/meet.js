@@ -73,6 +73,7 @@ function client() { let cookie = ''; return async (method, url, body) => { const
   ok(evj && evj.att.includes('meera@client.com') && evj.att.includes('adv@kc.com') && evj.start === '2026-12-01T05:30:00.000Z' && evj.tz === 'Asia/Kolkata' && evj.meet === 'hangoutsMeet', 'event has the right date, time and guests');
   ok(calls.some((c) => c.startsWith('SPACE ') && /RESTRICTED/.test(c) && /"ON"/.test(c)) && calls.some((c) => c.startsWith('MEMBER ') && /COHOST/.test(c) && /adv@kc.com/.test(c)), 'room restricted, auto-record on, advocate co-host');
 
+  for (const k of ['adv_mods', 'staff_mods']) require('../aicore').setS(t, k, require('../routes/team').ADV_KEYS.map((x) => x[0]).join(','));
   // who may see / join
   r = await admin('GET', '/api/appointments'); ok(r.j.find((x) => x.id === a1).meet_link.startsWith('https://meet.google.com'), 'admin sees the link');
   r = await adv.c('GET', '/api/appointments'); ok(r.j.find((x) => x.id === a1).meet_link.startsWith('https://meet.google.com'), 'booked advocate sees the link');

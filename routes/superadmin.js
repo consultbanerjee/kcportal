@@ -8,10 +8,10 @@ const { db, audit } = L;
 // Modules a firm can be given. Switching one off hides it from the menu and closes its API.
 const MODULES = [
   ['accounts', 'Accounts and reports'], ['crm', 'CRM (leads, tickets, calls)'], ['calendar', 'Calendar and birthdays'],
-  ['repository', 'Repository (court and library links)'], ['judgments', 'Judgments'], ['ai', 'AI drafting, email and chat (Claude)'],
+  ['repository', 'Repository (court and library links)'], ['judgments', 'Judgments'], ['ai', 'AI drafting, email and chat (Claude)'], ['research', 'Research Desk (law search and AI questions)'],
 ];
 const PLANS = {
-  starter: { label: 'Starter', off: ['ai', 'crm'] },
+  starter: { label: 'Starter', off: ['ai', 'crm', 'research'] },
   standard: { label: 'Standard', off: ['ai'] },
   premium: { label: 'Premium (everything)', off: [] },
 };
@@ -22,6 +22,7 @@ const GATES = [
   [/^\/repository(\/|$)/, 'repository'],
   [/^\/(followups)(\/|$)/, 'crm'],
   [/^\/judgments(\/|$)/, 'judgments'],
+  [/^\/research(\/|$)/, 'research'],
 ];
 const todayStr = () => new Date(Date.now() + 19800000).toISOString().slice(0, 10);
 const offList = (tid) => AI.getS(tid, 'sa_off', '').split(',').filter(Boolean);
@@ -83,7 +84,7 @@ module.exports = (app) => {
     next();
   });
   app.get('/api/modules', L.requireLogin, (req, res) => {
-    const t = req.user.tenant_id, off = req.user.role === 'superadmin' ? [] : offList(t);
+    const t = req.user.tenant_id, off = req.user.role === 'superadmin' ? [] : offList(t).concat(require('./research').firmOn(t) ? [] : ['research']);
     const advOff = require('./team').offList(t, req.user.role);
     const powered = AI.getS(t, 'sa_powered', '');
     res.json({ off, advOff, claude: AI.allowed(t), powered, product: AI.getS(0, 'sa_product', '') });

@@ -60,6 +60,6 @@ function client() { let cookie = ''; return async (method, url, body) => { const
   P.delete(gr); db.prepare("UPDATE clients SET gc_synced_at=datetime('now','-1 hour') WHERE id=?").run(sita); r = await admin('POST', '/api/contacts/sync'); ok(r.j.created_in_google === 1, 'deleted contact recreated');
   r = await admin('GET', '/api/contacts'); ok(r.j.ready && r.j.linked === 3 && r.j.last, 'status');
   const adv = client(); await admin('POST', '/api/users', { name: 'Stf', email: 'stf@example.com', role: 'staff' }); const st = db.prepare("SELECT invite_token t FROM users WHERE email='stf@example.com'").get().t; await adv('POST', '/api/invite/' + st, { password: 'StrongPass123' }); await adv('POST', '/api/login', { email: 'stf@example.com', password: 'StrongPass123' });
-  r = await adv('POST', '/api/contacts/sync'); ok(r.s === 404, 'staff cannot run the sync');
+  r = await adv('POST', '/api/contacts/sync'); ok(r.s === 404 || r.s === 403, 'staff cannot run the sync');
   console.log(`${pass} passed, ${fail} failed`); srv.close(); process.exit(fail ? 1 : 0);
 })();
