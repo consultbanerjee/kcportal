@@ -11,7 +11,7 @@ const invSortSel = (k) => `<select id="invsort" class="sm" aria-label="Sort invo
 const invSortKey = () => { try { return localStorage.getItem('kc_invsort') || 'new'; } catch (e) { return 'new'; } };
 const invSortSave = (k) => { try { localStorage.setItem('kc_invsort', k); } catch (e) {} };
 const dt = (s) => s ? new Date(s.length === 10 ? s + 'T00:00:00' : s).toLocaleDateString('en-IN', { day: '2-digit', month: 'short', year: 'numeric' }) : '—';
-const dtm = (s) => s ? new Date(s).toLocaleString('en-IN', { dateStyle: 'medium', timeStyle: 'short' }) : '—';
+const dtm = (s) => s ? new Date(/^\d{4}-\d\d-\d\d \d\d:\d\d(:\d\d)?$/.test(s) ? s.replace(' ', 'T') + 'Z' : s).toLocaleString('en-IN', { dateStyle: 'medium', timeStyle: 'short', timeZone: 'Asia/Kolkata' }) : '—';
 const today = () => new Date().toISOString().slice(0, 10);
 const pill = (t, k = '') => `<span class="pill ${k}">${esc(t)}</span>`;
 const STATUS_PILL = { tagged: 'ok', paid: 'ok', confirmed: 'ok', sent: '', part_paid: 'warn', draft: 'warn', awaiting_payment: 'warn', cancelled: 'bad', expired: 'bad', open: 'ok', closed: '', matched: 'ok', suggested: 'warn', unmatched: 'warn', ignored: '' };

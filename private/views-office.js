@@ -30,7 +30,7 @@ function heroStart() {
 route(/^\/$/, async () => {
   const d = await GET('/api/dashboard');
   if (isClient()) {
-    view(`${heroHtml(ME.name.split(' ')[0])}<div id="qod" class="qod"></div>
+    view(`${heroHtml(ME.name)}<div id="qod" class="qod"></div>
       <div class="grid"><a class="stat" href="#/matters"><b>${d.matters}</b><span>Open cases</span></a>
       <a class="stat" href="#/letters"><b>${d.unread_letters}</b><span>New letters</span></a>
       <a class="stat" href="#/messages"><b>${d.unread_messages}</b><span>New messages</span></a>
@@ -42,7 +42,7 @@ route(/^\/$/, async () => {
   }
   const mod = (k) => !(MODS.off || []).includes(k) && !(MODS.advOff || []).includes(k), pro = ['admin', 'advocate', 'staff'].includes(ME.role);
   const stat = (href, n, label, alert) => `<a class="stat ${alert ? 'alert' : ''}" href="${href}"><b>${n}</b><span>${label}</span></a>`;
-  view(`${heroHtml(ME.name.split(' ')[0])}<div id="qod" class="qod"></div>
+  view(`${heroHtml(ME.name)}<div id="qod" class="qod"></div>
     ${mod('research') ? researchBox() : ''}
     <div class="grid">${pro ? stat('#/matters', d.open_matters, 'Open cases') : ''}${stat('#/tasks', d.my_tasks, 'My tasks')}${stat('#/tasks?view=overdue', d.overdue_tasks, 'Overdue tasks', d.overdue_tasks)}
     ${mod('crm') ? stat('#/leads', d.new_leads, 'New leads') + stat('#/appointments', d.appointments_today, 'Calls today') : ''}${mod('messages') && ME.role !== 'accounts' && ME.role !== 'telecaller' ? stat('#/messages', d.unread_messages, 'Client messages') : ''}${mod('letters') && pro ? stat('#/letters', d.drafts_to_approve, 'Letter drafts') : ''}</div>
