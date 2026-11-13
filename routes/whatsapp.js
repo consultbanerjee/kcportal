@@ -80,7 +80,7 @@ async function sendToStaff(t, phone, vars) {
 // First time a client has a WhatsApp number in the portal: send one welcome greeting (only when the API is set up, switch in Settings).
 async function welcomePending(t) {
   if (S(t, 'wa_welcome', '1') !== '1' || !configured(t)) return 0;
-  const firm = (db.prepare('SELECT name FROM tenants WHERE id=?').get(t) || {}).name || 'KC LEGAL'; let n = 0;
+  const firm = (db.prepare('SELECT name FROM tenants WHERE id=?').get(t) || {}).name || 'Law Office'; let n = 0;
   for (const c of db.prepare("SELECT id,name,phone FROM clients WHERE tenant_id=? AND wa_welcomed_at IS NULL AND phone IS NOT NULL AND phone<>''").all(t)) {
     if (!normPhone(c.phone)) continue;
     if (db.prepare("UPDATE clients SET wa_welcomed_at=? WHERE id=? AND wa_welcomed_at IS NULL").run(new Date().toISOString(), c.id).changes !== 1) continue;   // claim first: never greet twice

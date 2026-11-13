@@ -52,7 +52,7 @@ module.exports = (app) => {
     const q = L.str((req.body || {}).q, 3000).trim(); if (q.length < 8) return res.status(400).json({ error: 'Please write your question in a sentence or two.' });
     let forum = ''; const mid = L.int((req.body || {}).matter_id);
     if (mid) { const m = db.prepare('SELECT * FROM matters WHERE id=? AND tenant_id=?').get(mid, T(req)); if (!m || !app.locals.matterAtLeast(req, m, 'view')) return res.status(404).json({ error: 'Not found.' }); forum = m.forum || ''; }
-    return ask(req, res, 'ask', q, forum, q);
+    return (app.locals.caselawContext ? app.locals.caselawContext(q) : Promise.resolve('')).then((ctx) => ask(req, res, 'ask', q + ctx, forum, q));
   });
   app.post('/api/research/overruled', L.office, OFF, lim, (req, res) => {
     const c = L.str((req.body || {}).case, 300).trim(); if (c.length < 5) return res.status(400).json({ error: 'Give the case name or citation.' });

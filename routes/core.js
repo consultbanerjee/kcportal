@@ -82,10 +82,11 @@ module.exports = (app) => {
     const sc = matterScope(req);
     const params = [T(req), q, q, q]; if (sc.arg) params.push(sc.arg);
     const tm = app.locals.teamSql ? app.locals.teamSql(req) : { sql: '', args: [] }; params.push(...tm.args);
-    const rows = db.prepare(`SELECT m.id,m.file_no,m.title,m.forum,m.case_no,m.stage,m.status,m.client_id,c.name AS client_name,
+    const rows = db.prepare(`SELECT m.id,m.file_no,m.title,m.forum,m.case_no,m.stage,m.status,m.client_id,c.name AS client_name,m.labels,
       (SELECT MIN(next_date) FROM hearings h WHERE h.matter_id=m.id AND h.next_date>=date('now')) AS next_date
       FROM matters m JOIN clients c ON c.id=m.client_id AND m.status<>'deleted'
       WHERE m.tenant_id=? AND (m.title LIKE ? OR m.file_no LIKE ? OR c.name LIKE ?)${sc.sql}${tm.sql} ORDER BY m.id DESC LIMIT 300`).all(...params);
+    if (isClient(req.user)) for (const r of rows) delete r.labels;
     res.json(rows);
   });
 
@@ -123,7 +124,7 @@ module.exports = (app) => {
     if (!cli) {
       m.tasks = db.prepare(`SELECT t.id,t.title,t.status,t.due_date,u.name AS assignee FROM tasks t LEFT JOIN users u ON u.id=t.assigned_to WHERE t.matter_id=? ORDER BY t.id DESC`).all(m.id);
       m.notings = db.prepare(`SELECT n.*, u.name AS user_name FROM notings n LEFT JOIN users u ON u.id=n.user_id WHERE n.matter_id=? ORDER BY n.id DESC`).all(m.id);
-    } else { delete m.summary; delete m.opposite_party; }
+    } else { delete m.summary; delete m.opposite_party; delete m.labels; }
     try { const e = db.prepare('SELECT snapshot FROM matter_ecourt WHERE matter_id=?').get(m.id); m.ident = e && e.snapshot ? require('./ecourts').identity(JSON.parse(e.snapshot)) : null; } catch (x) { m.ident = null; }
     m.invoices = (!cli && m.my_level !== 'full') ? [] : (cli ? db.prepare(`SELECT id,inv_no,inv_date,status,total_paise FROM invoices WHERE matter_id=? AND status NOT IN ('draft','cancelled')`) :
       db.prepare('SELECT id,inv_no,inv_date,status,total_paise FROM invoices WHERE matter_id=?')).all(m.id);

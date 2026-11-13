@@ -44,7 +44,7 @@ async function sendInvoice(t, invId, opts, userId, auto) {
   if (!inv) throw Object.assign(new Error('Invoice not found.'), { status: 404 });
   if (inv.status === 'cancelled') throw Object.assign(new Error('A cancelled invoice cannot be sent.'), { status: 409 });
   const cl = db.prepare('SELECT id,name,email,phone FROM clients WHERE id=?').get(inv.client_id);
-  const firm = (db.prepare('SELECT name FROM tenants WHERE id=?').get(t) || {}).name || 'KC LEGAL';
+  const firm = (db.prepare('SELECT name FROM tenants WHERE id=?').get(t) || {}).name || 'Law Office';
   const paid = db.prepare('SELECT COALESCE(SUM(amount_paise),0) v FROM payments WHERE invoice_id=?').get(inv.id).v, out = inv.total_paise - paid;
   const link = viewLink(inv.id), pay = payLink(t, inv, out), res = { sent: [], failed: [] };
   if (inv.status === 'draft') db.prepare("UPDATE invoices SET status='sent' WHERE id=?").run(inv.id);   // sending issues it
