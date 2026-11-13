@@ -127,6 +127,8 @@ require('./routes/alerts')(app);
 require('./routes/ecourts')(app);
 require('./routes/caseargs')(app);
 require('./routes/casehistory')(app);
+require('./routes/labels')(app);
+require('./routes/caselaw')(app);
 
 app.get('/chat.js', (req, res, next) => { res.set('Cross-Origin-Resource-Policy', 'cross-origin'); res.set('Cache-Control', 'public, max-age=300'); next(); });
 app.use('/api', (req, res) => res.status(404).json({ error: 'Not found.' }));

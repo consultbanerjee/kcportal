@@ -3,3 +3,10 @@
 	reverse_proxy portal:3000
 	header Strict-Transport-Security "max-age=31536000"
 }
+
+# KC Search (separate service, own folder /opt/kcsearch). Its admin page is protected by its own password.
+search.kclegal.us {
+	encode gzip
+	reverse_proxy search:3100
+	header Strict-Transport-Security "max-age=31536000"
+}
