@@ -88,19 +88,20 @@ async function newMatter(clientId) {
 
 /* ===== matters ===== */
 route(/^\/matters$/, async () => {
-  const draw = async (q) => {
-    const rows = await GET('/api/matters?' + qs({ q }));
-    $('#res').innerHTML = rows.length ? `<div class="tw"><table><tr><th>File</th><th>Case</th>${isClient() ? '' : '<th>Client</th>'}<th>Forum</th><th>Next date</th><th></th></tr>${rows.map((m) => `<tr><td>${esc(m.file_no)}</td><td><a href="#/matter/${m.id}">${esc(m.title)}</a></td>${isClient() ? '' : `<td>${esc(m.client_name)}</td>`}<td>${esc(m.forum || '')}</td><td>${m.next_date ? dt(m.next_date) : '—'}</td><td>${sp(m.status)}</td></tr>`).join('')}</table></div>` : '<p class="mute">No cases found.</p>';
+  let LB = ''; const draw = async (q) => {
+    let rows = await GET('/api/matters?' + qs({ q })); if (LB) rows = rows.filter((m) => (m.labels || '').split(',').includes(LB));
+    $('#res').innerHTML = rows.length ? `<div class="tw"><table><tr><th>File</th><th>Case</th>${isClient() ? '' : '<th>Client</th>'}<th>Forum</th><th>Next date</th><th></th></tr>${rows.map((m) => `<tr><td>${esc(m.file_no)}</td><td><a href="#/matter/${m.id}">${esc(m.title)}</a>${labelChips(m.labels)}</td>${isClient() ? '' : `<td>${esc(m.client_name)}</td>`}<td>${esc(m.forum || '')}</td><td>${m.next_date ? dt(m.next_date) : '—'}</td><td>${sp(m.status)}</td></tr>`).join('')}</table></div>` : '<p class="mute">No cases found.</p>';
   };
-  view(`<div class="row sp"><h1>${isClient() ? 'My cases' : 'Cases'}</h1><span class="row" style="gap:.4rem">${can('admin') ? '<a class="btn ghost sm" href="#/deleted-cases">Recycle Bin</a>' : ''}${can('admin', 'advocate', 'staff') ? '<button class="btn" id="add">New case</button>' : ''}</span></div>${searchBar('Search title, file number or client')}<div class="card" id="res"></div>`);
+  view(`<div class="row sp"><h1>${isClient() ? 'My cases' : 'Cases'}</h1><span class="row" style="gap:.4rem">${can('admin') ? '<a class="btn ghost sm" href="#/deleted-cases">Recycle Bin</a>' : ''}${can('admin', 'advocate', 'staff') ? '<button class="btn" id="add">New case</button>' : ''}</span></div>${searchBar('Search title, file number or client')}<div id="lbar"></div><div class="card" id="res"></div>`);
   liveSearch(draw); draw('');
+  if (!isClient()) labelBar((l) => { LB = l; draw($('#q') ? $('#q').value : ''); });
   const add = $('#add'); if (add) add.onclick = () => newMatter();
 });
 
 route(/^\/matter\/(\d+)$/, async ([id]) => {
   const m = await GET('/api/matters/' + id), cli = isClient(), lvl = m.my_level || 'full', edit = can('admin', 'advocate', 'staff') && lvl !== 'view', canF = can('admin', 'advocate', 'staff') && lvl === 'full';
 view(`<div class="row sp"><div><h1 style="margin-bottom:.1rem">${esc(m.title)}</h1><div class="mute">${esc(m.forum || '')}</div>
-      <div class="row" style="gap:.5rem;margin-top:.35rem"><span class="mute">File No. ${esc(m.file_no)} · ${esc(m.client_name)}</span> ${sp(m.status)}</div></div>
+      <div class="row" style="gap:.5rem;margin-top:.35rem"><span class="mute">File No. ${esc(m.file_no)} · ${esc(m.client_name)}</span> ${sp(m.status)}</div>${cli ? '' : `<div id="mlb" style="margin-top:.35rem">${labelChips(m.labels)}${edit ? ' <a href="#" id="elb" class="mute" style="font-size:12px">' + (m.labels ? 'Edit labels' : '+ Add label') + '</a>' : ''}</div>`}</div>
       <div class="row">${canF ? '<button class="btn sm ghost" id="em">Edit</button>' : ''}${canF && can('admin', 'advocate') ? '<button class="btn sm ghost" id="dm" style="color:var(--bad,#b00020)">Delete</button>' : ''}<a class="btn ghost sm" href="#/matters">← ${cli ? 'My cases' : 'Cases'}</a></div></div>
     ${cli ? '' : '<div class="card" id="tcard" style="padding:10px 16px"></div><div class="card" id="mvcard" style="padding:10px 16px"></div>'}
     ${cli ? '' : '<div class="card" id="ecard" style="padding:10px 16px"></div>'}
@@ -131,6 +132,7 @@ view(`<div class="row sp"><div><h1 style="margin-bottom:.1rem">${esc(m.title)}</
   if (!cli && typeof courtCard === 'function') courtCard(id, edit, m);
   if (!cli && typeof argCard === 'function') argCard(id);
   const dm = $('#dm'); if (dm) dm.onclick = () => ask('Delete this case?', [{ name: 'confirm', label: `It moves to the Recycle Bin, not deleted for good: its papers stay in Google Drive and the firm administrator can restore it at any time. Type ${m.file_no} to confirm`, required: true }], 'Delete case', async (v) => { await api('DELETE', '/api/matters/' + id, { confirm: v.confirm }); toast('Case deleted.'); location.hash = '#/matters'; });
+  const elb = $('#elb'); if (elb) elb.onclick = (e) => { e.preventDefault(); editLabels(id, m.labels); };
   const em = $('#em'); if (em) em.onclick = () => ask('Edit case', [{ name: 'title', label: 'Title', value: m.title, required: true }, { name: 'forum', label: 'Forum', value: m.forum }, { name: 'case_no', label: 'Case number', value: m.case_no }, { name: 'opposite_party', label: 'Opposite party', value: m.opposite_party }, { name: 'stage', label: 'Stage', value: m.stage }, { name: 'status', label: 'Status', type: 'select', value: m.status, options: ['open', 'on_hold', 'closed'] }, { name: 'summary', label: 'Internal summary', type: 'textarea', value: m.summary }, { name: 'client_visible_note', label: 'Update the client can see', type: 'textarea', value: m.client_visible_note }], 'Save', async (v) => { await PUT('/api/matters/' + id, v); upd(); });
   const ah = $('#ah'); if (ah) ah.onclick = () => ask('Record hearing', [{ name: 'hearing_date', label: 'Hearing date', type: 'date', value: today(), required: true }, { name: 'purpose', label: 'Purpose' }, { name: 'outcome', label: 'Outcome / order' }, { name: 'next_date', label: 'Next date', type: 'date' }], 'Save', async (v) => { await POST(`/api/matters/${id}/hearings`, v); upd(); });
   if (typeof explorer === 'function' && $('#fx')) explorer($('#fx'), { client: m.client_id, scopeName: m.client_name, cli });

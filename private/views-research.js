@@ -1,9 +1,9 @@
 'use strict';
 /* ===== Research Desk: ask in plain words (Indian law only), search the firm's judgments, check a precedent, official sources ===== */
-const RMODES = [['ask', 'Ask AI'], ['keyword', 'Keyword'], ['citation', 'Citation'], ['party', 'Party name'], ['act', 'Act / section'], ['judge', 'Judge'], ['overruled', 'Overruled?'], ['history', 'My research']];
+const RMODES = [['ask', 'Ask AI'], ['caselaw', 'Case law'], ['keyword', 'Keyword'], ['citation', 'Citation'], ['party', 'Party name'], ['act', 'Act / section'], ['judge', 'Judge'], ['overruled', 'Overruled?'], ['history', 'My research'], ['saved', 'Saved']];
 function researchBox() {
   return `<div class="card rbox"><form id="rq" class="row" style="flex-wrap:nowrap"><input id="rqi" placeholder="Ask a legal question. It is answered under Indian law, with precedents checked." maxlength="3000"><button class="btn">Ask</button></form>
-    <div class="chips">${RMODES.filter((m) => m[0] !== 'history').map(([k, l]) => `<a class="chip" href="#/research?mode=${k}">${l}</a>`).join('')}</div></div>`;
+    <div class="chips">${RMODES.filter((m) => m[0] !== 'history' && m[0] !== 'saved').map(([k, l]) => `<a class="chip" href="#/research?mode=${k}">${l}</a>`).join('')}</div></div>`;
 }
 function researchBoxWire() { const f = $('#rq'); if (f) f.onsubmit = (e) => { e.preventDefault(); const q = $('#rqi').value.trim(); location.hash = '#/research?mode=ask' + (q ? '&q=' + encodeURIComponent(q) : ''); }; }
 
@@ -15,9 +15,10 @@ route(/^\/research$/, async (_m, p) => {
   if (!st.on) { view(head + '<div class="card"><p class="mute">The Research Desk is switched off for this firm.</p></div>'); wireSwitch(); return; }
   function wireSwitch() { const t = $('#rson'); if (t) t.onchange = async () => { await PUT('/api/research/settings', { on: t.checked }); toast(t.checked ? 'Research Desk is on.' : 'Research Desk is off.'); MODS = await GET('/api/modules'); go(); }; }
   const note = '<p class="mute">Answers are prepared by AI under Indian law. Verify every citation on the official report before you rely on it.</p>';
-  const out = (a, id) => `<div class="paper" style="white-space:pre-wrap">${esc(a)}</div><div class="row" style="margin-top:.5rem"><button class="btn sm ghost" id="rcp">Copy</button><button class="btn sm ghost" id="rsv" data-id="${id}">Save to a case</button></div>`;
+  const out = (a, id) => `<div class="paper" style="white-space:pre-wrap">${esc(a)}</div><div class="row" style="margin-top:.5rem"><button class="btn sm ghost" id="rcp">Copy</button><button class="btn sm ghost" id="rsv" data-id="${id}">Save to a case</button><button class="btn sm ghost" id="rbm">Bookmark</button></div>`;
   const hook = (id, a) => {
     const c = $('#rcp'); if (c) c.onclick = () => { try { navigator.clipboard.writeText(a); toast('Copied.'); } catch (e) { toast('Select the text and copy.', true); } };
+    const bm = $('#rbm'); if (bm) bm.onclick = async () => { try { await saveResearch({ title: ($('#rt') ? $('#rt').value : 'Research').slice(0, 200), body: a, kind: 'Answer' }); } catch (e) { toast(e.message, true); } };
     const s = $('#rsv'); if (s) s.onclick = async () => { const ms = await GET('/api/matters'); ask('Save to a case', [{ name: 'matter_id', label: 'Case', type: 'select', options: ms.map((m) => [m.id, m.file_no + ' — ' + m.title]) }], 'Save', async (v) => { await POST('/api/research/save', { id, matter_id: v.matter_id }); toast('Saved in the case notings.'); }); };
   };
   if (mode === 'ask' || mode === 'overruled') {
@@ -32,6 +33,8 @@ route(/^\/research$/, async (_m, p) => {
     if (q0 && !ov) run();
     return;
   }
+  if (mode === 'caselaw') { wireSwitch(); await caselawView(head, q0); wireSwitch(); return; }
+  if (mode === 'saved') { await savedResearchView(head); wireSwitch(); return; }
   if (mode === 'history') {
     const h = await GET('/api/research/history');
     view(`${head}<div class="card">${h.length ? `<ul class="list">${h.map((x) => `<li><span><b>${esc(x.query.slice(0, 140))}</b><div class="mute">${esc(x.kind === 'overruled' ? 'Overruled check' : 'Question')} · ${dtm(x.created_at)}</div></span><button class="btn sm ghost" data-h="${x.id}">Open</button></li>`).join('')}</ul>` : '<p class="mute">Nothing yet. Your questions will be listed here.</p>'}</div>`);
@@ -43,9 +46,10 @@ route(/^\/research$/, async (_m, p) => {
   const run = async () => {
     const v = t.value.trim(); if (v.length < 3) { $('#rr').innerHTML = '<p class="mute">Type at least three letters.</p>'; return; }
     const r = await GET('/api/research/search?' + qs({ mode, q: v }));
-    $('#rr').innerHTML = `<div class="card"><h2>Your judgments library <span class="mute">${r.judgments.length}</span></h2>${r.judgments.length ? `<ul class="list">${r.judgments.map((j) => `<li><span><b>${esc(j.title)}</b><div class="mute">${esc(j.court)} ${j.case_no ? '· ' + esc(j.case_no) : ''} ${j.citation ? '· ' + esc(j.citation) : ''} ${j.judge ? '· ' + esc(j.judge) : ''} ${j.decided_on ? '· ' + dt(j.decided_on) : ''}</div></span>${j.source_url ? `<a class="btn sm ghost" href="${esc(j.source_url)}" target="_blank" rel="noopener">Open</a>` : ''}</li>`).join('')}</ul>` : '<p class="mute">Nothing in your library. Try the official sources below, and add useful judgments under Judgments.</p>'}</div>
+    $('#rr').innerHTML = `<div class="card"><h2>Your judgments library <span class="mute">${r.judgments.length}</span></h2>${r.judgments.length ? `<ul class="list">${r.judgments.map((j) => `<li><span><b>${esc(j.title)}</b><div class="mute">${esc(j.court)} ${j.case_no ? '· ' + esc(j.case_no) : ''} ${j.citation ? '· ' + esc(j.citation) : ''} ${j.judge ? '· ' + esc(j.judge) : ''} ${j.decided_on ? '· ' + dt(j.decided_on) : ''}</div></span>${j.source_url ? `<a class="btn sm ghost" href="${esc(j.source_url)}" target="_blank" rel="noopener">Open</a>` : ''}<button class="btn sm ghost" data-bj="${j.id}">Bookmark</button></li>`).join('')}</ul>` : '<p class="mute">Nothing in your library. Try the official sources below, and add useful judgments under Judgments.</p>'}</div>
       ${r.matters.length ? `<div class="card"><h2>Your cases with this party</h2><ul class="list">${r.matters.map((m) => `<li><a href="#/matter/${m.id}">${esc(m.file_no)} — ${esc(m.title)}</a><span class="mute">${esc(m.opposite_party || '')}</span></li>`).join('')}</ul></div>` : ''}
       <div class="card"><h2>Official sources</h2><ul class="list">${r.sources.map((s) => `<li><a href="${esc(s[1])}" target="_blank" rel="noopener">${esc(s[0])}</a></li>`).join('')}</ul></div>`;
+    $$('[data-bj]').forEach((b) => (b.onclick = async () => { const j = r.judgments.find((x) => String(x.id) === b.dataset.bj); try { await saveResearch({ title: j.title, body: [j.court, j.case_no, j.citation, j.judge].filter(Boolean).join(' · '), kind: 'Judgment', url: j.source_url }); } catch (e) { toast(e.message, true); } }));
   };
   $('#rf').onsubmit = (e) => { e.preventDefault(); run(); };
   if (q0) run();

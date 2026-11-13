@@ -1,1 +1,1 @@
-{"core": ["views-office", "views-billing", "views-files", "views-client", "views-ai", "views-cal", "views-acc", "views-repo", "views-alerts", "views-ecourts", "views-args", "views-research"], "sa": ["sa-core", "sa-config", "sa-journal"]}
+{"core": ["views-office", "views-billing", "views-files", "views-client", "views-ai", "views-cal", "views-acc", "views-repo", "views-alerts", "views-ecourts", "views-args", "views-research", "views-desk"], "sa": ["sa-core", "sa-config", "sa-journal"]}
