@@ -155,6 +155,9 @@ function navItems() {
   if (pro && mod('register')) n.push(['#/register', 'In-Out Register', LG]);
   if (FEAT.drafting && pro && mod('draft')) n.push(['#/draft', 'AI Drafting', LG]);
   if (pro && mod('limitation')) n.push(['#/limitation', 'Limitation', LG]);
+  if (pro) n.push(['#/pipeline', 'Pipeline', LG]);
+  if (pro && mod('time')) n.push(['#/time', 'Time', LG]);
+  if ((pro || r === 'telecaller') && mod('conflicts')) n.push(['#/conflicts', 'Conflict check', LG]);
   if (r !== 'accounts' && mod('messages')) n.push(['#/messages', 'Messages', LG]);
   if (FEAT.email && pro && mod('mail')) n.push(['#/mail', 'Mail', 'CRM']);
   if (FEAT.chat && mod('chats') && [...['admin', 'advocate', 'staff'], 'telecaller'].includes(r)) n.push(['#/chats', 'Chats', 'CRM']);
@@ -192,6 +195,7 @@ function layout() {
   const items = navItems(), cur = location.hash.split('?')[0] || '#/';
   const active = (h) => (h === '#/' ? cur === '#/' || cur === '' : cur.startsWith(h) || cur.startsWith(h.replace(/s$/, ''))) ? 'on' : '';
   $('#app').innerHTML = `<div class="shell"><nav class="side"><div class="brand">${TPLC && TPLC.has_logo ? `<img class="blogo" src="/api/template/logo?v=${TPLC.lv}" alt="">` : ''}${esc(FIRM)}<small>${ME.role === 'superadmin' ? 'SUPER ADMIN' : isClient() ? 'CLIENT PORTAL' : 'OFFICE PORTAL'}</small></div>
+    ${ME.role === 'superadmin' ? '' : '<form id="gs" class="noprint" style="padding:.4rem .7rem"><input name="q" placeholder="Search" aria-label="Search" style="width:100%"></form>'}
     ${navHtml(items, active)}
     <div class="who">${esc(ME.name)}<br><a href="#/account" style="padding:0;display:inline">Account</a> · <a href="#/logout" style="padding:0;display:inline">Sign out</a></div></nav>
     <div style="flex:1;min-width:0"><div class="top"><b>${esc(FIRM)}</b><span><a href="#/account">${esc(ME.name.split(' ')[0])}</a> · <a href="#/logout">Sign out</a></span></div>
