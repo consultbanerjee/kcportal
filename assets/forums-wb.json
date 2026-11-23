@@ -1,0 +1,260 @@
+{
+  "version": "1.0",
+  "updated": "2026-11-14",
+  "region": "West Bengal",
+  "note": "Generic registry for the white-label law-firm portal. Firms may add their own forums. 'verified' = confirmed from official notices/manuals on 14.11.2026; 'to_verify' = not yet checked.",
+  "credential_policy": {
+    "mode": "assisted_session",
+    "store_password_default": false,
+    "reason": "Login needs captcha and OTP; filing needs the advocate's own DSC/Aadhaar e-Sign; payment OTP is personal. Unattended login and filing is not possible.",
+    "flow": [
+      "Advocate logs in on own Chrome (captcha + OTP typed by advocate)",
+      "Portal/Claude takes over the live session: selects case type, fills forms, prepares PDFs to the forum's limit, uploads",
+      "Portal pauses for DSC/e-Sign, fee payment and final submit - done by the advocate"
+    ]
+  },
+  "automation_levels": {
+    "A": "Assisted filing: prefill forms and upload prepared PDFs; advocate does login, signing, payment, final submit",
+    "B": "Online complaint form: prefill and upload; advocate does login/OTP and submit",
+    "C": "No online filing found: prepare PDFs and filing checklist only",
+    "?": "Not yet checked"
+  },
+  "forums": [
+    {
+      "id": "wb-hc-calcutta",
+      "name": "Calcutta High Court (incl. Circuit Bench, Jalpaiguri)",
+      "type": "High Court",
+      "portal_url": "https://filing.ecourts.gov.in/",
+      "login": "Registered mobile / email / Bar Registration Number + password; captcha",
+      "otp": true,
+      "signing": "DSC or Aadhaar e-Sign",
+      "max_file_mb": 20,
+      "format": "PDF; A4; TNR 14; 1.5 spacing; margins T/B 1.5in, L 1.75in, R 1in",
+      "payment": "Court fees online via e-Pay (pay.ecourts.gov.in)",
+      "automation": "A",
+      "status": "verified",
+      "notes": "e-Filing 3.0. Advocate must add practice locations. Files above the limit: use designated centres or split.",
+      "sources": [
+        "https://calcuttahighcourt.gov.in/Notice-Files/ICT/11065",
+        "https://calcuttahighcourt.gov.in/Notice-Files/general-notice/5351",
+        "https://calcuttahighcourt.gov.in/Notice-Files/general-notice/4533"
+      ],
+      "limit_scope": "set"
+    },
+    {
+      "id": "wb-district-courts",
+      "name": "WB District and Sub-Divisional Courts (incl. City Civil Court, Alipore, Commercial Courts)",
+      "type": "District Court",
+      "portal_url": "https://filing.ecourts.gov.in/",
+      "login": "Same as High Court e-Filing 3.0",
+      "otp": true,
+      "signing": "DSC or Aadhaar e-Sign",
+      "max_file_mb": 20,
+      "format": "As per Calcutta HC e-filing rules",
+      "payment": "e-Pay",
+      "automation": "A",
+      "status": "verified",
+      "notes": "e-Filing 3.0 inaugurated in all WB district/sub-divisional courts on 01.10.2024; began as a pilot for a few petition types - check each case type before relying on it.",
+      "sources": [
+        "https://calcuttahighcourt.gov.in/Notice-Files/general-notice/12464",
+        "https://www.highcourtchd.gov.in/sub_pages/common_upload/Publication/Newsletters/E-committee%20Newsletter%20October%202024.pdf"
+      ],
+      "limit_scope": "set"
+    },
+    {
+      "id": "drt-kolkata",
+      "name": "Debts Recovery Tribunals, Kolkata, and DRAT",
+      "type": "Tribunal",
+      "portal_url": "https://drt.gov.in/",
+      "login": "Login External: mobile number + password + captcha",
+      "otp": true,
+      "signing": "Per e-DRT SOP",
+      "max_file_mb": 5,
+      "format": "PDF, max 5 MB for each type of document",
+      "payment": "Bharatkosh online",
+      "automation": "A",
+      "status": "verified",
+      "notes": "E-filing mandatory since 23.06.2025. Draft stays saved for 15 days. Diary number generated at the end.",
+      "sources": [
+        "https://www.slideshare.net/slideshow/drt-user-manual-online-filing-2322024/266452568",
+        "https://www.taxscan.in/top-stories/e-filing-now-mandatory-for-debt-recovery-and-appellate-tribunals-finance-ministry-1426118"
+      ],
+      "limit_scope": "document"
+    },
+    {
+      "id": "nclt-kolkata",
+      "name": "NCLT, Kolkata Bench",
+      "type": "Tribunal",
+      "portal_url": "https://efiling.nclt.gov.in/",
+      "login": "Username + password + captcha; advocate must be in the representative dropdown",
+      "otp": true,
+      "signing": "DSC (PDF/A) mandatory since 01.01.2024",
+      "max_file_mb": null,
+      "format": "PDF/A, digitally signed",
+      "payment": "Bharatkosh online or DD",
+      "automation": "A",
+      "status": "verified",
+      "notes": "Separate flows for Companies Act and IBC. File-size limit not confirmed. Known portal outages and an advocate-dropdown mapping glitch reported.",
+      "sources": [
+        "https://efiling.nclt.gov.in/pdf/manual.pdf",
+        "https://livelaw.in/ibc-cases/nclt-directs-compliance-of-mandatory-pre-requisite-for-e-filing-effective-from-1st-january-2024-issues-detailed-instructions-245312"
+      ]
+    },
+    {
+      "id": "nclat",
+      "name": "NCLAT (appeals from NCLT Kolkata)",
+      "type": "Appellate Tribunal",
+      "portal_url": "https://efiling.nclat.gov.in/",
+      "login": "Registered account; OTP-verified contact details",
+      "otp": true,
+      "signing": "Per NCLAT manual",
+      "max_file_mb": 50,
+      "format": "Single bookmarked PDF containing all documents; split if above 50 MB",
+      "payment": "Per NCLAT manual",
+      "automation": "A",
+      "status": "verified",
+      "notes": "Check current rule on hard copies alongside e-filing receipt.",
+      "sources": [
+        "https://efiling.nclat.gov.in/downloads/manual/manual.pdf",
+        "https://nclat.nic.in/sites/default/files/migration/upload/1313398333615a8f1b62f72.pdf"
+      ],
+      "limit_scope": "set"
+    },
+    {
+      "id": "gstat-kolkata",
+      "name": "GST Appellate Tribunal, Kolkata Bench (Alipore)",
+      "type": "Tribunal",
+      "portal_url": "https://efiling.gstat.gov.in/",
+      "login": "Registered user (appellant corner)",
+      "otp": true,
+      "signing": "DSC or Aadhaar e-Sign for final submission",
+      "max_file_mb": null,
+      "format": "Offline Excel utility + documents; appeal on Form GST APL-05",
+      "payment": "Pre-deposit/online payment at demand-details step",
+      "automation": "A",
+      "status": "verified",
+      "notes": "Kolkata bench operational from 23.03.2026. Helpline 1800-103-4782 and incident form on portal.",
+      "sources": [
+        "https://www.jurishour.in/notification/gstat-kolkata-bench-becomes-operational/",
+        "https://www.patronaccounting.com/blog/gstat-efiling-portal-guide"
+      ]
+    },
+    {
+      "id": "wb-consumer",
+      "name": "WB Consumer Commissions (District and State)",
+      "type": "Consumer Forum",
+      "portal_url": "https://e-jagriti.gov.in/",
+      "login": "Portal registration",
+      "otp": true,
+      "signing": null,
+      "max_file_mb": null,
+      "format": "Complaint, affidavit, documents as PDF",
+      "payment": "Fee online; appeal deposits before State Commission by demand draft",
+      "automation": "A",
+      "status": "verified",
+      "notes": "e-Daakhil launched in WB on 24.12.2021; an e-Jagriti portal also exists - confirm which one WB commissions use now.",
+      "sources": [
+        "https://www.wbconsumers.gov.in/writereaddata/Aboutus/Achievement_perf.pdf",
+        "https://en.vikaspedia.in/viewcontent/social-welfare/social-awareness/consumer-education/e-jagriti-portal-for-consumer-grievance-redressal"
+      ]
+    },
+    {
+      "id": "wbrera",
+      "name": "West Bengal Real Estate Regulatory Authority (WBRERA)",
+      "type": "Regulator",
+      "portal_url": "https://rera.wb.gov.in/",
+      "login": "Registration on WBRERA website",
+      "otp": true,
+      "signing": null,
+      "max_file_mb": null,
+      "format": "Online complaint form",
+      "payment": null,
+      "automation": "B",
+      "status": "verified",
+      "notes": "Complaints through the website. WBHIRA is not to be used (held unconstitutional).",
+      "sources": [
+        "https://housing.wb.gov.in/wbrera-scheme",
+        "https://rera.wb.gov.in/acts.php"
+      ]
+    },
+    {
+      "id": "wbat",
+      "name": "West Bengal Administrative Tribunal",
+      "type": "Tribunal",
+      "portal_url": "https://wbat.wb.gov.in/",
+      "automation": "C",
+      "status": "verified",
+      "notes": "Website found; no e-filing facility found.",
+      "sources": [
+        "https://wbat.wb.gov.in/index.html"
+      ]
+    },
+    {
+      "id": "wb-taxation-tribunal",
+      "name": "West Bengal Taxation Tribunal",
+      "type": "Tribunal",
+      "automation": "C",
+      "status": "verified",
+      "notes": "No e-filing facility found.",
+      "sources": [
+        "https://www.india.gov.in/website-west-bengal-taxation-tribunal"
+      ]
+    },
+    {
+      "id": "itat-kolkata",
+      "name": "ITAT, Kolkata Benches",
+      "type": "Tribunal",
+      "automation": "?",
+      "status": "to_verify"
+    },
+    {
+      "id": "cestat-kolkata",
+      "name": "CESTAT, Kolkata",
+      "type": "Tribunal",
+      "automation": "?",
+      "status": "to_verify"
+    },
+    {
+      "id": "cat-kolkata",
+      "name": "Central Administrative Tribunal, Kolkata",
+      "type": "Tribunal",
+      "automation": "?",
+      "status": "to_verify"
+    },
+    {
+      "id": "labour-industrial",
+      "name": "Labour Courts and Industrial Tribunals, WB",
+      "type": "Tribunal",
+      "automation": "?",
+      "status": "to_verify"
+    },
+    {
+      "id": "aft-kolkata",
+      "name": "Armed Forces Tribunal, Kolkata",
+      "type": "Tribunal",
+      "automation": "?",
+      "status": "to_verify"
+    },
+    {
+      "id": "rct-kolkata",
+      "name": "Railway Claims Tribunal, Kolkata",
+      "type": "Tribunal",
+      "automation": "?",
+      "status": "to_verify"
+    },
+    {
+      "id": "wb-competent-authority",
+      "name": "WB Competent Authority (Apartment Ownership Act)",
+      "type": "Authority",
+      "automation": "?",
+      "status": "to_verify"
+    },
+    {
+      "id": "rent-controller",
+      "name": "Rent Controllers, WB",
+      "type": "Authority",
+      "automation": "?",
+      "status": "to_verify"
+    }
+  ]
+}
