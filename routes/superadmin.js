@@ -8,7 +8,7 @@ const { db, audit } = L;
 // Modules a firm can be given. Switching one off hides it from the menu and closes its API.
 const MODULES = [
   ['accounts', 'Accounts and reports'], ['crm', 'CRM (leads, tickets, calls)'], ['calendar', 'Calendar and birthdays'],
-  ['repository', 'Repository (court and library links)'], ['judgments', 'Judgments'], ['ai', 'AI drafting, email and chat (Claude)'], ['research', 'Research Desk (law search and AI questions)'], ['time', 'Time and billing (hours, timer, bill time)'],
+  ['repository', 'Repository (court and library links)'], ['judgments', 'Judgments'], ['ai', 'AI drafting, email and chat (Claude)'], ['research', 'Research Desk (law search and AI questions)'], ['time', 'Time and billing (hours, timer, bill time)'], ['efiling', 'Filing forums (e-filing guide)'],
 ];
 const PLANS = {
   starter: { label: 'Starter', off: ['ai', 'crm', 'research', 'time'] },
@@ -23,6 +23,7 @@ const GATES = [
   [/^\/(followups)(\/|$)/, 'crm'],
   [/^\/judgments(\/|$)/, 'judgments'],
   [/^\/research(\/|$)/, 'research'],
+  [/^\/(filing-forums|filing-prep)(\/|$)/, 'efiling'],
   [/^\/time(\/|$)/, 'time'],
 ];
 const todayStr = () => new Date(Date.now() + 19800000).toISOString().slice(0, 10);
