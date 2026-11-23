@@ -143,6 +143,8 @@ function navItems() {
   if (ME.role === 'superadmin') return [['#/firms', 'Firms and services'], ['#/activity', 'Activity log'], ['#/journal', 'Build Journal'], ['#/account', 'Account']];
   if (isClient()) return [['#/', 'Home'], ['#/matters', 'My cases'], ['#/myfiles', 'My files'], ['#/letters', 'Letters'], ['#/messages', 'Messages'], ['#/livechat', 'Live chat'], ['#/invoices', 'Fees'], ['#/book', 'Book']];
   const r = ME.role, LG = 'Litigation', n = [['#/', 'Home']], pro = ['admin', 'advocate', 'staff'].includes(r), mod = (k) => !(MODS.off || []).includes(k) && !(MODS.advOff || []).includes(k);
+  n.push(['#/find', 'Search']);
+  if (pro && mod('efiling')) n.push(['#/forums', 'Filing forums', LG]);
   if (mod('clients')) n.push(['#/clients', 'Clients', LG]);
   if (pro && mod('research')) n.push(['#/research', 'Research Desk', LG]);
   if (pro) n.push(['#/matters', 'Cases', LG]);
@@ -198,7 +200,7 @@ function layout() {
     ${ME.role === 'superadmin' ? '' : '<form id="gs" class="noprint" style="padding:.4rem .7rem"><input name="q" placeholder="Search" aria-label="Search" style="width:100%"></form>'}
     ${navHtml(items, active)}
     <div class="who">${esc(ME.name)}<br><a href="#/account" style="padding:0;display:inline">Account</a> · <a href="#/logout" style="padding:0;display:inline">Sign out</a></div></nav>
-    <div style="flex:1;min-width:0"><div class="top"><b>${esc(FIRM)}</b><span><a href="#/account">${esc(ME.name.split(' ')[0])}</a> · <a href="#/logout">Sign out</a></span></div>
+    <div style="flex:1;min-width:0"><div class="top"><b>${esc(FIRM)}</b>${isClient() || ME.role === 'superadmin' ? '' : '<button class="btn sm ghost" id="qf" type="button" title="Search everything (Ctrl+K)">Search</button>'}<span><a href="#/account">${esc(ME.name.split(' ')[0])}</a> · <a href="#/logout">Sign out</a></span></div>
     <main class="main" id="view"></main>${MODS.powered ? `<div class="mute noprint" style="text-align:center;padding:.6rem;font-size:10px">${esc(MODS.powered)}</div>` : ''}</div>
     <nav class="bottom">${items.slice(0, isClient() ? 6 : 14).map(([h, l]) => `<a href="${h}" class="${active(h)}">${l}</a>`).join('')}</nav></div>`;
   $$('.side .tg').forEach((t) => { const tg = () => { const b = t.nextElementSibling, o = b.hidden; b.hidden = !o; t.setAttribute('aria-expanded', o); $('.car', t).textContent = o ? '▾' : '▸'; try { localStorage.setItem('kc-nav-' + t.dataset.g, o ? '1' : '0'); } catch (e) {} }; t.onclick = tg; t.onkeydown = (e) => { if (e.key === 'Enter' || e.key === ' ') { e.preventDefault(); tg(); } }; });
