@@ -8,10 +8,10 @@ const { db, audit } = L;
 // Modules a firm can be given. Switching one off hides it from the menu and closes its API.
 const MODULES = [
   ['accounts', 'Accounts and reports'], ['crm', 'CRM (leads, tickets, calls)'], ['calendar', 'Calendar and birthdays'],
-  ['repository', 'Repository (court and library links)'], ['judgments', 'Judgments'], ['ai', 'AI drafting, email and chat (Claude)'], ['research', 'Research Desk (law search and AI questions)'],
+  ['repository', 'Repository (court and library links)'], ['judgments', 'Judgments'], ['ai', 'AI drafting, email and chat (Claude)'], ['research', 'Research Desk (law search and AI questions)'], ['time', 'Time and billing (hours, timer, bill time)'],
 ];
 const PLANS = {
-  starter: { label: 'Starter', off: ['ai', 'crm', 'research'] },
+  starter: { label: 'Starter', off: ['ai', 'crm', 'research', 'time'] },
   standard: { label: 'Standard', off: ['ai'] },
   premium: { label: 'Premium (everything)', off: [] },
 };
@@ -23,6 +23,7 @@ const GATES = [
   [/^\/(followups)(\/|$)/, 'crm'],
   [/^\/judgments(\/|$)/, 'judgments'],
   [/^\/research(\/|$)/, 'research'],
+  [/^\/time(\/|$)/, 'time'],
 ];
 const todayStr = () => new Date(Date.now() + 19800000).toISOString().slice(0, 10);
 const offList = (tid) => AI.getS(tid, 'sa_off', '').split(',').filter(Boolean);
@@ -96,7 +97,7 @@ module.exports = (app) => {
     const firms = db.prepare("SELECT id,name,slug,active FROM tenants WHERE kind='firm' ORDER BY id").all().map((f) => {
       const u = usageOf(f.id, month), g = (k, d) => AI.getS(f.id, k, d);
       const due = db.prepare("SELECT COALESCE(SUM(total_paise),0) v, COUNT(*) n FROM sub_invoices WHERE tenant_id=? AND status='due'").get(f.id);
-      return { ...f, plan: g('sa_plan', 'premium'), fee_paise: L.int(g('sa_fee', '0')) || 0, off: offList(f.id), claude: AI.svcFirm(f.id, 'claude'), ecourts: AI.svcFirm(f.id, 'courtdata'), markup: u.markup, ai_bill: g('sa_ai_bill', '1') === '1',
+      return { ...f, max_users: L.int(g('sa_max_users', '0')) || 0, max_clients: L.int(g('sa_max_clients', '0')) || 0, users_n: db.prepare("SELECT COUNT(*) n FROM users WHERE tenant_id=? AND role<>'client' AND active=1").get(f.id).n, clients_n: db.prepare('SELECT COUNT(*) n FROM clients WHERE tenant_id=?').get(f.id).n, plan: g('sa_plan', 'premium'), fee_paise: L.int(g('sa_fee', '0')) || 0, off: offList(f.id), claude: AI.svcFirm(f.id, 'claude'), ecourts: AI.svcFirm(f.id, 'courtdata'), markup: u.markup, ai_bill: g('sa_ai_bill', '1') === '1',
         autosuspend: g('sa_autosuspend', '0') === '1', exempt: g('sa_exempt', '0') === '1', grace: L.int(g('sa_grace', '15')) || 15, net: L.int(g('sa_net', '10')) || 10, powered: g('sa_powered', ''), usage: u, due_paise: due.v, due_n: due.n,
         drive: !!AI.dec(g('drive_refresh', '')),
         users: db.prepare("SELECT COUNT(*) n FROM users WHERE tenant_id=? AND role<>'client' AND active=1").get(f.id).n };
@@ -117,6 +118,7 @@ module.exports = (app) => {
     if (b.markup !== undefined) { const n = Number(b.markup); if (!(n >= 0 && n <= 1000)) return res.status(400).json({ error: 'Markup must be between 0 and 1000 percent.' }); S('sa_markup', String(n)); }
     for (const [k, key] of [['ai_bill', 'sa_ai_bill'], ['autosuspend', 'sa_autosuspend'], ['exempt', 'sa_exempt']]) if (b[k] !== undefined) S(key, b[k] ? '1' : '0');
     for (const [k, key, lo, hi] of [['grace', 'sa_grace', 1, 120], ['net', 'sa_net', 1, 90]]) if (b[k] !== undefined) { const n = L.int(b[k]); if (!(n >= lo && n <= hi)) return res.status(400).json({ error: `${k} days must be ${lo}–${hi}.` }); S(key, String(n)); }
+    for (const [k, key] of [['max_users', 'sa_max_users'], ['max_clients', 'sa_max_clients']]) if (b[k] !== undefined) { const n = L.int(b[k], 0); if (!(n >= 0 && n <= 100000)) return res.status(400).json({ error: 'Limits must be 0 (no limit) or a positive number.' }); S(key, String(n)); }
     if (b.powered !== undefined) S('sa_powered', L.str(b.powered, 120));
     audit(null, req.user.id, 'firm_plan_changed', 'tenant', f.id, Object.keys(b).join(','), L.ip(req));
     res.json({ ok: true });

@@ -70,28 +70,6 @@ module.exports = (app) => {
       D.audit(T(req), req.user.id, 'caselaw_to_case', 'matter', m.id, String(d.title || '').slice(0, 80), L.ip(req)); res.json({ ok: true });
     } catch (e) { fail(res, e); }
   });
-  // ---- Super Admin: run the whole judgments engine from inside the portal (no need to open the search service's own admin page) ----
-  const SA = L.need('superadmin');
-  const sp = async (path, body) => {
-    if (!configured()) { const e = new Error('The case-law database is not connected yet.'); e.status = 503; throw e; }
-    const r = await fetch(URLB() + '/api/v1/admin' + path, { method: body ? 'POST' : 'GET', headers: { 'x-api-key': KEY(), 'content-type': 'application/json' }, body: body ? JSON.stringify(body) : undefined, signal: AbortSignal.timeout(10000) }).catch(() => { const e = new Error('The case-law engine did not answer.'); e.status = 502; throw e; });
-    const j = await r.json().catch(() => ({})); if (!r.ok) { const e = new Error(j.error || 'The case-law engine refused this.'); e.status = r.status === 400 ? 400 : 502; throw e; } return j;
-  };
-  app.get('/api/platform/caselaw/engine', SA, async (req, res) => {
-    try { const j = await sp('/state'); delete j.drive.client_id; res.json(j); } catch (e) { fail(res, e); }
-  });
-  app.post('/api/platform/caselaw/engine/:action', SA, async (req, res) => {
-    const a = req.params.action, b = req.body || {};
-    try {
-      if (a === 'court') { if (!/^[A-Za-z0-9_-]{1,12}$/.test(String(b.code)) || !['off', 'meta', 'full'].includes(b.tier)) return res.status(400).json({ error: 'Bad request.' }); await sp('/court', { code: b.code, tier: b.tier }); }
-      else if (a === 'settings') { const o = {}; if (b.auto !== undefined) o.auto = !!b.auto; for (const k of ['hour', 'delay_ms', 'min_free_gb', 'concurrency']) if (b[k] !== undefined) o[k] = L.int(b[k]); await sp('/settings', o); }
-      else if (a === 'run') await sp('/run', b.code && /^[A-Za-z0-9_-]{1,12}$/.test(String(b.code)) ? { code: b.code } : {});
-      else if (a === 'pause') await sp('/pause', { paused: !!b.paused });
-      else if (a === 'stop') await sp('/stop', {});
-      else return res.status(404).json({ error: 'Not found.' });
-      D.audit(null, req.user.id, 'caselaw_engine_' + a, 'search', 0, JSON.stringify(b).slice(0, 120), L.ip(req)); res.json({ ok: true });
-    } catch (e) { fail(res, e); }
-  });
   // used by the AI answer: a few real judgments to read first, so the answer rests on cases that exist
   app.locals.caselawContext = async (q) => {
     if (!configured()) return '';

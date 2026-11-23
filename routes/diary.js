@@ -137,4 +137,4 @@ module.exports = (app) => {
   });
   app.put('/api/diary/settings/reply-days', L.need('admin'), (req, res) => { AI.setS(T(req), 'diary_reply_days', String(Math.max(1, Math.min(180, L.int((req.body || {}).days, 15))))); res.json({ ok: true }); });
 };
-Object.assign(module.exports, { tick, startWorker, syncCourt, KINDS });
+Object.assign(module.exports, { tick, startWorker, syncCourt, KINDS, stageOf, STAGES });
