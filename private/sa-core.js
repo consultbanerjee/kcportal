@@ -1,7 +1,7 @@
 'use strict';
 /* ===== Super Admin: firms, plans and modules, Claude switch, token meter, subscription billing, platform settings ===== */
 const saTok = (n) => (n >= 1e6 ? (n / 1e6).toFixed(2) + ' M' : n >= 1e3 ? (n / 1e3).toFixed(1) + ' K' : String(n || 0));
-const SAT = [['firms', 'Firms'], ['services', 'Services (all firms)'], ['usage', 'AI usage and cost'], ['billing', 'Billing'], ['settings', 'Platform settings']];
+const SAT = [['firms', 'Firms'], ['services', 'Services (all firms)'], ['usage', 'AI usage and cost'], ['billing', 'Billing'], ['caselaw', 'Case law engine'], ['settings', 'Platform settings']];
 
 route(/^\/firms$/, async (_, p) => {
   const tab = SAT.some((t) => t[0] === p.get('tab')) ? p.get('tab') : 'firms';
@@ -10,6 +10,7 @@ route(/^\/firms$/, async (_, p) => {
   if (tab === 'services') return saServices(head);
   if (tab === 'usage') return saUsage(head, p.get('m'));
   if (tab === 'billing') return saBilling(head);
+  if (tab === 'caselaw') return saCaselaw(head);
   return saSettings(head);
 });
 
@@ -118,4 +119,30 @@ async function saServices(head) {
   const put = async (b) => { try { await PUT('/api/platform/services', b); toast('Saved.'); } catch (x) { toast(x.message, true); go(); } };
   $$('[data-m]').forEach((c) => (c.onchange = () => put({ id: c.dataset.m, on: c.checked })));
   $$('[data-f]').forEach((c) => (c.onchange = () => { const [i, f] = c.dataset.f.split(':'); put({ id: i, firm_id: +f, on: c.checked }); }));
+}
+
+/* ===== Super Admin: the judgments engine (schedule, courts, run now) — works inside the portal, no outside tool needed ===== */
+async function saCaselaw(head) {
+  let S; try { S = await GET('/api/platform/caselaw/engine'); } catch (e) { return view(`${head}<div class="card"><h2>Case law engine</h2><p>${pill('not reachable', 'bad')} ${esc(e.message)}</p></div>`); }
+  const TIERS = [['off', 'Off'], ['meta', 'Search data only'], ['full', 'Search + PDFs + full text']];
+  const draw = (S) => {
+    const r = S.run, d = S.drive, st = S.settings;
+    $('#cle').innerHTML = `<div class="card"><div class="row sp"><h2>Status</h2><span>${r.running ? pill('working on ' + r.current + (r.progress ? ' · ' + r.progress + ' files this run' : ''), 'ok') : r.paused ? pill('paused', 'warn') : pill('idle')} ${d.connected ? pill('Drive · ' + (d.email || 'connected'), 'ok') : pill('Google Drive not connected', 'bad')}</span></div>
+      <p class="mute">Queue: ${r.queued.length ? esc(r.queued.join(', ')) : 'empty'} · Server disk free: ${r.free_gb} GB · Last daily run: ${esc(r.last_run || 'never')}</p>
+      <div class="row"><button class="btn sm" data-a="run">Run all now</button><button class="btn sm ghost" data-a="pause" data-v="${r.paused ? 0 : 1}">${r.paused ? 'Resume' : 'Pause'}</button><button class="btn sm ghost" data-a="stop">Stop current</button></div></div>
+      <div class="card"><h2>Automatic daily update</h2>
+      <div class="row"><label class="chk"><input type="checkbox" id="cau" ${st.auto ? 'checked' : ''}> Update every day at</label>
+      <select id="chr">${Array.from({ length: 24 }, (_, h) => `<option value="${h}" ${h === st.hour ? 'selected' : ''}>${String(h).padStart(2, '0')}:00</option>`).join('')}</select> <span class="mute">Indian time</span>
+      <label>Files at once</label><input id="ccn" type="number" min="1" max="12" value="${st.concurrency}" style="width:70px"><label>Stop PDFs if disk free below (GB)</label><input id="cgb" type="number" min="1" value="${st.min_free_gb}" style="width:70px"><button class="btn sm" id="cs">Save</button></div>
+      <p class="mute">The schedule runs on the server by itself, day and night. Nothing here needs a person or an outside tool to stay switched on. Google Drive is linked on the search service's own page.</p></div>
+      <div class="card"><h2>Courts and tribunals</h2><div class="tw"><table><tr><th>Court</th><th>What to collect</th><th>Records</th><th>PDFs in Drive</th><th>Last update</th><th></th></tr>
+      ${S.courts.map((c) => c.source === 'planned' ? `<tr><td>${esc(c.name)}</td><td colspan="5" class="mute">reader not built yet</td></tr>` : `<tr><td>${esc(c.name)} <span class="mute">${esc(c.folder)}</span></td><td><select data-court="${esc(c.code)}">${TIERS.map(([v, l]) => `<option value="${v}" ${c.tier === v ? 'selected' : ''}>${l}</option>`).join('')}</select></td><td>${(c.docs || 0).toLocaleString('en-IN')}</td><td>${(c.pdfs || 0).toLocaleString('en-IN')}</td><td class="mute">${esc(c.last_sync || '—')} ${c.last_status && c.last_status !== 'ok' ? pill(c.last_status, 'warn') : ''}</td><td>${c.tier !== 'off' ? `<button class="btn sm ghost" data-a="run" data-code="${esc(c.code)}">Run</button>` : ''}</td></tr>`).join('')}</table></div></div>
+      <div class="card"><h2>Recent activity</h2><pre style="max-height:240px;overflow:auto;font-size:12px;white-space:pre-wrap">${esc(r.log.slice(-25).join('\n'))}</pre></div>`;
+    $('#cle').querySelectorAll('[data-a]').forEach((b) => b.onclick = async () => { try { await POST('/api/platform/caselaw/engine/' + b.dataset.a, { code: b.dataset.code, paused: b.dataset.v === '1' }); toast('Done'); refresh(); } catch (e) { toast(e.message, true); } });
+    $('#cle').querySelectorAll('[data-court]').forEach((sel) => sel.onchange = async () => { try { await POST('/api/platform/caselaw/engine/court', { code: sel.dataset.court, tier: sel.value }); toast('Saved'); refresh(); } catch (e) { toast(e.message, true); } });
+    $('#cs').onclick = async () => { try { await POST('/api/platform/caselaw/engine/settings', { auto: $('#cau').checked, hour: $('#chr').value, concurrency: $('#ccn').value, min_free_gb: $('#cgb').value }); toast('Saved'); refresh(); } catch (e) { toast(e.message, true); } };
+  };
+  const refresh = async () => { try { S = await GET('/api/platform/caselaw/engine'); if ($('#cle') && !$('#cle').contains(document.activeElement)) draw(S); } catch (e) {} };
+  view(`${head}<div id="cle"></div>`); draw(S);
+  const t = setInterval(() => { if (!$('#cle')) return clearInterval(t); refresh(); }, 8000);
 }
