@@ -25,6 +25,7 @@ require('./routes/shield')(app);
 require('./routes/superadmin')(app);
 require('./routes/control')(app);
 require('./routes/journal')(app);
+require('./routes/practice')(app);
 // after a client / lead / matter is saved: push to Google Contacts, and greet a client whose WhatsApp number was just added
 // any change to documents or to a client (new reference, rename, upload, move, delete) goes to Google Drive within a moment
 app.use((req, res, next) => { if (['POST', 'PUT', 'PATCH', 'DELETE'].includes(req.method) && /^\/api\/(fs|clients|matters|documents|letters|register|upload|drafts)(\/|$)/.test(req.path)) res.on('finish', () => { if (res.statusCode < 300 && req.user) { try { require('./routes/drive').kick(req.user.tenant_id); } catch (e) {} } }); next(); });
