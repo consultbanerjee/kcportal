@@ -115,7 +115,7 @@ module.exports = (app) => {
     if (at < 0) return b.length > 140 ? b.slice(0, 140) + '…' : b;
     const a = Math.max(0, at - 55), z = Math.min(b.length, at + 110); return (a > 0 ? '…' : '') + b.slice(a, z) + (z < b.length ? '…' : '');
   };
-  const search = (req, tokens, mode, only, per) => {
+  const search = (req, tokens, mode, only, per, noStatic) => {
     const qlow = tokens.join(' '), groups = [];
     for (const src of SOURCES) {
       if (only && !only.includes(src.key)) continue;
@@ -129,7 +129,7 @@ module.exports = (app) => {
         groups.push({ key: src.key, label: src.label, count: items.length, capped: rows.length >= CAP, items: items.slice(0, per), best: items[0].score });
       } catch (e) { console.error('finder', src.key, e.message); }
     }
-    for (const g of staticHits(req, tokens, mode)) {
+    for (const g of (noStatic ? [] : staticHits(req, tokens, mode))) {
       if (only && !only.includes(g.key)) continue; if (!g.rows.length) continue;
       const items = g.rows.map((it) => { it.type = g.key; it.score = score(it, tokens, qlow); it.snippet = snippet(it.body, tokens); delete it.body; return it; }).sort((a, b) => b.score - a.score);
       groups.push({ key: g.key, label: g.label, count: items.length, capped: false, items: items.slice(0, per), best: items[0].score });
@@ -141,7 +141,9 @@ module.exports = (app) => {
     const t0 = Date.now(), tokens = tokenize(req.query.q), per = Math.min(Math.max(L.int(req.query.per) || 8, 1), 40);
     const only = String(req.query.types || '').split(',').filter((x) => /^[a-z]+$/.test(x)); if (!tokens.length || tokens.join('').length < 2) return res.json({ q: '', tokens: [], total: 0, groups: [], took_ms: 0, relaxed: false });
     let groups = search(req, tokens, 'all', only.length ? only : null, per), relaxed = false;
-    if (!groups.length && tokens.length > 1) { groups = search(req, tokens, 'any', only.length ? only : null, per); relaxed = groups.length > 0; }
+    // loose fallback: only meaningful words (3+ letters, not filler), and never the link catalogues, which would match almost anything
+    const STOP = new Set(['the', 'and', 'for', 'with', 'from', 'vs', 'versus', 'case', 'matter', 'of', 'in', 'on', 'to', 'or', 'an']), loose = tokens.filter((t) => t.length >= 3 && !STOP.has(t));
+    if (!groups.length && loose.length > 1) { groups = search(req, loose, 'any', only.length ? only : null, per, true); relaxed = groups.length > 0; }
     res.json({ q: tokens.join(' '), tokens, total: groups.reduce((n, g) => n + g.count, 0), groups, took_ms: Date.now() - t0, relaxed, types: SOURCES.filter((s) => s.roles.includes(req.user.role) && !off(req, s)).map((s) => [s.key, s.label]).concat(off(req, { mod: 'repository' }) ? [] : [['repository', 'Repository links']]).concat(PRO.includes(req.user.role) && !off(req, { mod: 'efiling' }) ? [['forums', 'Filing forums']] : []) });
   });
   app.get('/api/find/saved', L.requireLogin, noClient, (req, res) => res.json(db.prepare('SELECT id,q,types,created_at FROM saved_finds WHERE tenant_id=? AND user_id=? ORDER BY id DESC LIMIT 30').all(T(req), req.user.id)));
