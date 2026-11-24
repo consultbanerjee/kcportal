@@ -37,6 +37,8 @@ const grp = (r, k) => (r.j.groups || []).find((g) => g.key === k);
   r = await find(ad, 'Supreme Court'); ok(grp(r, 'repository'), 'repository links are searched');
   r = await find(ad, 'NCLAT'); ok(grp(r, 'forums') && grp(r, 'forums').items.some((x) => /NCLAT/.test(x.title)), 'filing forums are searched');
   r = await find(ad, 'nclt'); ok(r.j.groups[0].best >= r.j.groups[r.j.groups.length - 1].best, 'groups ordered best first');
+  r = await find(ad, "a' OR 1=1 --"); ok(r.s === 200 && r.j.total < 5, 'one-letter and filler words do not match everything in the loose fallback: ' + r.j.total);
+  r = await find(ad, 'zzqq arch'); ok(!(r.j.groups || []).some((g) => g.key === 'repository' || g.key === 'forums'), 'loose fallback does not pull link catalogues');
   r = await find(ad, 'Arch Pharmalabs'); ok(grp(r, 'clients').items[0].id === cid2 && r.j.total >= 2, 'all words must match; exact client first');
   r = await find(ad, 'Arch Sukhobrishti'); ok(r.j.relaxed === true && r.j.total > 0, 'relaxed: when no item has every word, show items with some');
   r = await find(ad, 'zzzqqq'); ok(r.s === 200 && r.j.total === 0 && r.j.groups.length === 0, 'nothing found is an empty answer');
