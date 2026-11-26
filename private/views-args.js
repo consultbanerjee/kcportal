@@ -17,7 +17,7 @@ const argState = (a) => (!a ? '<span class="mute">Not prepared yet</span>' : a.s
 async function argCard(mid) {
   const host = $('#acard'); if (!host) return; let a; try { a = await GET(`/api/matters/${mid}/args`); } catch (e) { host.remove(); return; }
   const col = (k) => `<div style="flex:1;min-width:230px"><b>${ARG_NAMES[k]}</b><div>${argState(a[k])}</div><div class="row" style="margin-top:.4rem">${argDl(mid, k, a[k])}</div></div>`;
-  const hist = `<div style="flex:1;min-width:230px"><b>Case history</b><div><span class="mute">Dated chronology of the case, always current</span></div><div class="row" style="margin-top:.4rem"><a class="btn sm" href="/api/matters/${mid}/history/docx">Word</a><a class="btn sm" href="/api/matters/${mid}/history/pdf">PDF</a><button class="btn sm ghost" id="hsv">Keep a copy in Files</button></div></div>`;
+  const hist = `<div style="flex:1;min-width:230px"><b>Case history</b><div><span class="mute">Dated chronology of the case, always current</span></div><div class="row" style="margin-top:.4rem"><a class="btn sm" href="/api/matters/${mid}/history/docx">Word</a><a class="btn sm" href="/api/matters/${mid}/history/pdf">PDF</a><button class="btn sm ghost" data-send="/api/matters/${mid}/history/pdf">Send</button><button class="btn sm ghost" id="hsv">Keep a copy in Files</button></div></div>`;
   host.innerHTML = `<div class="row sp"><h2>Case history, arguments and drawbacks</h2><a class="btn sm gold" href="#/args/${mid}">${a.argument || a.drawback ? 'Open arguments' : 'Prepare arguments'}</a></div>
     <div class="row" style="gap:1.2rem;flex-wrap:wrap;align-items:flex-start">${hist}${col('argument')}${col('drawback')}</div>
     <p class="mute">Prepared from ${a.files} document${a.files === 1 ? '' : 's'} in this case's folder.</p>`;
@@ -48,4 +48,14 @@ route(/^\/args\/(\d+)$/, async ([id]) => {
   $('#af').onsubmit = async (e) => { e.preventDefault(); const v = read(); try { await POST(`/api/matters/${id}/args/generate`, { instruction: v.instruction }); toast('Started. This takes a few minutes; you can leave this page.'); go(); } catch (x) { toast(x.message, true); } };
   $$('details[data-k]').forEach((d) => d.addEventListener('toggle', async () => { if (!d.open || d.dataset.done) return; d.dataset.done = 1; try { const r = await GET(`/api/matters/${id}/args/${d.dataset.k}`); d.querySelector('pre').textContent = r.output; } catch (x) { d.querySelector('pre').textContent = x.message; } }));
   if (busy) setTimeout(() => { if (location.hash === '#/args/' + id) go(); }, 8000);
+});
+
+/* ---- Send a Word / PDF download by e-mail or WhatsApp: any button with data-send="<download address>" ---- */
+document.addEventListener('click', (e) => {
+  const b = e.target.closest && e.target.closest('[data-send]'); if (!b) return; e.preventDefault();
+  const path = b.dataset.send;
+  ask('Send this document', [{ name: 'channel', label: 'Send by', type: 'select', options: [['email', 'E-mail (attached)'], ['whatsapp', 'WhatsApp (download link)']] }, { name: 'to', label: 'E-mail address or mobile number', required: true, value: b.dataset.to || '' }, { name: 'message', label: 'Message (optional)', type: 'textarea' }], 'Send', async (v) => {
+    const r = await POST('/api/send/doc', { path, channel: v.channel, to: v.to, message: v.message });
+    if (r.wa_link) { window.open(r.wa_link, '_blank', 'noopener'); toast('WhatsApp opened. Press Send there.'); } else toast('Sent by e-mail');
+  });
 });

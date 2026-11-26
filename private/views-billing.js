@@ -109,7 +109,7 @@ async function recordPaymentModal(clientId, invoiceId, amountPaise) {
 }
 
 /* ===== billing hub (office) ===== */
-const BTABS = [['invoices', 'Invoices'], ['recurring', 'Recurring'], ['payments', 'Receipts'], ['payouts', 'Payments'], ['sched', 'Scheduled payments'], ['payees', 'Payees'], ['ledgers', 'Ledgers'], ['cash', 'Cash book'], ['bank', 'Bank reconciliation'], ['reports', 'Reports'], ['audit', 'Audit pack'], ['heads', 'Heads']];
+const BTABS = [['invoices', 'Invoices'], ['recurring', 'Recurring'], ['payments', 'Receipts'], ['payouts', 'Payments'], ['sched', 'Scheduled payments'], ['payees', 'Payees'], ['ledgers', 'Ledgers'], ['cash', 'Cash book'], ['bank', 'Bank reconciliation'], ['rc', 'Reports centre'], ['reports', 'Reports'], ['audit', 'Audit pack'], ['heads', 'Heads']];
 route(/^\/(?:billing|accounts)(?:\/(\w+))?$/, async ([tab = 'invoices'], p) => {
   const head = `<h1>Accounts</h1><div class="tabs">${BTABS.map(([k, l]) => `<a href="#/accounts/${k}" class="${tab === k ? 'on' : ''}">${l}</a>`).join('')}</div>`;
   if (tab === 'invoices') {
@@ -234,6 +234,6 @@ route(/^\/(?:billing|accounts)(?:\/(\w+))?$/, async ([tab = 'invoices'], p) => {
       ${kind !== 'head' ? `<select name="id"><option value="">— choose —</option>${opts.map(([v, l]) => `<option value="${v}" ${String(v) === id ? 'selected' : ''}>${esc(l)}</option>`).join('')}</select>` : ''}<button class="btn ghost">Show</button>${id || kind === 'head' ? '<button type="button" class="btn sm" data-print>Print</button>' : ''}</form>${body}`);
     $('#lf').onsubmit = (e) => { e.preventDefault(); const f = e.target; location.hash = `#/accounts/ledgers?kind=${f.kind.value}${f.id ? '&id=' + f.id.value : ''}`; };
     $('#lf').kind.onchange = () => { location.hash = `#/accounts/ledgers?kind=${$('#lf').kind.value}`; };
-  } else if (tab === 'reports' || tab === 'audit' || tab === 'heads') { await accTab(tab, head, p);
+  } else if (tab === 'rc' || tab === 'reports' || tab === 'audit' || tab === 'heads') { await accTab(tab, head, p);
   } else view('<div class="card">Unknown section.</div>');
 }, { roles: ['admin', 'advocate', 'accounts'] });

@@ -169,7 +169,7 @@ route(/^\/letter\/(\d+)$/, async ([id]) => {
   const [l, T] = await Promise.all([GET('/api/letters/' + id), getTpl()]);
   view(`<div class="row sp noprint"><a class="btn ghost sm" href="#/letters">← Letters</a><div class="row">
     ${!isClient() && l.status === 'draft' ? `<button class="btn ghost sm" id="ed">Edit</button>${can('admin', 'advocate') ? '<button class="btn gold sm" id="send">Approve & number</button>' : '<span class="mute">Waiting for advocate approval</span>'}<button class="btn red sm" id="del">Delete</button>` : ''}
-    <a class="btn sm ghost" href="/api/letters/${id}/download/docx">Word</a><a class="btn sm ghost" href="/api/letters/${id}/download/pdf">PDF</a><button class="btn sm" data-print>Print</button></div></div>
+    <a class="btn sm ghost" href="/api/letters/${id}/download/docx">Word</a><a class="btn sm ghost" href="/api/letters/${id}/download/pdf">PDF</a>${isClient() ? '' : `<button class="btn sm ghost" data-send="/api/letters/${id}/download/pdf">Send</button>`}<button class="btn sm" data-print>Print</button></div></div>
     ${sheetFor(T, `<div class="lref"><span>Ref. No. ${esc(l.ref_no || 'DRAFT')}</span><span>Date: ${dt(l.sent_at || l.created_at)}</span></div><p>To,<br><b>${esc(l.to_name)}</b></p><p><b>Subject: ${esc(l.subject)}</b></p><div class="lbody">${esc(l.body)}</div>${signBlock(T.settings)}`)}`);
   const s = $('#send'); if (s) s.onclick = async () => { if (!sure('Approve this letter and issue its reference number? It cannot be edited afterwards.')) return; const r = await POST(`/api/letters/${id}/send`); toast('Issued ' + r.ref_no); go(); };
   const d = $('#del'); if (d) d.onclick = async () => { if (sure('Delete this draft?')) { await DEL('/api/letters/' + id); location.hash = '#/letters'; } };

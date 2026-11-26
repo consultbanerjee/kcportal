@@ -34,6 +34,7 @@ const accDay = (rows) => rows.length ? `<div class="tw"><table><tr><th>Date</th>
 
 async function accTab(tab, head, p) {
   if (tab === 'heads') return accHeads(head);
+  if (tab === 'rc') return accRC(head, p);
   const B = await GET('/api/books?' + accQ(p)), q = accQ(p);
   if (tab === 'audit') {
     const warn = B.checks.filter((c) => c.level === 'warn');
@@ -102,3 +103,21 @@ route(/^\/auditpack$/, async (_, p) => {
       <p style="margin-top:20mm">For ____________________<br>Chartered Accountants<br>Firm Registration No. ____________<br><br>(Name) ____________________ Partner / Proprietor<br>Membership No. ____________ &nbsp; UDIN ____________________<br>Place: ____________ &nbsp; Date: ____________</p>`)}
     </div>`);
 }, { roles: ['admin', 'advocate', 'accounts'] });
+
+/* ---- Reports centre: reports a law firm needs, final accounts, tax audit working paper; download, e-mail, WhatsApp ---- */
+async function accRC(head, p) {
+  const C = await GET('/api/accounts/catalog'), q = accQ(p), pr = C.profile, edit = can('admin', 'accounts');
+  const rowOf = (r) => `<li><span><b>${esc(r.name)}</b><div class="mute">${esc(r.about)}</div></span><span class="row noprint" style="gap:.4rem;flex-wrap:wrap"><a class="btn sm" href="/api/accounts/report?type=${r.key}&fmt=docx&${q}">Word</a><a class="btn sm ghost" href="/api/accounts/report?type=${r.key}&fmt=pdf&${q}">PDF</a><button class="btn sm ghost" data-em="${r.key}">E-mail</button><button class="btn sm ghost" data-wa="${r.key}">WhatsApp</button>${r.key === 'tax' && edit ? '<button class="btn sm ghost" id="tad">Tax audit details</button>' : ''}</span></li>`;
+  view(`${head}${accPeriodBar(p, 'rc')}<p class="mute">Choose a period, then download a report as Word or PDF, or send it at once by e-mail (attached) or WhatsApp (a private download link, valid for 14 days). Reports are built from your own receipts, cash book, payments and posted bank entries. The tax audit working paper follows Form 3CA/3CB-3CD up to 2025-26 and Form No. 26 from 2026-27.</p>
+    ${C.groups.map((g) => `<div class="card"><h2>${esc(g.group)}</h2><ul class="list">${g.reports.map(rowOf).join('')}</ul></div>`).join('')}
+    <p class="mute">Excel workbook with all registers: <a href="/api/books/export.xlsx?${q}">download</a>. Accounts downloads are offered here in Word and PDF.</p>`);
+  accBind('rc');
+  const send = (key, ch) => ask(ch === 'email' ? 'E-mail this report' : 'Send on WhatsApp', [{ name: 'to', label: ch === 'email' ? 'E-mail address' : 'Mobile number', required: true, value: key === 'tax' ? (ch === 'email' ? pr.ca_email : pr.ca_phone) || '' : '', ph: ch === 'email' ? 'name@example.com' : '98XXXXXXXX' }, { name: 'message', label: 'Message (optional)', type: 'textarea' },
+    ...(ch === 'email' ? [{ name: 'fmt', label: 'Attach as', type: 'select', options: [['docx', 'Word'], ['pdf', 'PDF']] }] : [{ name: 'fmt', label: 'Link opens as', type: 'select', options: [['pdf', 'PDF'], ['docx', 'Word']] }])], ch === 'email' ? 'Send' : 'Open WhatsApp', async (v) => {
+    const per = q.startsWith('from=') ? Object.fromEntries(new URLSearchParams(q)) : { fy: q.replace('fy=', '') };
+    const r = await POST('/api/accounts/report/send', { type: key, channel: ch, to: v.to, message: v.message, fmt: v.fmt, ...per });
+    if (r.wa_link) window.open(r.wa_link, '_blank', 'noopener'); toast(ch === 'email' ? 'Sent by e-mail' : 'WhatsApp opened. Press Send there.'); });
+  $$('[data-em]').forEach((b) => (b.onclick = () => send(b.dataset.em, 'email'))); $$('[data-wa]').forEach((b) => (b.onclick = () => send(b.dataset.wa, 'whatsapp')));
+  const td = $('#tad'); if (td) td.onclick = () => ask('Tax audit details', [{ name: 'pan', label: 'PAN of the firm', value: pr.pan }, { name: 'gstin', label: 'GSTIN (if registered)', value: pr.gstin }, { name: 'address', label: 'Address', value: pr.address }, { name: 'status', label: 'Status', type: 'select', options: ['Firm', 'Individual', 'Association of persons', 'Company'], value: pr.status }, { name: 'partners', label: 'Partners and profit-sharing', type: 'textarea', value: pr.partners }, { name: 'practice', label: 'Nature of profession', value: pr.practice }, { name: 'method', label: 'Method of accounting', type: 'select', options: ['Cash', 'Mercantile'], value: pr.method },
+    { name: 'law_audit', label: 'Accounts are also audited under another law (Form 3CA / Part C)', type: 'checkbox', value: pr.law_audit }, { name: 'ca_name', label: 'Chartered Accountant', value: pr.ca }, { name: 'ca_email', label: 'CA e-mail', value: pr.ca_email }, { name: 'ca_phone', label: 'CA mobile', value: pr.ca_phone }], 'Save', async (v) => { await PUT('/api/accounts/taxaudit/profile', v); toast('Saved'); go(); }, true);
+}
