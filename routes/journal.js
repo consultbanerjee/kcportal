@@ -25,8 +25,8 @@ if (!db.prepare('SELECT 1 FROM cost_register LIMIT 1').get()) {
   ]) ins.run(...r);
 }
 
-const VERSION = '6.2.0';
-const BUILD_DATE = '24 November 2026';
+const VERSION = '6.3.0';
+const BUILD_DATE = '26 November 2026';
 
 // ------------------------------------------------------------------ built-in text (updated with every release)
 const PURPOSE = [
@@ -114,7 +114,8 @@ const RELEASES = [
   ['v5.4.0 (23 November 2026)', 'Super Admin → Platform → Case law engine: switch courts on or off, choose what to collect (search data only, or PDFs and full text), set the daily update hour, run now, pause or stop, and watch progress, all inside the portal. The judgments engine runs on its own on the server, day and night, with several files handled at once.'],
   ['v6.0 (23 November 2026)', 'Practice management, for every firm: Time and billing (hours per case, live timer, bill selected time as an invoice); Conflict check before taking a new matter; global search; Case pipeline board; full firm export to Excel; Plan page with usage against limits; Super Admin plan limits for most users and most clients per firm. Firm Plan page fixed.'],
   ['v6.1 (23 November 2026)', 'Search and e-filing, for every firm:\n- Search (Ctrl/Cmd+K): one box across cases, clients, hearings, notings, tasks, letters, register, leads, appointments, invoices, files, judgments, repository and filing forums, respecting each person\'s access; saved searches.\n- Filing forums: catalogue of West Bengal courts, tribunals and forums with e-filing rules; firms can add their own.\n- Prepare for filing: join PDFs into one set with index, bookmarks and page numbers, shrunk or split to the forum\'s size limit.'],
-  ['v6.2 (this release, ' + BUILD_DATE + ')', 'Case law engine restored for the Super Admin (it was lost when v6.0 was uploaded over v5.4). Build Journal release list put back in version order, with the missing v5.4 and v6.0 entries added and wrong dates corrected. New "must still work" check (npm run check) that stops a release if an earlier feature has gone missing.'],
+  ['v6.2 (24 November 2026)', 'Case law engine restored for the Super Admin (it was lost when v6.0 was uploaded over v5.4). Build Journal release list put back in version order, with the missing v5.4 and v6.0 entries added and wrong dates corrected. New "must still work" check (npm run check) that stops a release if an earlier feature has gone missing.'],
+  ['v6.3 (this release, ' + BUILD_DATE + ')', 'Daily cause lists: the Calcutta High Court notice page is read at 8:00, 8:30, 9:00, 10:00 and 11:30 pm India time, each list is matched to every firm\'s open cases by case number and each listing is saved permanently as a hearing date; other courts, tribunals and forums can be added by the Super Admin (list page and link pattern). New Super Admin page Server and renewals: renewal reminders (server, domains, hosting, Anthropic, Google Drive, others) with a red warning 30 days ahead, server load, memory and disk graphs, disk and Google Drive storage bars, and a data-folder breakdown.'],
 ];
 
 const RULES = [
