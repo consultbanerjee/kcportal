@@ -1,16 +1,18 @@
 'use strict';
 /* ===== Super Admin: firms, plans and modules, Claude switch, token meter, subscription billing, platform settings ===== */
 const saTok = (n) => (n >= 1e6 ? (n / 1e6).toFixed(2) + ' M' : n >= 1e3 ? (n / 1e3).toFixed(1) + ' K' : String(n || 0));
-const SAT = [['firms', 'Firms'], ['services', 'Services (all firms)'], ['usage', 'AI usage and cost'], ['billing', 'Billing'], ['caselaw', 'Case law engine'], ['settings', 'Platform settings']];
+const SAT = [['firms', 'Firms'], ['services', 'Services (all firms)'], ['usage', 'AI usage and cost'], ['billing', 'Billing'], ['server', 'Server and renewals'], ['caselaw', 'Case law engine'], ['settings', 'Platform settings']];
 
 route(/^\/firms$/, async (_, p) => {
   const tab = SAT.some((t) => t[0] === p.get('tab')) ? p.get('tab') : 'firms';
-  const head = `<h1>Platform</h1><div class="tabs">${SAT.map(([k, l]) => `<a href="#/firms?tab=${k}" class="${tab === k ? 'on' : ''}">${l}</a>`).join('')}</div>`;
+  let soon = []; try { soon = await GET('/api/platform/renewals/soon'); } catch (e) {}
+  const head = (soon.length ? `<div class="card" style="border-left:4px solid #b3261e"><b>Renewals due</b>: ${soon.map((r) => esc(r.name) + (r.days < 0 ? ' — <b>overdue by ' + (-r.days) + ' days</b>' : ' — in ' + r.days + ' days (' + esc(r.due) + ')')).join(' · ')}</div>` : '') + `<h1>Platform</h1><div class="tabs">${SAT.map(([k, l]) => `<a href="#/firms?tab=${k}" class="${tab === k ? 'on' : ''}">${l}</a>`).join('')}</div>`;
   if (tab === 'firms') return saFirms(head);
   if (tab === 'services') return saServices(head);
   if (tab === 'usage') return saUsage(head, p.get('m'));
   if (tab === 'billing') return saBilling(head);
   if (tab === 'caselaw') return saCaselaw(head);
+  if (tab === 'server') return saServer(head);
   return saSettings(head);
 });
 
@@ -139,4 +141,50 @@ async function saCaselaw(head) {
   const refresh = async () => { try { S = await GET('/api/platform/caselaw/engine'); if ($('#cle') && !$('#cle').contains(document.activeElement)) draw(S); } catch (e) {} };
   view(`${head}<div id="cle"></div>`); draw(S);
   const t = setInterval(() => { if (!$('#cle')) return clearInterval(t); refresh(); }, 8000);
+}
+
+
+/* ---- Server and renewals ---- */
+const gb = (b) => (b / 1073741824).toFixed(1) + ' GB';
+function saBar(label, used, total, extra) {
+  const pc = total ? Math.min(100, Math.round((used / total) * 100)) : 0, col = pc > 85 ? '#b3261e' : pc > 70 ? '#c77700' : '#1b7f4b';
+  return `<div style="margin:.5rem 0"><div class="row sp"><span>${esc(label)}</span><span class="mute">${gb(used)} of ${total ? gb(total) : '—'} · ${pc}%${extra ? ' · ' + esc(extra) : ''}</span></div><div style="background:#e6e6e6;border-radius:6px;height:14px;overflow:hidden"><div style="width:${pc}%;background:${col};height:100%"></div></div></div>`;
+}
+function saLine(title, pts, max, unit) {
+  if (pts.length < 2) return `<div><b>${esc(title)}</b><p class="mute">Collecting data — a point is added every 10 minutes.</p></div>`;
+  const W = 320, H = 90, m = Math.max(max || 0, ...pts) || 1, xy = pts.map((v, i) => `${(i / (pts.length - 1) * W).toFixed(1)},${(H - (v / m) * H).toFixed(1)}`).join(' ');
+  return `<div><b>${esc(title)}</b> <span class="mute">now ${pts[pts.length - 1].toFixed(1)}${unit} · peak ${Math.max(...pts).toFixed(1)}${unit} (last 3 days)</span><svg viewBox="0 0 ${W} ${H}" style="width:100%;height:100px;background:#f6f6f6;border-radius:6px"><polyline fill="none" stroke="#2a5db0" stroke-width="2" points="${xy}"/></svg></div>`;
+}
+async function saServer(head) {
+  view(`${head}<div class="card"><p class="mute">Loading…</p></div>`);
+  const [D, C] = await Promise.all([GET('/api/platform/server'), GET('/api/platform/causelist')]), n = D.now, h = D.history;
+  const up = (s) => Math.floor(s / 86400) + ' days ' + Math.floor((s % 86400) / 3600) + ' h';
+  view(`${head}
+  <div class="card"><div class="row sp"><h2>Renewals</h2><button class="btn sm" id="rnadd">Add</button></div>
+    <p class="mute">Reminders appear in red at the top of every Platform page 30 days before the date. Edit a date after you renew.</p>
+    <div class="tw"><table><tr><th>What</th><th>Renews on</th><th>Left</th><th>Note</th><th></th></tr>${D.renewals.map((r, i) => `<tr><td>${r.url ? `<a href="${esc(r.url)}" target="_blank" rel="noopener">${esc(r.name)}</a>` : esc(r.name)}</td><td><input type="date" data-rd="${i}" value="${esc(r.due)}"></td>
+      <td>${r.days === null ? pill('set date', 'warn') : r.days < 0 ? pill('overdue ' + (-r.days) + ' d', 'bad') : r.days <= 30 ? pill(r.days + ' days', 'warn') : pill(r.days + ' days', 'ok')}</td><td class="mute">${esc(r.note)}</td><td><button class="btn sm ghost" data-rx="${i}">Remove</button></td></tr>`).join('')}</table></div>
+    <button class="btn sm" id="rnsave">Save dates</button></div>
+  <div class="card"><h2>Storage</h2>
+    ${n.disk ? saBar('Server disk', n.disk.used, n.disk.total, gb(n.disk.free) + ' free') : '<p class="mute">Disk figures are not available.</p>'}
+    ${D.drive.error ? `<p class="mute">Google Drive: ${esc(D.drive.error)}</p>` : saBar('Google Drive' + (D.drive.email ? ' (' + D.drive.email + ')' : ''), D.drive.usage, D.drive.limit, 'in Drive ' + gb(D.drive.inDrive) + ', bin ' + gb(D.drive.trash))}
+    <h3 style="margin:.9rem 0 .3rem">What is using the portal's data folder</h3>
+    ${(() => { const mx = Math.max(1, ...D.data.map((x) => x.mb)); return D.data.map((x) => `<div class="row" style="gap:.5rem"><span style="width:150px">${esc(x.name)}</span><div style="flex:1;background:#e6e6e6;border-radius:5px;height:12px"><div style="width:${Math.round(x.mb / mx * 100)}%;background:#2a5db0;height:100%;border-radius:5px"></div></div><span class="mute" style="width:80px;text-align:right">${x.mb >= 1024 ? (x.mb / 1024).toFixed(1) + ' GB' : x.mb + ' MB'}</span></div>`).join('') || '<p class="mute">Nothing measured yet.</p>'; })()}</div>
+  <div class="card"><h2>Server running</h2>
+    <p class="mute">Up ${up(n.uptime)} · portal running ${up(n.proc_up)} · portal uses ${n.rss_mb} MB · database ${n.db_mb} MB · ${n.cpus} CPUs · memory ${gb(n.mem_total - n.mem_free)} of ${gb(n.mem_total)} · load ${n.load.map((x) => x.toFixed(2)).join(' / ')} · Node ${esc(n.node)}</p>
+    <div class="grid2">${saLine('CPU load', h.map((x) => x.load1), n.cpus, '')}${saLine('Memory used', h.map((x) => x.mem_pct), 100, '%')}${saLine('Disk used', h.filter((x) => x.disk_pct != null).map((x) => x.disk_pct), 100, '%')}</div></div>
+  <div class="card"><div class="row sp"><h2>Cause lists from the courts</h2><button class="btn sm" id="clrun">Fetch now</button></div>
+    <p class="mute">Runs by itself at ${C.slots.join(', ')} Indian time. Each firm's open cases are matched by case number and every listing is saved as a hearing date. Last run: ${C.last.at ? esc(new Date(C.last.at).toLocaleString('en-IN')) + ' — ' + (C.last.new || 0) + ' new list(s), ' + (C.last.hits || 0) + ' listing(s) recorded' + ((C.last.errors || []).length ? ', problems: ' + esc(C.last.errors.join('; ')) : '') : 'not yet'}</p>
+    <div class="tw"><table><tr><th>Court or forum</th><th>List page</th><th></th></tr>${C.sources.map((s, i) => `<tr><td>${esc(s.name)}</td><td class="mute">${esc(s.index)}</td><td>${s.builtin ? pill('built in') : `<button class="btn sm ghost" data-sx="${i - 1}">Remove</button>`}</td></tr>`).join('')}</table></div>
+    <button class="btn sm ghost" id="sadd">Add a court, tribunal or forum</button>
+    ${C.lists.length ? `<div class="tw" style="margin-top:.6rem"><table><tr><th>List</th><th>Date</th><th>Status</th><th class="n">Cases found</th></tr>${C.lists.map((l) => `<tr><td>${esc(l.title || '')}</td><td>${esc(l.list_date || '')}</td><td>${l.status === 'done' ? pill('read', 'ok') : pill(l.status + (l.note ? ': ' + l.note : ''), 'warn')}</td><td class="n">${l.hits}</td></tr>`).join('')}</table></div>` : ''}</div>`);
+  const rows = () => D.renewals.map((r, i) => ({ name: r.name, due: (document.querySelector(`[data-rd="${i}"]`) || {}).value || '', note: r.note, url: r.url }));
+  const saveR = async (arr) => { await PUT('/api/platform/renewals', { renewals: arr }); go(); };
+  $('#rnsave').onclick = () => saveR(rows());
+  $$('[data-rx]').forEach((b) => (b.onclick = () => { if (sure('Remove this reminder?')) saveR(rows().filter((_, i) => i !== +b.dataset.rx)); }));
+  $('#rnadd').onclick = () => ask('Add a renewal reminder', [{ name: 'name', label: 'What renews', required: true }, { name: 'due', label: 'Renews on', type: 'date' }, { name: 'note', label: 'Note' }, { name: 'url', label: 'Link to renew (optional)', ph: 'https://' }], 'Add', async (v) => saveR([...rows(), { name: v.name, due: v.due || '', note: v.note || '', url: v.url || '' }]));
+  $('#clrun').onclick = async (e) => { e.target.disabled = true; e.target.textContent = 'Fetching…'; const r = await POST('/api/platform/causelist/run', {}); toast(r.busy ? 'Already running' : `${r.new || 0} new list(s), ${r.hits || 0} listing(s) recorded`); go(); };
+  const src = () => C.sources.filter((s) => !s.builtin).map((s) => ({ name: s.name, index: s.index, link: s.link, must: s.must }));
+  $('#sadd').onclick = () => ask('Add a court, tribunal or forum', [{ name: 'name', label: 'Name', required: true, ph: 'e.g. DRT-2 Kolkata' }, { name: 'index', label: 'Page that lists the cause lists (https)', required: true }, { name: 'link', label: 'Pattern of the list link (regular expression)', required: true, ph: '/Notice-Files/CL/(\\d+)' }, { name: 'must', label: 'Title must contain (optional)', ph: 'cause\\s*list' }], 'Add', async (v) => { await PUT('/api/platform/causelist/sources', { sources: [...src(), { name: v.name, index: v.index, link: v.link, must: v.must }] }); go(); });
+  $$('[data-sx]').forEach((b) => (b.onclick = async () => { if (sure('Remove this source?')) { await PUT('/api/platform/causelist/sources', { sources: src().filter((_, i) => i !== +b.dataset.sx) }); go(); } }));
 }
