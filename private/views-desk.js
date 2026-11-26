@@ -41,22 +41,35 @@ async function caselawView(head, q0) {
   const st = await GET('/api/research/caselaw/status').catch(() => ({ on: false, courts: [] }));
   if (!st.on) { view(head + '<div class="card"><p class="mute">The case-law database is not connected yet. Please contact the portal provider.</p></div>'); return; }
   const picked = new Set(); let offset = 0, last = null;
-  view(`${head}<div class="card"><form id="cf"><div class="row" style="flex-wrap:nowrap"><input id="cq" placeholder="Words, “exact phrase”, AND / OR / NOT, judge:Name, title:Party, citation:…" maxlength="300"><button class="btn">Search</button></div>
-    <div class="row" style="gap:.5rem;margin-top:.5rem;flex-wrap:wrap"><input id="cy1" type="number" placeholder="From year" style="width:7.5rem"><input id="cy2" type="number" placeholder="To year" style="width:7.5rem"><select id="cs"><option value="rank">Best match</option><option value="date">Newest first</option></select></div>
-    <div class="chips" id="cc" style="margin-top:.5rem">${st.courts.map((c) => `<a class="chip" role="button" tabindex="0" style="cursor:pointer" data-f="${esc(c.folder)}" title="${esc(c.name)}">${esc(c.folder)}${c.docs ? ' · ' + Number(c.docs).toLocaleString('en-IN') : ''}</a>`).join('')}</div></form>
-    <p class="mute" style="margin-top:.4rem">Tap courts to limit the search. None selected searches all.</p></div><div id="cr"></div><p class="mute">${esc(st.credit || '')}</p>`);
+  const MODES = [['text', 'Free text', ''], ['title', 'Case title / party', 'title:'], ['judge', 'Judge', 'judge:'], ['citation', 'Citation / case no.', 'citation:']]; let mode = 'text';
+  const big = [...st.courts].sort((x, y) => (y.docs || 0) - (x.docs || 0));
+  view(`${head}<div class="card"><form id="cf"><div class="tabs" id="cm2" style="margin-bottom:.5rem">${MODES.map(([k, l]) => `<a role="button" data-m="${k}" class="${k === mode ? 'on' : ''}">${l}</a>`).join('')}</div>
+    <div class="row" style="flex-wrap:nowrap"><input id="cq" placeholder="Words, “exact phrase”, AND / OR / NOT, w/5 for nearness" maxlength="300"><button class="btn">Search</button></div></form></div>
+  <div style="display:grid;grid-template-columns:240px 1fr;gap:1rem;align-items:start" class="clgrid"><aside class="card" style="position:sticky;top:.5rem"><h3 style="margin:0 0 .5rem">Narrow by</h3>
+    <label>Decided between</label><div class="row" style="gap:.4rem;flex-wrap:nowrap"><input id="cy1" type="number" placeholder="From" style="width:50%"><input id="cy2" type="number" placeholder="To" style="width:50%"></div>
+    <label style="margin-top:.5rem">Sort</label><select id="cs"><option value="rank">Best match</option><option value="date">Newest first</option></select>
+    <label style="margin-top:.5rem">Court <span class="mute" id="cn"></span></label><input id="cf2" placeholder="Find a court" style="margin-bottom:.3rem">
+    <div id="cc" style="max-height:340px;overflow:auto">${big.map((c) => `<label class="chk" data-n="${esc((c.name || c.folder).toLowerCase())}" style="display:flex;gap:.4rem;margin:.15rem 0;font-weight:400"><input type="checkbox" data-f="${esc(c.folder)}"> <span style="flex:1">${esc(c.name || c.folder)}</span><span class="mute">${c.docs ? Number(c.docs).toLocaleString('en-IN') : ''}</span></label>`).join('')}</div>
+    <button type="button" class="btn sm ghost" id="cclr" style="margin-top:.4rem">Clear courts</button><p class="mute" style="margin-top:.5rem">None ticked searches every court.</p></aside>
+    <div><div id="cr"><div class="card"><p class="mute">Search Supreme Court and High Court judgments. Use the tabs to search only by title, judge or citation.</p></div></div><p class="mute">${esc(st.credit || '')}</p></div></div>
+  <style>@media(max-width:800px){.clgrid{grid-template-columns:1fr!important}}</style>`);
   const t = $('#cq'); t.value = q0 || '';
-  $$('#cc .chip').forEach((c) => (c.onclick = () => { const f = c.dataset.f; if (picked.has(f)) { picked.delete(f); c.classList.remove('on'); } else { picked.add(f); c.classList.add('on'); } }));
+  const cnt = () => { $('#cn').textContent = picked.size ? '· ' + picked.size + ' chosen' : ''; };
+  $$('#cc input').forEach((c) => (c.onchange = () => { c.checked ? picked.add(c.dataset.f) : picked.delete(c.dataset.f); cnt(); }));
+  $('#cclr').onclick = () => { picked.clear(); $$('#cc input').forEach((c) => (c.checked = false)); cnt(); };
+  $('#cf2').oninput = (e) => { const v = e.target.value.toLowerCase(); $$('#cc label').forEach((l) => (l.style.display = l.dataset.n.includes(v) ? 'flex' : 'none')); };
+  $$('#cm2 a').forEach((a) => (a.onclick = () => { mode = a.dataset.m; $$('#cm2 a').forEach((x) => x.classList.toggle('on', x === a)); t.focus(); }));
   const card = (x) => `<li style="align-items:flex-start"><span style="flex:1"><b>${esc(x.title || 'Untitled')}</b><div class="mute">${esc([x.folder, x.case_no, x.decision_date || x.year, x.judge].filter(Boolean).join(' · '))}</div>${x.snip ? `<div style="margin-top:.25rem">${x.snip}</div>` : ''}</span><button class="btn sm ghost" data-o="${esc(x.folder)}/${x.id}">Open</button></li>`;
   const wire = () => $$('[data-o]').forEach((b) => (b.onclick = () => { const [f, i] = b.dataset.o.split('/'); openJudgment(f, i); }));
   const run = async (more) => {
     const v = t.value.trim(); if (v.length < 3) { $('#cr').innerHTML = '<p class="mute">Type at least three letters.</p>'; return; }
     if (!more) { offset = 0; $('#cr').innerHTML = '<p class="mute">Searching…</p>'; }
     try {
-      const r = await GET('/api/research/caselaw/search?' + qs({ q: v, courts: [...picked].join(','), year_from: $('#cy1').value, year_to: $('#cy2').value, sort: $('#cs').value, offset, limit: 20 }));
+      const pre = (MODES.find((m) => m[0] === mode) || [])[2] || '', qv = pre && !/^(title|judge|citation):/i.test(v) ? pre + (/\s/.test(v) ? '"' + v.replace(/"/g, '') + '"' : v) : v;
+      const r = await GET('/api/research/caselaw/search?' + qs({ q: qv, courts: [...picked].join(','), year_from: $('#cy1').value, year_to: $('#cy2').value, sort: $('#cs').value, offset, limit: 20 }));
       last = r; const items = r.results.map((x) => ({ ...x, folder: x.folder || (r.courts && r.courts.length === 1 ? r.courts[0] : x.folder) }));
       const list = items.map(card).join(''); offset += r.results.length;
-      if (more) { $('#cl').insertAdjacentHTML('beforeend', list); } else $('#cr').innerHTML = `<div class="card"><h2>Judgments <span class="mute">${r.ms != null ? r.ms + ' ms' : ''}</span></h2>${list ? `<ul class="list" id="cl">${list}</ul>` : '<p class="mute">No judgments matched. Try fewer words or another court.</p>'}<div id="cm"></div></div>`;
+      if (more) { $('#cl').insertAdjacentHTML('beforeend', list); } else $('#cr').innerHTML = `<div class="card"><h2>Judgments <span class="mute">${r.ms != null ? '· ' + r.ms + ' ms' : ''}${picked.size ? ' · ' + picked.size + ' court(s)' : ' · all courts'}</span></h2>${list ? `<ul class="list" id="cl">${list}</ul>` : '<p class="mute">No judgments matched. Try fewer words or another court.</p>'}<div id="cm"></div></div>`;
       $('#cm').innerHTML = r.more ? '<button class="btn sm ghost" id="cmore">Show more</button>' : ''; const mb = $('#cmore'); if (mb) mb.onclick = () => run(true); wire();
     } catch (e) { $('#cr').innerHTML = `<p class="err">${esc(e.message)}</p>`; }
   };
