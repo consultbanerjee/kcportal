@@ -28,6 +28,7 @@ const KINDS = {
   reply_notice: { label: 'Reply to a legal notice (on letter pad)', profile: 'letter', page: null, annexures: false, what: 'a Reply to a Legal Notice (para-wise reply, denials, own case, reservation of rights)' },
   letter: { label: 'Letter (on letter pad)', profile: 'letter', page: null, annexures: false, what: 'a formal Letter' },
   agreement: { label: 'Agreement / Deed', profile: 'court', page: null, annexures: false, what: 'an Agreement / Deed (parties, recitals, operative clauses, schedules, execution)' },
+  lease_deed: { label: 'Lease deed / Rent agreement', profile: 'court', page: null, annexures: false, what: 'a Lease Deed (lessor and lessee particulars, recitals, demise and schedule of the premises, term and renewal, rent and security deposit, interest on arrears, use, maintenance and statutory compliance, sub-letting, termination and handing back, stamp duty and registration, dispute resolution, execution and witnesses) following any standing lease clauses saved in the firm\'s house rules' },
   affidavit: { label: 'Affidavit', profile: 'court', page: null, annexures: false, what: 'an Affidavit (deponent particulars, numbered statements, verification)' },
   other: { label: 'Other legal document', profile: 'court', page: null, annexures: true, what: 'the legal document described in the instruction' },
 };
