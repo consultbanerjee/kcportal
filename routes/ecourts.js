@@ -393,4 +393,11 @@ module.exports = (app) => {
     res.json({ status: s.status, stage: s.current_stage || '', progress: s.progress || null, error: s.error || null });
   }));
 };
-Object.assign(module.exports, { identity, splitNo, setTransport, archiveMatter, syncMatter, call, brief, orderList, syncAll, startWorker, on, allowed, store });
+// Next listing date, court number and serial for linked cases (all High Courts and district courts on eCourts), asked only for the cases given.
+async function listing(t, rows) {
+  if (!rows.length || !on(t)) return [];
+  const d = await call(t, 'POST', '/api/partner/causelist/cnr/batch', { body: { cnrs: rows.map((x) => x.cnr) } }); meter(t, 'causelist', 'batch', Math.round(rate(t) / 2 * rows.length));
+  const by = new Map(rows.map((x) => [x.cnr, x])), arr = Array.isArray(d) ? d : d.data || [];
+  return arr.filter((x) => x.hasCauselist).map((x) => ({ cnr: x.cnr, mid: (by.get(x.cnr) || {}).mid, date: String(pick(x, 'nextListing', 'listingDate', 'date') || '').slice(0, 10), court: String(pick(x, 'courtNo', 'courtNumber', 'court_no') || ''), item: String(pick(x, 'listingNo', 'itemNo', 'serialNo', 'srNo') || '') })).filter((x) => x.mid && /^\d{4}-\d{2}-\d{2}$/.test(x.date));
+}
+Object.assign(module.exports, { listing, identity, splitNo, setTransport, archiveMatter, syncMatter, call, brief, orderList, syncAll, startWorker, on, allowed, store });

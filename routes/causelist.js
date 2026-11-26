@@ -21,13 +21,15 @@ CREATE INDEX IF NOT EXISTS ix_cause_hits_t ON cause_hits(tenant_id, list_date);
 
 const SLOTS = [[20, 0], [20, 30], [21, 0], [22, 0], [23, 30]];
 const CALCUTTA = { name: 'Calcutta High Court', key: 'calcutta-hc', index: 'https://www.calcuttahighcourt.gov.in/Notices/All', link: '/Notice-Files/CL/(\\d+)', must: 'cause\\s*list', forum: 'calcutta|high court at calcutta|\\bc\\.?h\\.?c\\b' };
+// NCLT publishes every bench's daily cause list as a PDF on one page (newest first).
+const NCLT = { name: 'NCLT (all benches)', key: 'nclt', index: 'https://nclt.gov.in/all-cause-list', link: '/sites/default/files/pdf_cause_list/[^"\']+?\\.pdf', must: '', forum: 'nclt|national company law tribunal' };
 const istNow = () => new Date(Date.now() + 5.5 * 3600e3);
 const ymd = (d) => d.toISOString().slice(0, 10);
 const UA = 'Mozilla/5.0 (compatible; KCPortal-CauseList/1.0)';
 
 const sources = () => {
   let extra = []; try { extra = JSON.parse(AI.getS(0, 'cl_sources', '[]')); } catch (e) {}
-  return [CALCUTTA, ...extra.filter((s) => s && s.index && s.link && s.name).map((s) => ({ ...s, key: 'x-' + String(s.name).toLowerCase().replace(/[^a-z0-9]+/g, '-'), must: s.must || '', forum: s.forum || '' }))];
+  return [CALCUTTA, NCLT, ...extra.filter((s) => s && s.index && s.link && s.name).map((s) => ({ ...s, key: 'x-' + String(s.name).toLowerCase().replace(/[^a-z0-9]+/g, '-'), must: s.must || '', forum: s.forum || '' }))];
 };
 
 const forumOk = (src, forum) => { try { return !!src.forum && new RegExp(src.forum, 'i').test(String(forum || '')); } catch (e) { return false; } };
@@ -56,7 +58,7 @@ function listLinks(html, src) {
     if (!id) continue;
     const title = strip(m[2]) || strip(m[3]).slice(0, 140), ctx = strip(m[2] + ' ' + m[3]);
     if (mustRe && !mustRe.test(title + ' ' + ctx)) continue;
-    out.push({ id, url: new URL(href, src.index).href, title: title.slice(0, 200), date: parseDate(title) || parseDate(ctx), side: /original/i.test(title) ? 'Original Side' : /appellate/i.test(title) ? 'Appellate Side' : /circuit|jalpaiguri|port blair/i.test(title) ? 'Circuit Bench' : '' });
+    out.push({ id, url: new URL(href, src.index).href, title: title.slice(0, 200), date: parseDate(title) || parseDate(ctx) || parseDate((() => { try { return decodeURIComponent(href); } catch (e) { return href; } })()), side: /original/i.test(title) ? 'Original Side' : /appellate/i.test(title) ? 'Appellate Side' : /circuit|jalpaiguri|port blair/i.test(title) ? 'Circuit Bench' : '' });
   }
   return [...new Map(out.map((x) => [x.id, x])).values()];
 }
@@ -116,10 +118,34 @@ function record(list, text, src, only) {
     }
   });
   for (const f of db.prepare("SELECT id FROM tenants WHERE kind='firm' AND active=1").all()) {
-    if (AI.getS(f.id, 'cl_auto', '1') !== '1' || (only && only.tid !== f.id)) continue;
+    if (AI.getS(f.id, 'cl_auto', '1') !== '1' || (only && only.tid && only.tid !== f.id)) continue;
     // only cases whose forum belongs to this source are searched in its lists
-    const ms = upMatters(f.id).filter((m) => forumOk(src, m.forum) && (!only || m.id === only.mid));
+    const ms = upMatters(f.id).filter((m) => forumOk(src, m.forum) && (!only || (only.ids ? only.ids.has(m.id) : m.id === only.mid)));
     if (ms.length) tx(scan(text, ms), f.id);
+  }
+  return n;
+}
+
+// Which cases need a fresh look: new cases with no listing found yet, and cases whose next date is today or tomorrow and not yet found in a list.
+function needy() {
+  return db.prepare(`SELECT m.id, m.tenant_id, m.forum, m.case_no FROM matters m WHERE m.status='open' AND TRIM(COALESCE(m.case_no,''))<>''
+    AND (EXISTS (SELECT 1 FROM hearings h WHERE h.matter_id=m.id AND h.next_date BETWEEN date('now','+330 minutes') AND date('now','+330 minutes','+1 day')
+          AND h.id=(SELECT id FROM hearings h2 WHERE h2.matter_id=m.id ORDER BY hearing_date DESC, id DESC LIMIT 1)
+          AND NOT EXISTS (SELECT 1 FROM cause_hits c WHERE c.matter_id=m.id AND c.list_date=h.next_date))
+      OR (m.created_at>=datetime('now','-3 days') AND NOT EXISTS (SELECT 1 FROM cause_hits c WHERE c.matter_id=m.id)))`).all();
+}
+// linked eCourts cases (High Courts and district courts): ask the court-data service for only these cases
+async function viaEcourts(rows) {
+  const E = require('./ecourts'); let n = 0;
+  const byT = new Map(); for (const m of rows) { const e = db.prepare('SELECT cnr FROM matter_ecourt WHERE matter_id=?').get(m.id); if (e && e.cnr) { if (!byT.has(m.tenant_id)) byT.set(m.tenant_id, []); byT.get(m.tenant_id).push({ cnr: e.cnr, mid: m.id }); } }
+  for (const [t, list] of byT) {
+    let r; try { r = await E.listing(t, list.slice(0, 100)); } catch (e) { continue; }
+    for (const x of r) {
+      const ins = db.prepare("INSERT OR IGNORE INTO cause_hits(tenant_id,matter_id,list_id,list_date,source,court_no,item_no,snippet) VALUES (?,?,0,?,'ecourts',?,?,?)").run(t, x.mid, x.date, x.court, x.item, 'From the court-data service');
+      if (!ins.changes) continue; n++;
+      if (!db.prepare("SELECT 1 FROM hearings WHERE matter_id=? AND hearing_date=? AND source='causelist'").get(x.mid, x.date))
+        db.prepare("INSERT INTO hearings(tenant_id,matter_id,hearing_date,purpose,next_date,source) VALUES (?,?,?,?,?,'causelist')").run(t, x.mid, x.date, 'Listed in cause list' + (x.court ? ', Court ' + x.court : '') + (x.item ? ', item ' + x.item : ''), x.date);
+    }
   }
   return n;
 }
@@ -129,11 +155,13 @@ async function runOnce(why) {
   if (busy) return { busy: true }; busy = true; const sum = { new: 0, hits: 0, errors: [] };
   try {
     const horizon = ymd(new Date(istNow().getTime() - 2 * 86400e3));
-    const forums = db.prepare("SELECT DISTINCT forum FROM matters WHERE status='open' AND case_no IS NOT NULL AND TRIM(case_no)<>''").all().map((r) => r.forum);
+    const need = needy(), ids = new Set(need.map((m) => m.id)), forums = need.map((m) => m.forum);
+    if (!need.length) { sum.skipped = 'no case needs a listing today'; AI.setS(0, 'cl_last', JSON.stringify({ at: new Date().toISOString(), why, ...sum })); return sum; }
+    sum.hits += await viaEcourts(need);
     for (const src of sources()) {
       if (!forums.some((f) => forumOk(src, f))) { sum.skipped = (sum.skipped || 0) + 1; continue; }   // no case of ours in this forum: nothing to fetch
       let html; try { html = await get(src.index); } catch (e) { sum.errors.push(src.name + ': ' + e.message); continue; }
-      for (const x of listLinks(html, src).slice(0, 40)) {
+      for (const x of listLinks(html, src).slice(0, 150)) {
         if (x.date && x.date < horizon) continue;                                    // old lists are not needed
         let row = db.prepare('SELECT * FROM cause_lists WHERE source=? AND ext_id=?').get(src.key, x.id);
         if (!row) { db.prepare('INSERT INTO cause_lists(source,ext_id,title,list_date,side,url) VALUES (?,?,?,?,?,?)').run(src.key, x.id, x.title, x.date, x.side, x.url); row = db.prepare('SELECT * FROM cause_lists WHERE source=? AND ext_id=?').get(src.key, x.id); sum.new++; }
@@ -141,7 +169,7 @@ async function runOnce(why) {
         try {
           const text = await toText(await get(x.url, true));
           if (text.length < 200) { db.prepare("UPDATE cause_lists SET tries=tries+1, status='retry', note='no readable text yet' WHERE id=?").run(row.id); continue; }
-          const n = record(row, text, src); sum.hits += n;
+          const n = record(row, text, src, { ids }); sum.hits += n;
           db.prepare("UPDATE cause_lists SET status='done', chars=?, hits=?, tries=tries+1, note=NULL WHERE id=?").run(text.length, n, row.id);
         } catch (e) { db.prepare("UPDATE cause_lists SET tries=tries+1, status='retry', note=? WHERE id=?").run(String(e.message).slice(0, 200), row.id); sum.errors.push(x.title + ': ' + e.message); }
       }
@@ -168,10 +196,11 @@ function onCase(matterId) {
     try {
       const m = db.prepare("SELECT id, tenant_id, forum, case_no FROM matters WHERE id=? AND status='open'").get(matterId);
       if (!m || !String(m.case_no || '').trim() || AI.getS(m.tenant_id, 'cl_auto', '1') !== '1') return;
+      await viaEcourts([m]);
       const horizon = ymd(istNow());
       for (const src of sources().filter((s) => forumOk(s, m.forum))) {
         const html = await get(src.index);
-        for (const x of listLinks(html, src).slice(0, 40)) {
+        for (const x of listLinks(html, src).slice(0, 150)) {
           if (x.date && x.date < horizon) continue;
           let row = db.prepare('SELECT * FROM cause_lists WHERE source=? AND ext_id=?').get(src.key, x.id);
           if (!row) { db.prepare('INSERT INTO cause_lists(source,ext_id,title,list_date,side,url,status) VALUES (?,?,?,?,?,?,?)').run(src.key, x.id, x.title, x.date, x.side, x.url, 'new'); row = db.prepare('SELECT * FROM cause_lists WHERE source=? AND ext_id=?').get(src.key, x.id); }
