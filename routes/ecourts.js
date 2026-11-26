@@ -377,7 +377,7 @@ module.exports = (app) => {
     const title = L.str(b.title, 250) || L.str(`${bf.petitioners[0] || client.name} v. ${bf.respondents[0] || 'Respondent'}${(identity(d).case_no || bf.case_number) ? ' — ' + (identity(d).case_no || bf.case_number) : ''}`, 250);
     const r = db.prepare('INSERT INTO matters(tenant_id,client_id,file_no,title,forum,case_no,opposite_party,stage,assigned_to) VALUES (?,?,?,?,?,?,?,?,?)').run(t, client.id, file_no, title, L.str(bf.court, 200), L.str(bf.case_number, 100), L.str((bf.respondents[0] ? bf.respondents : bf.petitioners).join('; '), 250), L.str(bf.status, 100), L.int(b.assigned_to));
     const m = db.prepare('SELECT * FROM matters WHERE id=?').get(r.lastInsertRowid); store(t, m, cnr, d); try { await archiveMatter(t, m); } catch (e) { console.error('ecourts archive', e.message); }
-    audit(t, req.user.id, 'ecourts_case_imported', 'matter', m.id, cnr, L.ip(req)); res.json({ id: m.id, file_no });
+    try { require('./causelist').onCase(m.id); } catch (e) {} audit(t, req.user.id, 'ecourts_case_imported', 'matter', m.id, cnr, L.ip(req)); res.json({ id: m.id, file_no });
   }));
 
   // ---- litigation check (background report on a person or company) ----

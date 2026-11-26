@@ -100,6 +100,7 @@ module.exports = (app) => {
       VALUES (?,?,?,?,?,?,?,?,?,?,?)`).run(T(req), client.id, file_no, title, L.str(req.body.forum, 200), L.str(req.body.case_no, 100),
       L.str(req.body.opposite_party, 250), L.str(req.body.stage, 100), L.int(req.body.assigned_to), L.str(req.body.summary, 3000), req.user.id);
     audit(T(req), req.user.id, 'matter_created', 'matter', r.lastInsertRowid, file_no, L.ip(req));
+    try { require('./causelist').onCase(r.lastInsertRowid); } catch (e) {}
     res.json({ id: r.lastInsertRowid, file_no });
   });
 
@@ -139,6 +140,7 @@ module.exports = (app) => {
       L.str(b.stage ?? m.stage, 100), ['open', 'closed', 'on_hold'].includes(b.status) ? b.status : m.status, L.int(b.assigned_to, m.assigned_to),
       L.str(b.summary ?? m.summary, 3000), L.str(b.client_visible_note ?? m.client_visible_note, 1500), m.id);
     audit(T(req), req.user.id, 'matter_updated', 'matter', m.id, null, L.ip(req));
+    try { require('./causelist').onCase(m.id); } catch (e) {}
     res.json({ ok: true });
   });
 

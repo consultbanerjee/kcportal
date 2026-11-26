@@ -92,6 +92,15 @@ module.exports = (app) => {
       D.audit(null, req.user.id, 'caselaw_engine_' + a, 'search', 0, JSON.stringify(b).slice(0, 120), L.ip(req)); res.json({ ok: true });
     } catch (e) { fail(res, e); }
   });
+  // One time after this release: the engine updates every day at 3 am India time (most judgments are uploaded by then), two files at once,
+  // PDFs stop if the server disk falls below 15 GB free, and a first full update is started so the library is brought up to date.
+  setTimeout(async () => {
+    try {
+      if (!configured() || AI.getS(0, 'cl_engine_cfg', '') === 'v63') return;
+      await sp('/settings', { auto: true, hour: 3, concurrency: 2, min_free_gb: 15 }); AI.setS(0, 'cl_engine_cfg', 'v63');
+      await sp('/run', {});
+    } catch (e) { console.error('caselaw engine config', e.message); }
+  }, 120000).unref();
   // used by the AI answer: a few real judgments to read first, so the answer rests on cases that exist
   app.locals.caselawContext = async (q) => {
     if (!configured()) return '';
