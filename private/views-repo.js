@@ -3,6 +3,7 @@
 
 /* ---- Repository ---- */
 route(/^\/repository(?:\/([a-z0-9-]+))?$/, async ([sec], p) => {
+  if (sec === 'guidelines') return guidelinesView(p);
   const st = await GET('/api/repository/status').catch(() => ({})), all = await GET('/api/repository'), want = REPO_MAP[sec], cats = want ? all.filter((c) => c.cat === want) : all, q = (p.get('q') || '').toLowerCase(), adm = can('admin'), edit = can('admin', 'advocate', 'staff');
   const match = (l) => !q || (l.title + ' ' + (l.note || '') + ' ' + l.url).toLowerCase().includes(q);
   view(`<div class="row sp"><h1>${esc(want || 'Repository')}</h1>${edit ? '<button class="btn" id="al">Add a link</button>' : ''}</div>
@@ -151,4 +152,19 @@ async function homeExtras() {
   html += await usageCard();
   try { const x = await GET('/api/home-extra'); html += !x.books ? '' : `<div class="card"><div class="row sp"><h2>This month — ${esc(x.books.month)}</h2><a class="btn sm ghost" href="#/accounts/reports">Reports</a></div><div class="grid"><div class="stat"><b>${inr(x.books.income_paise)}</b><span>Received</span></div><div class="stat"><b>${inr(x.books.expense_paise)}</b><span>Spent</span></div><div class="stat"><b>${inr(x.books.receivable_paise)}</b><span>Fees receivable</span></div></div>${x.books.checks ? `<p class="mute">${x.books.checks} item(s) in Accounts need a look.</p>` : ''}</div>`; } catch (e) {}
   if (html && $('#view') === host && !$('#hx')) host.insertAdjacentHTML('beforeend', `<div id="hx">${html}</div>`);
+}
+
+/* ---- Repository > Guide lines: rules of the Supreme Court, High Courts, tribunals and forums ---- */
+async function guidelinesView(p) {
+  const D = await GET('/api/guidelines'), q = (p.get('q') || '').toLowerCase(), g = p.get('g') || '', sa = can('superadmin'), by = {};
+  D.items.filter((x) => (!g || D.courts.find((c) => c.name === x.court && c.group === g)) && (!q || (x.court + ' ' + x.title + ' ' + (x.ref || '') + ' ' + (x.summary || '')).toLowerCase().includes(q))).forEach((x) => (by[x.court] = by[x.court] || []).push(x));
+  const order = D.courts.map((c) => c.name).filter((n) => by[n]);
+  view(`<div class="row sp"><h1>Guide lines</h1><span class="row noprint"><a class="btn sm" href="/api/guidelines/book?scope=hc&fmt=docx">Guidebook: Supreme Court and High Courts (Word)</a><a class="btn sm ghost" href="/api/guidelines/book?scope=hc&fmt=pdf">PDF</a><a class="btn sm ghost" href="/api/guidelines/book?scope=all&fmt=docx">All courts (Word)</a>${sa ? '<button class="btn sm ghost" id="gr">Update now</button>' : ''}</span></div>
+    <p class="mute">Rules, practice directions and e-filing rules of the Supreme Court, High Courts, tribunals, consumer forums and district courts. Each line gives the reference and the date of publication; click it to open the official PDF in a new window. Updated automatically on the ${esc(D.when)}${D.last && D.last.at ? '. Last update: ' + dtm(D.last.at) + ' (' + (D.last.added || 0) + ' new)' : ''}. Next: ${dt(D.next)}.</p>
+    <div class="row noprint" style="margin-bottom:.8rem"><input id="q" placeholder="Search rules, court or subject" value="${esc(p.get('q') || '')}" style="flex:1;min-width:180px"><select id="g"><option value="">All courts</option>${D.groups.map((x) => `<option ${x === g ? 'selected' : ''}>${esc(x)}</option>`).join('')}</select></div>
+    ${order.map((n) => `<div class="card"><h2>${esc(n)}</h2><ul class="list">${by[n].map((x) => `<li><span><a href="${esc(x.url)}" target="_blank" rel="noopener noreferrer"><b>${esc(x.title)}</b></a> <span class="mute">· ${esc(x.ref || x.kind || '')} · Published ${esc(x.shown)}</span>${x.summary ? `<details><summary class="mute" style="cursor:pointer">Summary</summary><div>${esc(x.summary)}</div></details>` : ''}</span></li>`).join('')}</ul></div>`).join('') || '<div class="card mute">Nothing matches. Courts whose pages have not yet been read appear after the next update.</div>'}
+    <p class="mute">Courts covered: ${esc(D.courts.map((c) => c.name).join(', '))}.</p>`);
+  const go2 = () => { location.hash = '#/repository/guidelines?' + new URLSearchParams({ ...($('#q').value ? { q: $('#q').value } : {}), ...($('#g').value ? { g: $('#g').value } : {}) }); };
+  let t; $('#q').addEventListener('input', () => { clearTimeout(t); t = setTimeout(go2, 300); }); $('#g').onchange = go2;
+  const gr = $('#gr'); if (gr) gr.onclick = async () => { toast('Reading the courts\' websites. This takes a few minutes.'); const r = await POST('/api/guidelines/run', {}); toast((r.added || 0) + ' new, ' + ((r.errors || []).length) + ' pages not reachable'); go(); };
 }
