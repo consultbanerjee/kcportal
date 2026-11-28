@@ -140,7 +140,7 @@ function on(root, ev, sel, fn) { root.addEventListener(ev, (e) => { const t = e.
 
 // Each item is [href, label, group]. Items with a group are shown under that group's heading in the left panel.
 function navItems() {
-  if (ME.role === 'superadmin') return [['#/firms', 'Firms and services'], ['#/activity', 'Activity log'], ['#/journal', 'Build Journal'], ['#/account', 'Account']];
+  if (ME.role === 'superadmin') return [['#/dashboard', 'Dashboard'], ['#/firms', 'Settings'], ['#/firms?tab=caselaw', 'Case law engine'], ['#/journal', 'Build Journal'], ['#/account', 'Account']];
   if (isClient()) return [['#/', 'Home'], ['#/matters', 'My cases'], ['#/myfiles', 'My files'], ['#/letters', 'Letters'], ['#/messages', 'Messages'], ['#/livechat', 'Live chat'], ['#/invoices', 'Fees'], ['#/book', 'Book']];
   const r = ME.role, LG = 'Litigation', n = [['#/', 'Home']], pro = ['admin', 'advocate', 'staff'].includes(r), mod = (k) => !(MODS.off || []).includes(k) && !(MODS.advOff || []).includes(k);
   n.push(['#/find', 'Search']);
@@ -195,7 +195,8 @@ function navHtml(items, active) {
 }
 function layout() {
   const items = navItems(), cur = location.hash.split('?')[0] || '#/';
-  const active = (h) => (h === '#/' ? cur === '#/' || cur === '' : cur.startsWith(h) || cur.startsWith(h.replace(/s$/, ''))) ? 'on' : '';
+  const full = location.hash, onCl = ME.role === 'superadmin' && /^#\/firms\?(.*&)?tab=caselaw/.test(full);
+  const active = (h) => (h.includes('?') ? onCl : h === '#/firms' ? !onCl && (cur === '#/firms' || cur === '#/activity') : h === '#/' ? cur === '#/' || cur === '' : cur.startsWith(h) || cur.startsWith(h.replace(/s$/, ''))) ? 'on' : '';
   $('#app').innerHTML = `<div class="shell"><nav class="side"><div class="brand">${TPLC && TPLC.has_logo ? `<img class="blogo" src="/api/template/logo?v=${TPLC.lv}" alt="">` : ''}${esc(FIRM)}<small>${ME.role === 'superadmin' ? 'SUPER ADMIN' : isClient() ? 'CLIENT PORTAL' : 'OFFICE PORTAL'}</small></div>
     ${ME.role === 'superadmin' ? '' : '<form id="gs" class="noprint" style="padding:.4rem .7rem"><input name="q" placeholder="Search" aria-label="Search" style="width:100%"></form>'}
     ${navHtml(items, active)}
@@ -221,7 +222,7 @@ async function go() {
     if (!m) continue;
     if (!r.public) {
       if (!ME) { location.hash = '#/login'; return; }
-      if (ME.role === 'superadmin' && !/^\/(firms|account|logout|journal|fcfg\/\d+)$/.test(path)) { location.hash = '#/firms'; return; }
+      if (ME.role === 'superadmin' && !/^\/(dashboard|firms|activity|account|logout|journal|fcfg\/\d+)$/.test(path)) { location.hash = '#/dashboard'; return; }
       if (r.roles && !r.roles.includes(ME.role)) { layout(); view('<div class="card">You do not have access to this page.</div>'); return; }
       if (r.office && isClient()) { location.hash = '#/'; return; }
       if (r.client && !isClient()) { location.hash = '#/'; return; }
@@ -232,7 +233,7 @@ async function go() {
     return;
   }
   if (!ME) { location.hash = '#/login'; return; }
-  if (ME.role === 'superadmin' && !/^\/(firms|account|logout|journal|fcfg\/\d+)$/.test(path)) { location.hash = '#/firms'; return; }
+  if (ME.role === 'superadmin' && !/^\/(dashboard|firms|activity|account|logout|journal|fcfg\/\d+)$/.test(path)) { location.hash = '#/dashboard'; return; }
   layout(); view('<div class="card">Page not found.</div>');
 }
 window.addEventListener('hashchange', go);
