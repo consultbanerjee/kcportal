@@ -1,5 +1,6 @@
 'use strict';
 // One builder for every "download as Word / PDF" in the portal (case history, court record, registers, chat and activity records).
+// a text section may carry marks: [{s, e, k:'h'|'u', c:'#rrggbb'}] (character positions) drawn as highlight / underline
 // spec = { firm, title, subtitle, landscape, sections: [ { heading, kv: [[k, v]], cols: [{h, w}], rows: [[...]], text } ] }  (col widths are relative)
 const fs = require('fs');
 const { PDFDocument, rgb } = require('pdf-lib');
@@ -18,11 +19,33 @@ async function toPdf(spec) {
   const need = (h) => { if (y - h < 46) np(); };
   const wrap = (t, f, s, w) => { const out = []; for (const para of T(t).split('\n')) { let l = ''; for (const wd of para.split(' ')) { const c = l ? l + ' ' + wd : wd; if (f.widthOfTextAtSize(c, s) <= w || !l) l = c; else { out.push(l); l = wd; } } out.push(l); } return out; };
   const text = (t, { f = R, s = 10.5, c = ink, gap = 3, x = mx, w = tw } = {}) => { for (const l of wrap(t, f, s, w)) { need(s + gap); page.drawText(l, { x, y: y - s, size: s, font: f, color: c }); y -= s + gap; } };
+  // text with the reader's own marks (highlight / underline, by character position) drawn in
+  const hex = (h) => { const n = parseInt(String(h).slice(1), 16); return rgb(((n >> 16) & 255) / 255, ((n >> 8) & 255) / 255, (n & 255) / 255); };
+  const marked = (txt, marks) => {
+    const sz = 10.5, gap = 3, str = T(txt), lines = []; let off = 0;
+    for (const para of str.split('\n')) {
+      let l = '', lo = off, pos = off;
+      for (const wd of para.split(' ')) {
+        const c = l ? l + ' ' + wd : wd;
+        if (R.widthOfTextAtSize(c, sz) <= tw || !l) { if (!l) lo = pos; l = c; } else { lines.push({ t: l, o: lo }); l = wd; lo = pos; }
+        pos += wd.length + 1;
+      }
+      lines.push({ t: l, o: lo }); off += para.length + 1;
+    }
+    for (const ln of lines) {
+      need(sz + gap); const end = ln.o + ln.t.length, hit = marks.filter((m) => m.s < end && m.e > ln.o);
+      const span = (m) => { const a = Math.max(m.s, ln.o) - ln.o, b = Math.min(m.e, end) - ln.o; return [mx + R.widthOfTextAtSize(ln.t.slice(0, a), sz), mx + R.widthOfTextAtSize(ln.t.slice(0, b), sz)]; };
+      for (const m of hit) if (m.k === 'h') { const [x1, x2] = span(m); page.drawRectangle({ x: x1, y: y - sz - 1.5, width: x2 - x1, height: sz + 3, color: hex(m.c), opacity: .75 }); }
+      if (ln.t) page.drawText(ln.t, { x: mx, y: y - sz, size: sz, font: R, color: ink });
+      for (const m of hit) if (m.k === 'u') { const [x1, x2] = span(m); page.drawLine({ start: { x: x1, y: y - sz - 1.8 }, end: { x: x2, y: y - sz - 1.8 }, thickness: 1.3, color: hex(m.c) }); }
+      y -= sz + gap;
+    }
+  };
   np(); if (spec.firm) text(spec.firm, { f: B, s: 13 }); text(spec.title, { f: B, s: 14, gap: 4 }); if (spec.subtitle) text(spec.subtitle, { s: 9.5, c: mute, gap: 6 });
   for (const s of spec.sections || []) {
     if (s.heading) { need(34); y -= 8; text(String(s.heading).toUpperCase(), { f: B, s: 10.5, c: rgb(.55, .42, .1) }); page.drawLine({ start: { x: mx, y: y + 1 }, end: { x: W - mx, y: y + 1 }, thickness: .6, color: rgb(.8, .78, .7) }); y -= 5; }
     for (const [k, v] of s.kv || []) { if (v == null || v === '') continue; const ls = wrap(v, R, 10.5, tw - 130); need(ls.length * 13.5); page.drawText(T(k), { x: mx, y: y - 10.5, size: 10, font: B, color: mute }); for (const l of ls) { page.drawText(l, { x: mx + 130, y: y - 10.5, size: 10.5, font: R, color: ink }); y -= 13.5; } }
-    if (s.text) text(s.text);
+    if (s.text) (s.marks && s.marks.length ? marked(s.text, s.marks) : text(s.text));
     if (s.cols && s.rows) {
       const tot = s.cols.reduce((a, c) => a + (c.w || 1), 0), cw = s.cols.map((c) => (c.w || 1) / tot * tw);
       const row = (cells, f, c) => { const ls = cells.map((v, i) => wrap(clip(v, 1500), f, 9.5, cw[i] - 6)), hh = Math.max(...ls.map((a) => a.length)) * 12 + 5; need(hh); let x = mx; ls.forEach((a, i) => { a.forEach((l, j) => page.drawText(l, { x, y: y - 10 - j * 12, size: 9.5, font: f, color: c })); x += cw[i]; }); y -= hh; page.drawLine({ start: { x: mx, y: y + 2 }, end: { x: W - mx, y: y + 2 }, thickness: .3, color: rgb(.85, .85, .85) }); };
@@ -38,7 +61,21 @@ async function toDocx(spec) {
   for (const s of spec.sections || []) {
     if (s.heading) kids.push(new D.Paragraph({ spacing: { before: 200, after: 80 }, border: { bottom: { style: D.BorderStyle.SINGLE, size: 4, color: 'C9B98A', space: 2 } }, children: [new D.TextRun({ text: String(s.heading).toUpperCase(), bold: true, size: sz, font: F, color: '8C6B1A' })] }));
     if (s.kv && s.kv.some(([, v]) => v)) kids.push(new D.Table({ width: { size: 100, type: D.WidthType.PERCENTAGE }, borders: D.TableBorder ? undefined : undefined, rows: s.kv.filter(([, v]) => v != null && v !== '').map(([k, v]) => new D.TableRow({ children: [new D.TableCell({ width: { size: 28, type: D.WidthType.PERCENTAGE }, borders: nob(D), children: [P(k, { bold: true, color: '555555' })] }), new D.TableCell({ width: { size: 72, type: D.WidthType.PERCENTAGE }, borders: nob(D), children: [P(v)] })] })) }));
-    if (s.text) kids.push(...String(s.text).split('\n').map((l) => P(l)));
+    if (s.text && s.marks && s.marks.length) {
+      let off = 0;
+      for (const l of String(s.text).split('\n')) {
+        const o = off; off += l.length + 1;
+        const cuts = new Set([0, l.length]); for (const m of s.marks) for (const v of [m.s - o, m.e - o]) if (v > 0 && v < l.length) cuts.add(v);
+        const pts = [...cuts].sort((a, b) => a - b), runs = [];
+        for (let i = 0; i < pts.length - 1; i++) {
+          const seg = l.slice(pts[i], pts[i + 1]); if (!seg) continue; const mid = o + pts[i];
+          const cov = (k) => [...s.marks].reverse().find((m) => m.k === k && m.s <= mid && m.e > mid);
+          const hl = cov('h'), ul = cov('u');
+          runs.push(new D.TextRun({ text: seg, font: F, size: sz, shading: hl ? { type: D.ShadingType.CLEAR, fill: hl.c.slice(1), color: 'auto' } : undefined, underline: ul ? { type: D.UnderlineType.SINGLE, color: ul.c.slice(1) } : undefined }));
+        }
+        kids.push(new D.Paragraph({ spacing: { after: 60 }, children: runs.length ? runs : [new D.TextRun({ text: '', font: F, size: sz })] }));
+      }
+    } else if (s.text) kids.push(...String(s.text).split('\n').map((l) => P(l)));
     if (s.cols && s.rows) {
       const tot = s.cols.reduce((a, c) => a + (c.w || 1), 0), pc = (c) => Math.max(5, Math.round((c.w || 1) / tot * 100));
       const cell = (v, i, head) => new D.TableCell({ width: { size: pc(s.cols[i]), type: D.WidthType.PERCENTAGE }, shading: head ? { fill: 'F1EDE0', type: D.ShadingType.CLEAR, color: 'auto' } : undefined, children: String(v == null ? '' : v).split('\n').slice(0, 30).map((l) => P(l, { bold: head, size: 19, after: 20 })) });
