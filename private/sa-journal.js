@@ -38,7 +38,7 @@ route(/^\/activity$/, async (_, p) => {
   const f = { firm: p.get('firm') || '', from: p.get('from') || '', to: p.get('to') || '', user: p.get('user') || '', kind: p.get('kind') || '', q: p.get('q') || '' };
   const D = await GET('/api/platform/activity?' + qs({ ...f, limit: 1500 }));
   const cols = [{ h: 'When', w: 1.5 }, { h: 'Firm', w: 1.2 }, { h: 'Person', w: 1.3 }, { h: 'Role', w: .8 }, { h: 'What', w: 2 }, { h: 'Detail', w: 1.5 }, { h: 'IP', w: 1 }], body = () => D.rows.map((r) => [r.at, r.firm, r.user, r.role, r.what, r.detail, r.ip]);
-  view(`<div class="row sp"><h1>Activity log</h1><span class="row" style="gap:.4rem"><button class="btn sm ghost" data-ax="docx">Word</button><button class="btn sm ghost" data-ax="pdf">PDF</button></span></div>
+  view(`${saTabsHtml('activity')}<div class="row sp"><h2>Activity log</h2><span class="row" style="gap:.4rem"><button class="btn sm ghost" data-ax="docx">Word</button><button class="btn sm ghost" data-ax="pdf">PDF</button></span></div>
     <p class="mute">What every law firm and the platform are doing: sign-ins, sign-outs, entries, changes and deletions, with date and time (Indian time). Read-only.</p>
     <div class="card"><div style="display:grid;grid-template-columns:repeat(auto-fit,minmax(150px,1fr));gap:.5rem;align-items:end">
       <label>Law firm<select id="afm"><option value="">All firms and platform</option>${D.firms.map((x) => `<option value="${x.id}" ${String(x.id) === f.firm ? 'selected' : ''}>${esc(x.name)}</option>`).join('')}</select></label>

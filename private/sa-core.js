@@ -1,12 +1,14 @@
 'use strict';
 /* ===== Super Admin: firms, plans and modules, Claude switch, token meter, subscription billing, platform settings ===== */
 const saTok = (n) => (n >= 1e6 ? (n / 1e6).toFixed(2) + ' M' : n >= 1e3 ? (n / 1e3).toFixed(1) + ' K' : String(n || 0));
-const SAT = [['firms', 'Firms'], ['services', 'Services (all firms)'], ['usage', 'AI usage and cost'], ['billing', 'Billing'], ['server', 'Server and renewals'], ['caselaw', 'Case law engine'], ['settings', 'Platform settings']];
+const SAT = [['firms', 'Firms'], ['services', 'Services (all firms)'], ['usage', 'AI usage and cost'], ['billing', 'Billing'], ['server', 'Server and renewals'], ['caselaw', 'Case law engine'], ['activity', 'Activity log'], ['settings', 'Platform settings']];
+const saTabHref = (k) => (k === 'activity' ? '#/activity' : '#/firms?tab=' + k);
+const saTabsHtml = (tab) => `<h1>Settings</h1><div class="tabs">${SAT.map(([k, l]) => `<a href="${saTabHref(k)}" class="${tab === k ? 'on' : ''}">${l}</a>`).join('')}</div>`;
 
 route(/^\/firms$/, async (_, p) => {
-  const tab = SAT.some((t) => t[0] === p.get('tab')) ? p.get('tab') : 'firms';
+  const tab = SAT.some((t) => t[0] === p.get('tab') && t[0] !== 'activity') ? p.get('tab') : 'firms';
   let soon = []; try { soon = await GET('/api/platform/renewals/soon'); } catch (e) {}
-  const head = (soon.length ? `<div class="card" style="border-left:4px solid #b3261e"><b>Renewals due</b>: ${soon.map((r) => esc(r.name) + (r.days < 0 ? ' — <b>overdue by ' + (-r.days) + ' days</b>' : ' — in ' + r.days + ' days (' + esc(r.due) + ')')).join(' · ')}</div>` : '') + `<h1>Platform</h1><div class="tabs">${SAT.map(([k, l]) => `<a href="#/firms?tab=${k}" class="${tab === k ? 'on' : ''}">${l}</a>`).join('')}</div>`;
+  const head = (soon.length ? `<div class="card" style="border-left:4px solid #b3261e"><b>Renewals due</b>: ${soon.map((r) => esc(r.name) + (r.days < 0 ? ' — <b>overdue by ' + (-r.days) + ' days</b>' : ' — in ' + r.days + ' days (' + esc(r.due) + ')')).join(' · ')}</div>` : '') + saTabsHtml(tab);
   if (tab === 'firms') return saFirms(head);
   if (tab === 'services') return saServices(head);
   if (tab === 'usage') return saUsage(head, p.get('m'));
