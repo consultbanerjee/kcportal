@@ -70,6 +70,65 @@ module.exports = (app) => {
       D.audit(T(req), req.user.id, 'caselaw_to_case', 'matter', m.id, String(d.title || '').slice(0, 80), L.ip(req)); res.json({ ok: true });
     } catch (e) { fail(res, e); }
   });
+  // ---- Reading the judgment: the reader's own highlights / underlines (kept per person), annotated copies, filing into a client's Judgements folder ----
+  db.exec('CREATE TABLE IF NOT EXISTS cl_marks (tenant_id INTEGER NOT NULL, user_id INTEGER NOT NULL, folder TEXT NOT NULL, doc_id TEXT NOT NULL, marks TEXT NOT NULL DEFAULT \'[]\', updated_at TEXT DEFAULT CURRENT_TIMESTAMP, PRIMARY KEY(tenant_id,user_id,folder,doc_id))');
+  const cleanMarks = (a) => (Array.isArray(a) ? a : []).slice(0, 3000).map((m) => ({ s: parseInt(m && m.s, 10), e: parseInt(m && m.e, 10), k: m && m.k === 'h' ? 'h' : 'u', c: /^#[0-9a-fA-F]{6}$/.test(String(m && m.c)) ? String(m.c) : '#000000' })).filter((m) => Number.isInteger(m.s) && Number.isInteger(m.e) && m.s >= 0 && m.e > m.s && m.e <= 400000);
+  const annSpec = (d, marks) => { const sp = specOf(d), body = String(d.body || '').slice(0, 250000); const j = sp.sections.find((x) => x.heading === 'Judgment'); if (j && d.body) { j.text = body; j.marks = cleanMarks(marks).filter((m) => m.s < body.length).map((m) => ({ ...m, e: Math.min(m.e, body.length) })); } return sp; };
+  const fname = (d, tail) => (String(d.title || 'judgment').replace(/[^\w .,()-]/g, '_').slice(0, 80).trim() || 'judgment') + (tail || '');
+  app.get('/api/research/caselaw/marks/:folder/:id', L.office, OFF, (req, res) => {
+    if (!okFolder(req.params.folder) || !okId(req.params.id)) return res.status(400).json({ error: 'Not found.' });
+    const r = db.prepare('SELECT marks FROM cl_marks WHERE tenant_id=? AND user_id=? AND folder=? AND doc_id=?').get(T(req), req.user.id, req.params.folder, req.params.id);
+    let m = []; try { m = JSON.parse(r ? r.marks : '[]'); } catch (e) {} res.json({ marks: cleanMarks(m) });
+  });
+  app.put('/api/research/caselaw/marks/:folder/:id', L.office, OFF, (req, res) => {
+    if (!okFolder(req.params.folder) || !okId(req.params.id)) return res.status(400).json({ error: 'Not found.' });
+    const m = cleanMarks((req.body || {}).marks);
+    if (!m.length) db.prepare('DELETE FROM cl_marks WHERE tenant_id=? AND user_id=? AND folder=? AND doc_id=?').run(T(req), req.user.id, req.params.folder, req.params.id);
+    else db.prepare('INSERT INTO cl_marks(tenant_id,user_id,folder,doc_id,marks) VALUES (?,?,?,?,?) ON CONFLICT(tenant_id,user_id,folder,doc_id) DO UPDATE SET marks=excluded.marks, updated_at=CURRENT_TIMESTAMP').run(T(req), req.user.id, req.params.folder, req.params.id, JSON.stringify(m));
+    res.json({ ok: true });
+  });
+  // the original court PDF when held, otherwise a PDF made from the text
+  const pdfOf = async (folder, id, d) => {
+    const r = await sf(`/api/v1/doc/${folder}/${id}/pdf`, 90000).catch(() => null);
+    if (r && r.ok) { const buf = Buffer.from(await r.arrayBuffer()); if (buf.subarray(0, 4).toString() === '%PDF') return buf; }
+    return d.body ? EX.build(specOf(d), 'pdf') : null;
+  };
+  app.post('/api/research/caselaw/doc/:folder/:id/annotated/:fmt', L.office, OFF, lim, async (req, res) => {
+    const { folder, id, fmt } = req.params; if (!okFolder(folder) || !okId(id) || !['docx', 'pdf'].includes(fmt)) return res.status(400).json({ error: 'Choose docx or pdf.' });
+    try { const d = await getDoc(folder, id); if (!d) return res.status(404).json({ error: 'Not found.' }); EX.send(res, await EX.build(annSpec(d, (req.body || {}).marks), fmt), fmt, fname(d, ' - marked')); } catch (e) { fail(res, e); }
+  });
+  // file into a client's folder: Judgements (made if it is missing). Rights are the same as for adding files to that client.
+  const clientDir = (req, res) => {
+    const cid = L.int((req.body || {}).client_id), t = T(req), H = app.locals.fsHelpers;
+    if (!cid || !db.prepare('SELECT 1 FROM clients WHERE id=? AND tenant_id=?').get(cid, t)) { res.status(404).json({ error: 'Choose a client.' }); return null; }
+    const lv = app.locals.clientLevel ? app.locals.clientLevel(req, cid) : 'edit'; if (!lv || lv === 'view') { res.status(403).json({ error: 'You are not on a case for this client with rights to add files.' }); return null; }
+    if (!H) { res.status(503).json({ error: 'Files are not ready yet.' }); return null; }
+    H.seed(t, cid, req.user.id);
+    const f = db.prepare("SELECT id FROM fs_nodes WHERE tenant_id=? AND client_id=? AND parent_id IS NULL AND kind='folder' AND deleted_at IS NULL AND lower(name)='judgements'").get(t, cid);
+    return { cid, t, H, parent: f ? f.id : H.ensurePath(t, cid, ['Judgements'], req.user.id, false) };
+  };
+  app.post('/api/research/caselaw/to-client', L.office, OFF, lim, async (req, res) => {
+    const b = req.body || {}; if (!okFolder(b.folder) || !okId(b.id)) return res.status(400).json({ error: 'Not found.' });
+    const kinds = { pdf: ['pdf', ''], docx: ['docx', ''], annotated_pdf: ['pdf', ' - marked'], annotated_docx: ['docx', ' - marked'] }, k = kinds[b.kind]; if (!k) return res.status(400).json({ error: 'Choose what to save.' });
+    const dir = clientDir(req, res); if (!dir) return;
+    try {
+      const d = await getDoc(b.folder, b.id); if (!d) return res.status(404).json({ error: 'Not found.' });
+      let buf; if (b.kind === 'pdf') buf = await pdfOf(b.folder, b.id, d); else if (b.kind === 'docx') buf = await EX.build(specOf(d), 'docx'); else buf = await EX.build(annSpec(d, b.marks), k[0]);
+      if (!buf) return res.status(404).json({ error: 'The original file is not available right now.' });
+      const r = await dir.H.putFile(dir.t, { clientId: dir.cid, parent: dir.parent, name: fname(d, k[1]) + '.' + k[0], buffer: buf, mime: EX.MIME[k[0]], uid: req.user.id, visible: false });
+      D.audit(dir.t, req.user.id, 'caselaw_to_client', 'fs', r.id, r.name.slice(0, 80), L.ip(req)); res.json({ ok: true, name: r.name });
+    } catch (e) { fail(res, e); }
+  });
+  app.post('/api/research/caselaw/note-to-client', L.office, OFF, async (req, res) => {
+    const b = req.body || {}, note = L.str(b.note, 20000).trim(); if (!note) return res.status(400).json({ error: 'The note is empty.' });
+    const dir = clientDir(req, res); if (!dir) return;
+    try {
+      const title = L.str(b.title, 200) || 'Judgment';
+      const buf = await EX.build({ firm: '', title: 'Note on: ' + title, subtitle: L.str(b.sub, 300), sections: [{ heading: 'Note', text: note }] }, 'docx');
+      const r = await dir.H.putFile(dir.t, { clientId: dir.cid, parent: dir.parent, name: (title.replace(/[^\w .,()-]/g, '_').slice(0, 70).trim() || 'judgment') + ' - note.docx', buffer: buf, mime: EX.MIME.docx, uid: req.user.id, visible: false });
+      D.audit(dir.t, req.user.id, 'caselaw_note_to_client', 'fs', r.id, r.name.slice(0, 80), L.ip(req)); res.json({ ok: true, name: r.name });
+    } catch (e) { fail(res, e); }
+  });
   // ---- Super Admin: run the whole judgments engine from inside the portal (no need to open the search service's own admin page) ----
   const SA = L.need('superadmin');
   const sp = async (path, body) => {
